@@ -1,0 +1,14 @@
+[package]
+name = "curio-server"
+version.workspace = true
+edition.workspace = true
+description = "Optional REST server exposing the same library over HTTP (web UI / self-hosting)."
+
+[dependencies]
+curio-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tower-http.workspace = true
+tokio-util.workspace = true

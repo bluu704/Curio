@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/server", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+curio-core = { path = "crates/core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+walkdir = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+axum = "0.7"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio-util = { version = "0.7", features = ["io"] }
+ureq = { version = "2", default-features = false, features = ["tls", "native-certs", "json", "gzip", "proxy-from-env"] }
+notify = "6"
+
+[profile.dev.package."*"]
+opt-level = 2   # image decoding / sqlite are painfully slow unoptimised

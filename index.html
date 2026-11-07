@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Curio</title>
+    <script>
+      // Apply theme before first paint to avoid a flash.
+      try {
+        var t = localStorage.getItem("curio.theme") || "system";
+        var dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        var a = localStorage.getItem("curio.accent");
+        if (a && /^#[0-9a-f]{6}$/i.test(a)) {
+          var n = parseInt(a.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+          if (dark) c = c.map(function (v) { return Math.round(v + (255 - v) * 0.22); });
+          document.documentElement.style.setProperty("--accent", c.join(" "));
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

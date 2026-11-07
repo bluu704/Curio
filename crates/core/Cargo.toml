@@ -1,0 +1,20 @@
+[package]
+name = "curio-core"
+version.workspace = true
+edition.workspace = true
+description = "Curio domain logic: SQLite library, file linking, cover extraction. No UI / transport code."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+rusqlite.workspace = true
+walkdir.workspace = true
+zip.workspace = true
+image.workspace = true
+ureq.workspace = true
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"
