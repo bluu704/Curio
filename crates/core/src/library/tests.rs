@@ -289,3 +289,35 @@ fn sync_between_two_devices() {
     sync(&a, &mut cloud);
     assert!(!serde_json::to_string(cloud.as_ref().unwrap()).unwrap().contains("secret:"));
 }
+
+/// Writes a realistic snapshot to $CURIO_FIXTURE (used by the web version's round-trip check),
+/// and with $CURIO_MERGE_IN merges a snapshot the web version produced and reports the result.
+#[test]
+#[ignore = "fixture for the web test"]
+fn web_fixture() {
+    // a library file that survives between the two runs (export, then merge the web's edit back)
+    let dir = std::path::PathBuf::from(std::env::var("CURIO_FIXTURE_DIR").unwrap_or_else(|_| std::env::temp_dir().join("curio-web-fixture").to_string_lossy().into()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let l = Library::open(&dir.join("lib.db"), &dir.join("cache")).unwrap();
+    if let Ok(p) = std::env::var("CURIO_MERGE_IN") {
+        let web: crate::sync::Snapshot = serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
+        let (merged, pulled) = l.sync_merge(Some(&web)).unwrap();
+        let it = l.list_items(&Default::default()).unwrap().into_iter().find(|i| i.title.starts_with("Frieren")).unwrap();
+        let it = l.get_item(&it.id).unwrap();
+        println!("PULLED={pulled} TITLE={} RATING={:?} TAGS={:?} CHANGES_VS_WEB={}", it.title, it.rating, it.tags.iter().map(|t| &t.name).collect::<Vec<_>>(), crate::sync::changes(&merged, &web));
+        return;
+    }
+    let a = l.create_item(NewItem { title: "Frieren".into(), kind: Some(Kind::Anime), tags: vec![NewTag { name: "Madhouse".into(), category: TagCategory::Studio }], ..Default::default() }).unwrap();
+    l.update_item(&a.id, serde_json::from_value(serde_json::json!({ "rating": 4.0, "favorite": true, "props": {"_lyrics": {"plain": "a", "synced": "", "source": "x"}}, "blocks": [{"id": "1", "type": "paragraph", "text": "메모"}] })).unwrap()).unwrap();
+    let c = l.save_category(Category { id: "c1".into(), parent_id: None, kind: None, name: "팬아트".into(), position: 0, color: Some("#0ea5e9".into()) }).unwrap();
+    l.add_to_category(std::slice::from_ref(&a.id), &c.id).unwrap();
+    let b = l.create_item(NewItem { title: "Trashed".into(), ..Default::default() }).unwrap();
+    l.delete_item(&b.id).unwrap();
+    l.set_settings("palette", &serde_json::json!({ "custom": ["#123456"] })).unwrap();
+    l.save_view(View { id: "sys:all".into(), name: "전체".into(), icon: "library".into(), position: 0, layout: "gallery".into(), query: Default::default(), card: serde_json::json!({"size": "m", "showTitle": true}), columns: vec!["title".into()] }).unwrap();
+    let (snap, _) = l.sync_merge(None).unwrap();
+    if let Ok(p) = std::env::var("CURIO_FIXTURE") {
+        std::fs::write(p, serde_json::to_string(&snap).unwrap()).unwrap();
+    }
+    l.sync_commit(&snap).unwrap();
+}

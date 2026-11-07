@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "build:preview": "vite build -c vite.preview.config.ts",
+    "build:web": "tsc -b && vite build -c vite.web.config.ts",
     "tauri": "tauri",
     "server": "cargo run -p curio-server"
   },

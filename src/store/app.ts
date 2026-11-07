@@ -227,9 +227,13 @@ export const useApp = create<AppState>((set, get) => {
 
     /** Re-read everything (after another device's changes arrived through sync). */
     async reloadAll() {
-      const [views, archives, statuses, tags, fields, categories] = await Promise.all([
-        api.listViews(), api.listArchives(), api.listStatuses(), api.listTags(), api.listFields(), api.listCategories(), useFormats.getState().load(),
+      const [archives, statuses, tags, fields, categories] = await Promise.all([
+        api.listArchives(), api.listStatuses(), api.listTags(), api.listFields(), api.listCategories(), useFormats.getState().load(),
       ]);
+      // views of built-ins / archives another device does not have yet
+      let views = await api.listViews();
+      const missing = [...DEFAULT_VIEWS, ...archives.flatMap(archiveViews)].filter((d) => !views.some((v) => v.id === d.id));
+      if (missing.length) { await Promise.all(missing.map((v) => api.saveView(v))); views = await api.listViews(); }
       const activeViewId = views.some((v) => v.id === get().activeViewId) ? get().activeViewId : views[0]?.id ?? get().activeViewId;
       set({ views, archives, statuses, tags, fields, categories, activeViewId });
       await get().refresh();

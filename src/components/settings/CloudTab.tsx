@@ -40,6 +40,14 @@ export function syncLibrary(quiet = false): Promise<SyncReport | null> {
 
 /** Background sync while the app is open: at start, every 3 minutes and when the window is hidden. */
 export async function startAutoSync() {
+  if (api.caps.platform === "web") {
+    // browser: Google gives a token only after a click, so background syncs run once the user has signed in this visit
+    const { hasToken } = await import("@/web/google");
+    const tick = () => { if (hasToken()) void syncLibrary(true); };
+    setInterval(tick, 3 * 60_000);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") tick(); });
+    return;
+  }
   if (!api.caps.localFiles) return;
   const st = await api.driveStatus().catch(() => null);
   const cfg = await api.getSettings<CloudConfig>("cloud").catch(() => null);
@@ -115,6 +123,8 @@ export function CloudTab() {
 
   const connected = !!st?.connected;
   const desktop = api.caps.localFiles;
+  const web = api.caps.platform === "web";
+  const canLogin = desktop || web;
 
   return (
     <div className="space-y-5">
@@ -131,12 +141,13 @@ export function CloudTab() {
           {connected ? (
             <button className="btn h-9 border border-line" disabled={!!busy} onClick={() => void logout()}><LogOut size={14} />연결 해제</button>
           ) : (
-            <button className="btn btn-primary h-9" disabled={!!busy || !desktop || (st !== null && !st.available)} onClick={() => void login()}>
+            <button className="btn btn-primary h-9" disabled={!!busy || !canLogin || (st !== null && !st.available)} onClick={() => void login()}>
               {busy === "login" ? <Loader2 size={15} className="animate-spin" /> : <GoogleMark />}구글 계정으로 연결
             </button>
           )}
         </div>
-        {!desktop && <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">구글 계정 연결은 데스크톱 앱에서 할 수 있어요. 연결한 라이브러리는 웹에서도 그대로 써요.</p>}
+        {!canLogin && <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">구글 계정 연결은 데스크톱 앱이나 웹 버전에서 할 수 있어요.</p>}
+        {web && st && !st.available && <WebClientInput onSaved={() => void api.driveStatus().then(setSt)} />}
         {desktop && st && !st.available && (
           <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">이 버전에는 구글 연결 정보가 들어 있지 않아요. 아래 <b className="text-fg">고급</b>에서 직접 넣을 수 있어요.</p>
         )}
@@ -158,15 +169,17 @@ export function CloudTab() {
         </div>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={cfg.autoSync !== false} onChange={(e) => save({ ...cfg, autoSync: e.target.checked })} className="h-4 w-4 accent-[rgb(var(--accent))]" />
-          자동으로 동기화 (앱을 열 때 · 3분마다 · 창을 내릴 때)
+          {web ? "자동으로 동기화 (로그인한 동안 3분마다 · 탭을 벗어날 때)" : "자동으로 동기화 (앱을 열 때 · 3분마다 · 창을 내릴 때)"}
         </label>
         <p className="text-[length:calc(11px*var(--ts))] text-muted">
-          드라이브의 숨은 앱 폴더에 저장돼서 내 드라이브 목록에는 보이지 않아요. 표지 이미지도 함께 옮겨지고, 연결해 둔 원본 파일(영상·PDF 등)은 각 기기에 그대로 있어요.
+          {web
+            ? "데스크톱 앱과 같은 라이브러리예요. 이 브라우저에서 올린 파일과 PC에만 있는 원본 파일(영상·PDF 등)은 옮겨지지 않아요."
+            : "드라이브의 숨은 앱 폴더에 저장돼서 내 드라이브 목록에는 보이지 않아요. 표지 이미지도 함께 옮겨지고, 연결해 둔 원본 파일(영상·PDF 등)은 각 기기에 그대로 있어요."}
         </p>
       </section>
 
-      {/* folders */}
-      <section className={cn("space-y-2", !connected && "pointer-events-none opacity-50")}>
+      {/* folders (desktop: files are downloaded to this PC) */}
+      {desktop && <section className={cn("space-y-2", !connected && "pointer-events-none opacity-50")}>
         <div className="label">가져올 폴더</div>
         {cfg.folders.map((f) => (
           <div key={f.id} className="flex items-center gap-2 rounded-xl border border-line p-2 pl-3">
@@ -199,7 +212,7 @@ export function CloudTab() {
           앱을 열 때 새 파일을 자동으로 가져오기
         </label>
         <p className="text-[length:calc(11px*var(--ts))] text-muted">파일은 이 PC에 내려받아 저장돼요. 하위 폴더 안의 파일도 함께 가져오고, 이미 가져온 파일은 건너뛰어요.</p>
-      </section>
+      </section>}
 
       {err && <div className="rounded-lg bg-danger/10 px-3 py-2 text-[length:calc(12px*var(--ts))] text-danger">{err}</div>}
 
@@ -234,8 +247,22 @@ export function CloudTab() {
   );
 }
 
+/** Web builds without a built-in client: paste the "Web application" client id once. */
+function WebClientInput({ onSaved }: { onSaved: () => void }) {
+  const [v, setV] = useState("");
+  return (
+    <div className="mt-3 space-y-1.5">
+      <div className="text-[length:calc(12px*var(--ts))] text-muted">이 웹 버전에는 구글 연결 정보가 없어요. Google Cloud의 <b className="text-fg">웹 애플리케이션</b> 클라이언트 ID를 넣어 주세요.</div>
+      <div className="flex gap-2">
+        <input className="input h-8 flex-1 font-mono" placeholder="….apps.googleusercontent.com" value={v} onChange={(e) => setV(e.target.value)} />
+        <button className="btn btn-primary h-8" disabled={!v.trim().endsWith(".apps.googleusercontent.com")} onClick={() => void import("@/web/google").then((g) => { g.setClientId(v); onSaved(); })}>저장</button>
+      </div>
+    </div>
+  );
+}
+
 /** Google "G" mark. */
-function GoogleMark() {
+export function GoogleMark() {
   return (
     <svg width="15" height="15" viewBox="0 0 48 48" aria-hidden className="shrink-0 rounded-full bg-white p-[1px]">
       <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z" />

@@ -20,6 +20,7 @@ import { ArchiveDialog } from "@/components/dialogs/ArchiveDialog";
 import { SettingsModal } from "@/components/settings/SettingsModal";
 import { MetadataDialog } from "@/components/dialogs/MetadataDialog";
 import { BulkBar } from "@/components/views/BulkBar";
+import { WebBar } from "@/components/layout/WebBar";
 import { VideoCoverDialog } from "@/components/dialogs/VideoCoverDialog";
 import { LinkDialog } from "@/components/dialogs/LinkDialog";
 import { ImportDialog } from "@/components/dialogs/ImportDialog";
@@ -72,6 +73,7 @@ export default function App() {
         </div>
       )}
       <main className="flex min-w-0 flex-1 flex-col">
+        <WebBar />
         {s.activeViewId === "sys:trash" ? <TrashView /> : s.activeViewId === "sys:calendar" ? <CalendarPage /> : <>
         <Toolbar />
         <div className="flex min-h-0 flex-1">

@@ -100,6 +100,20 @@ Windows 사전 준비: [Rust](https://rustup.rs), Node 20+, WebView2(윈10/11 �
 3. 10~20분 뒤 실행 결과의 Artifacts에서 `curio-windows`(설치 파일 .msi / .exe), `curio-macos`(.dmg)를 받아요
    - `v0.2.0` 같은 태그를 올리면 Releases에 초안으로도 올라가요
 
+### 웹 버전 (설치 없이 브라우저에서)
+
+`npm run build:web`은 서버 없이 돌아가는 웹 버전을 만들어요. 라이브러리는 브라우저에 저장되고, 구글로 로그인하면 데스크톱 앱과 같은 드라이브의 라이브러리를 맞춰 써요.
+
+GitHub Pages로 올리기 (`.github/workflows/web.yml`, main에 올릴 때마다 자동):
+1. 저장소 → Settings → Pages → Source를 **GitHub Actions**로
+2. Google Cloud(데스크톱용과 **같은 프로젝트**) → OAuth 클라이언트 ID → **웹 애플리케이션**
+   - 승인된 자바스크립트 원본: `https://<GitHub 아이디>.github.io`
+3. 저장소 → Settings → Secrets and variables → Actions → **Variables** → `CURIO_GOOGLE_WEB_CLIENT_ID`에 그 클라이언트 ID
+   (클라이언트 ID는 공개돼도 되는 값이고, 웹 버전에는 비밀값이 없어요)
+4. 주소: `https://<GitHub 아이디>.github.io/Curio/`
+
+웹 버전에서 안 되는 것: PC 파일 연결·폴더 감시·드라이브 폴더 가져오기, 메타데이터는 AniList 등 브라우저에서 바로 부를 수 있는 곳만 검색돼요.
+
 ## 5. 구현 현황 / 로드맵
 
 - [x] 아카이브: 일러스트 · 게임 · 애니 · 웹툰 · 라이트노벨 · 웹소설 · 노래 · 동인지 · 품번 (+만화 · 영화), 각각 위시리스트 (비어 있으면 숨김)

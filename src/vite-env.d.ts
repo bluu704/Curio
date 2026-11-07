@@ -1,3 +1,3 @@
 /// <reference types="vite/client" />
-interface ImportMetaEnv { readonly VITE_API_URL?: string; readonly VITE_API_TOKEN?: string }
+interface ImportMetaEnv { readonly VITE_API_URL?: string; readonly VITE_API_TOKEN?: string; readonly VITE_CURIO_WEB?: string; readonly VITE_GOOGLE_CLIENT_ID?: string }
 declare module "pdfjs-dist/build/pdf.worker.min.mjs";

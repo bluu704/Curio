@@ -25,7 +25,7 @@ let useAppError: (msg: string) => void = () => {};
 /** Lets the mock report a message through the app's error toast without importing the store (avoids a cycle). */
 export const setMockErrorSink = (fn: (msg: string) => void) => { useAppError = fn; };
 
-interface DB {
+export interface DB {
   items: Item[];
   tags: Tag[];
   fields: FieldDef[];
@@ -158,6 +158,11 @@ function seed(): DB {
   return { items, tags, fields, views: clone(DEFAULT_VIEWS), categories, watch: [], archives: builtinArchives(), statuses: clone(DEFAULT_STATUSES), trash: [], settings: {} };
 }
 
+/** A new, empty library (built-in archives, statuses and views only) — the web version starts here. */
+export function emptyDb(): DB {
+  return { items: [], tags: [], fields: [], views: clone(DEFAULT_VIEWS), categories: [], watch: [], archives: builtinArchives(), statuses: clone(DEFAULT_STATUSES), trash: [], settings: {} };
+}
+
 function load(): DB {
   try {
     const raw = localStorage.getItem(KEY);
@@ -266,8 +271,11 @@ const blobs = (() => {
 })();
 const pageCache = new Map<ID, { names: string[]; urls: string[] }>();
 
-export function createMockClient(): ApiClient {
-  let db = load();
+/** Direct access to the engine's data (used by the web version's Drive sync). */
+export const mockDb: { get(): DB; set(next: DB): void } = { get: () => { throw new Error("not ready"); }, set: () => undefined };
+
+export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void }): ApiClient {
+  let db = opts?.db ?? load();
   db.categories ??= [];
   db.watch ??= [];
   db.archives ??= builtinArchives();
@@ -275,7 +283,9 @@ export function createMockClient(): ApiClient {
   db.statuses ??= clone(DEFAULT_STATUSES);
   db.trash ??= [];
   db.settings ??= {};
-  const commit = () => save(db);
+  const commit = () => (opts?.persist ?? save)(db);
+  mockDb.get = () => db;
+  mockDb.set = (next) => { db = next; commit(); };
   const find = (id: ID) => {
     const it = db.items.find((x) => x.id === id);
     if (!it) throw new Error(`item ${id} not found`);
@@ -345,7 +355,7 @@ export function createMockClient(): ApiClient {
     },
     async deleteItem(id) {
       const it = db.items.find((x) => x.id === id);
-      if (it) db.trash.unshift({ ...it, deletedAt: now() });
+      if (it) db.trash.unshift({ ...it, updatedAt: now(), deletedAt: now() });
       db.items = db.items.filter((x) => x.id !== id); commit();
     },
     async listTrash() { return delay(db.trash); },
@@ -355,6 +365,7 @@ export function createMockClient(): ApiClient {
       if (!t) throw new Error("휴지통에 없는 항목이에요");
       const { deletedAt: _d, ...item } = t;
       if (item.archiveId && !db.archives.some((a) => a.id === item.archiveId)) item.archiveId = db.archives.some((a) => a.id === item.kind) ? item.kind : null;
+      item.updatedAt = now();
       db.trash = db.trash.filter((x) => x.id !== id); db.items.unshift(item); commit();
       return delay(item);
     },

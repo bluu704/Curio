@@ -1,0 +1,49 @@
+# Publishes the browser-only web version to GitHub Pages: https://<user>.github.io/<repository>/
+#
+# Once:
+#  1) Repository → Settings → Pages → Source: "GitHub Actions"
+#  2) Google Cloud (same project as the desktop client) → OAuth client ID → "Web application"
+#     · Authorized JavaScript origins: https://<user>.github.io
+#  3) Repository → Settings → Secrets and variables → Actions → Variables → New repository variable
+#     · CURIO_GOOGLE_WEB_CLIENT_ID = that client id (a client id is public; there is no secret)
+# Runs on every push to main (and by hand from the Actions tab).
+name: Web version
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ["crates/**", "src-tauri/**", "**.md"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build:web
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.CURIO_GOOGLE_WEB_CLIENT_ID }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-web
+      - id: pages
+        uses: actions/deploy-pages@v4

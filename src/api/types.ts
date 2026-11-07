@@ -200,7 +200,7 @@ export interface View {
 }
 
 export interface Capabilities {
-  platform: "tauri" | "http" | "mock";
+  platform: "tauri" | "http" | "mock" | "web";
   /** Can we touch the local filesystem (open, reveal, scan)? */
   localFiles: boolean;
 }

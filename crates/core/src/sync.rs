@@ -106,6 +106,23 @@ pub fn export(c: &Connection, cache: &Path, data: &Path) -> Result<Snapshot> {
     Ok(snap)
 }
 
+/// Same value, where 4 and 4.0 (JavaScript writes numbers without ".0") and true / 1 count as equal.
+fn val_eq(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Bool(x), Value::Number(y)) | (Value::Number(y), Value::Bool(x)) => y.as_f64() == Some(*x as i64 as f64),
+        _ => a == b,
+    }
+}
+/// Rows equal column by column (see [`val_eq`]); a missing column counts as null.
+pub fn row_eq(a: Option<&Row>, b: Option<&Row>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.keys().chain(b.keys()).all(|k| val_eq(a.get(k).unwrap_or(&Value::Null), b.get(k).unwrap_or(&Value::Null))),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 /// Three-way merge. `base` = None for a device's first sync (then both sides are kept).
 pub fn merge(local: &Snapshot, remote: &Snapshot, base: Option<&Snapshot>) -> Snapshot {
     let empty = BTreeMap::new();
@@ -118,18 +135,20 @@ pub fn merge(local: &Snapshot, remote: &Snapshot, base: Option<&Snapshot>) -> Sn
         for k in keys {
             let (lv, rv) = (l.get(k), r.get(k));
             let bv = b.and_then(|b| b.get(k));
-            let pick = if lv == rv {
+            let pick = if row_eq(lv, rv) {
                 lv
-            } else if base.is_some() && lv == bv {
+            } else if base.is_some() && row_eq(lv, bv) {
                 rv // only the other device changed it (or deleted it)
-            } else if base.is_some() && rv == bv {
+            } else if base.is_some() && row_eq(rv, bv) {
                 lv // only this device changed it
             } else {
                 match (lv, rv) {
                     (Some(x), None) | (None, Some(x)) => Some(x), // first sync, or edited here while deleted there: keep
                     (Some(x), Some(y)) => {
                         let ts = |row: &Row| row.get("updated_at").and_then(Value::as_i64).unwrap_or(0);
-                        Some(if ts(y) > ts(x) { y } else { x })
+                        // newer edit wins; without timestamps a joining device (no base) takes the cloud's
+                        // version, so a fresh install's defaults never overwrite customised names / views
+                        Some(if ts(y) > ts(x) || (ts(y) == ts(x) && base.is_none()) { y } else { x })
                     }
                     (None, None) => None,
                 }
@@ -140,7 +159,40 @@ pub fn merge(local: &Snapshot, remote: &Snapshot, base: Option<&Snapshot>) -> Sn
         }
         out.tables.insert(t.to_string(), merged);
     }
+    dedupe_tags(&mut out);
     out
+}
+
+/// The same tag made on two devices (same kind + name, different ids) becomes one: the smallest id
+/// wins and item links move to it. Deterministic, so every device ends with the same rows.
+pub fn dedupe_tags(s: &mut Snapshot) {
+    let Some(tags) = s.tables.get("tags") else { return };
+    let mut keep: BTreeMap<(String, String), String> = BTreeMap::new();
+    for (id, row) in tags {
+        let k = (row.get("category").and_then(Value::as_str).unwrap_or("").to_string(), row.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase());
+        keep.entry(k).and_modify(|cur| if id < cur { *cur = id.clone() }).or_insert(id.clone());
+    }
+    let mut remap: BTreeMap<String, String> = BTreeMap::new();
+    for (id, row) in tags {
+        let k = (row.get("category").and_then(Value::as_str).unwrap_or("").to_string(), row.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase());
+        if &keep[&k] != id {
+            remap.insert(id.clone(), keep[&k].clone());
+        }
+    }
+    if remap.is_empty() {
+        return;
+    }
+    s.tables.get_mut("tags").unwrap().retain(|id, _| !remap.contains_key(id));
+    if let Some(links) = s.tables.get_mut("item_tags") {
+        let old = std::mem::take(links);
+        for (_, mut row) in old {
+            if let Some(to) = row.get("tag_id").and_then(Value::as_str).and_then(|t| remap.get(t)) {
+                row.insert("tag_id".into(), Value::String(to.clone()));
+            }
+            let key = format!("{}\u{1f}{}", row["item_id"].as_str().unwrap_or(""), row["tag_id"].as_str().unwrap_or(""));
+            links.entry(key).or_insert(row);
+        }
+    }
 }
 
 /// Number of rows that differ between two snapshots.
@@ -150,7 +202,7 @@ pub fn changes(a: &Snapshot, b: &Snapshot) -> usize {
         .iter()
         .map(|t| {
             let (x, y) = (a.tables.get(*t).unwrap_or(&empty), b.tables.get(*t).unwrap_or(&empty));
-            x.keys().chain(y.keys()).collect::<BTreeSet<_>>().into_iter().filter(|k| x.get(*k) != y.get(*k)).count()
+            x.keys().chain(y.keys()).collect::<BTreeSet<_>>().into_iter().filter(|k| !row_eq(x.get(*k), y.get(*k))).count()
         })
         .sum()
 }
@@ -161,14 +213,29 @@ pub fn apply(c: &mut Connection, current: &Snapshot, target: &Snapshot, cache: &
     tx.execute_batch("PRAGMA defer_foreign_keys = ON;")?;
     let empty = BTreeMap::new();
     let mut n = 0;
-    // upserts parents → children
+    // deletions first (children → parents), so a re-added row never meets the one it replaces
+    for t in TABLES.iter().rev() {
+        let cols = table_cols(&tx, t)?;
+        let pk = pk_cols(&cols);
+        let (cur, want) = (current.tables.get(*t).unwrap_or(&empty), target.tables.get(*t).unwrap_or(&empty));
+        for (k, row) in cur {
+            if want.contains_key(k) {
+                continue;
+            }
+            let cond: Vec<String> = pk.iter().map(|c| format!("{c} = ?")).collect();
+            let vals: Vec<Sql> = pk.iter().map(|c| match &row[c] { Value::String(s) => Sql::Text(s.clone()), v => Sql::Text(v.to_string()) }).collect();
+            tx.execute(&format!("DELETE FROM {t} WHERE {}", cond.join(" AND ")), rusqlite::params_from_iter(vals))?;
+            n += 1;
+        }
+    }
+    // then inserts / updates (parents → children)
     for t in TABLES {
         let cols = table_cols(&tx, t)?;
         let pk = pk_cols(&cols);
         let names: Vec<&String> = cols.iter().map(|(n, _)| n).collect();
         let (cur, want) = (current.tables.get(t).unwrap_or(&empty), target.tables.get(t).unwrap_or(&empty));
         for (k, row) in want {
-            if cur.get(k) == Some(row) {
+            if row_eq(cur.get(k), Some(row)) {
                 continue;
             }
             let present: Vec<&String> = names.iter().copied().filter(|c| row.contains_key(*c)).collect();
@@ -192,21 +259,6 @@ pub fn apply(c: &mut Connection, current: &Snapshot, target: &Snapshot, cache: &
                 if updates.is_empty() { "NOTHING".to_string() } else { format!("UPDATE SET {}", updates.join(", ")) }
             );
             tx.execute(&sql, rusqlite::params_from_iter(vals))?;
-            n += 1;
-        }
-    }
-    // deletions children → parents
-    for t in TABLES.iter().rev() {
-        let cols = table_cols(&tx, t)?;
-        let pk = pk_cols(&cols);
-        let (cur, want) = (current.tables.get(*t).unwrap_or(&empty), target.tables.get(*t).unwrap_or(&empty));
-        for (k, row) in cur {
-            if want.contains_key(k) {
-                continue;
-            }
-            let cond: Vec<String> = pk.iter().map(|c| format!("{c} = ?")).collect();
-            let vals: Vec<Sql> = pk.iter().map(|c| match &row[c] { Value::String(s) => Sql::Text(s.clone()), v => Sql::Text(v.to_string()) }).collect();
-            tx.execute(&format!("DELETE FROM {t} WHERE {}", cond.join(" AND ")), rusqlite::params_from_iter(vals))?;
             n += 1;
         }
     }
@@ -283,6 +335,38 @@ mod tests {
         assert_eq!(merge(&l2, &r2, Some(&base)).tables["items"]["a"]["title"], "there");
         // first sync of a device: union
         assert_eq!(merge(&local, &remote, None).tables["items"].len(), 5);
+        // joining device: rows without timestamps (archive names…) follow the cloud
+        let fresh = snap(&[("x", json!({"id":"x","name":"일러스트"}))]);
+        let cloud = snap(&[("x", json!({"id":"x","name":"그림"}))]);
+        assert_eq!(merge(&fresh, &cloud, None).tables["items"]["x"]["name"], "그림");
+    }
+
+    #[test]
+    fn same_tag_on_two_devices() {
+        let mut s = Snapshot::default();
+        let tags = BTreeMap::from([
+            ("t2".to_string(), json!({"id":"t2","name":"Madhouse","category":"studio"}).as_object().unwrap().clone()),
+            ("t1".to_string(), json!({"id":"t1","name":"madhouse","category":"studio"}).as_object().unwrap().clone()),
+            ("t3".to_string(), json!({"id":"t3","name":"Madhouse","category":"tag"}).as_object().unwrap().clone()),
+        ]);
+        let links = BTreeMap::from([
+            ("a\u{1f}t2".to_string(), json!({"item_id":"a","tag_id":"t2","position":0}).as_object().unwrap().clone()),
+            ("b\u{1f}t1".to_string(), json!({"item_id":"b","tag_id":"t1","position":0}).as_object().unwrap().clone()),
+        ]);
+        s.tables.insert("tags".into(), tags);
+        s.tables.insert("item_tags".into(), links);
+        dedupe_tags(&mut s);
+        assert_eq!(s.tables["tags"].keys().collect::<Vec<_>>(), ["t1", "t3"]);
+        assert!(s.tables["item_tags"].contains_key("a\u{1f}t1"));
+    }
+
+    #[test]
+    fn numbers_from_javascript() {
+        let a = json!({"id":"a","rating":4.0,"favorite":1}).as_object().unwrap().clone();
+        let b = json!({"id":"a","rating":4,"favorite":true}).as_object().unwrap().clone();
+        assert!(row_eq(Some(&a), Some(&b)));
+        let c = json!({"id":"a","rating":4.5,"favorite":1}).as_object().unwrap().clone();
+        assert!(!row_eq(Some(&a), Some(&c)));
     }
 
     #[test]
