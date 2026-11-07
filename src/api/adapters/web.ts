@@ -1,7 +1,7 @@
 import type { ApiClient } from "../client";
 import type { DriveStatus, SyncReport } from "../types";
 import { createMockClient, emptyDb, mockDb, type DB } from "./mock";
-import { cacheRefs, changes, fromSnapshot, merge, toSnapshot, type Snapshot } from "@/web/snapshot";
+import { cacheRefs, changes, fromSnapshot, isBrowserFile, merge, toSnapshot, type Snapshot } from "@/web/snapshot";
 import * as g from "@/web/google";
 
 /**
@@ -31,6 +31,7 @@ const idb = (() => {
 })();
 
 const LIB = "library.json.gz";
+const ON_PC = "이 파일은 데스크톱 앱이 있는 PC에 있어서 웹에서는 열거나 내려받을 수 없어요. 웹에서 직접 올린 파일은 돼요.";
 /** desktop cover "@cache/thumbs/a.jpg" → app-folder file name "cache~thumbs~a.jpg" (same as the desktop) */
 const imageName = (p: string) => `cache~${p.slice("@cache/".length).replace(/\//g, "~")}`;
 const images = new Map<string, string>(); // "@cache/…" → blob: URL
@@ -102,6 +103,12 @@ export function createWebClient(): ApiClient {
     driveFolder: async () => { throw new Error("드라이브 폴더 가져오기는 데스크톱 앱에서 할 수 있어요"); },
     driveImport: async () => { throw new Error("드라이브 폴더 가져오기는 데스크톱 앱에서 할 수 있어요"); },
     fetchLyrics: base.fetchLyrics,
+    // files linked on a PC (synced as records only) cannot be opened or downloaded here
+    downloadFile: async (f) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.downloadFile(f); },
+    listPages: async (f) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.listPages(f); },
+    readText: async (f) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.readText(f); },
+    writeText: async (f, t) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.writeText(f, t); },
+    fileUrl: (f) => (isBrowserFile(f) ? base.fileUrl(f) : null),
   };
   const merged = { ...base, ...web } as ApiClient;
 
