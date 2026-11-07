@@ -1,13 +1,271 @@
-//! Google Drive helpers that do not need the sync engine: folder colours.
+//! Google Drive: one-click sign-in (OAuth for desktop apps, PKCE + loopback redirect), reading
+//! folders, downloading files, and folder colours.
 //!
 //! Drive folders take one of 24 colours (`folderColorRgb`; any other value is snapped to the nearest).
 //! Curio folders use named presets ("red", "teal"…) or any "#rrggbb". These functions translate both
 //! ways so a Curio folder and its linked Drive folder show the same colour, and talk to the Drive API
 //! with an OAuth access token (obtained by the login flow).
-use serde_json::{json, Value};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
-use crate::metadata::{agent, net};
+use base64::Engine as _;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+
+use crate::metadata::{agent, net, urlencode};
 use crate::{Error, Result};
+
+// ---------------------------------------------------------------- sign-in (OAuth for desktop apps)
+
+/// Google OAuth client of type "desktop app". For installed apps Google does not treat the secret as
+/// confidential, but we still keep it out of the repository (see build.rs).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthClient {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+/// The client built into this copy of the app, if one was provided at build time.
+pub fn builtin_client() -> Option<OAuthClient> {
+    match (option_env!("CURIO_GOOGLE_CLIENT_ID"), option_env!("CURIO_GOOGLE_CLIENT_SECRET")) {
+        (Some(id), Some(secret)) if !id.is_empty() => Some(OAuthClient { client_id: id.into(), client_secret: secret.into() }),
+        _ => None,
+    }
+}
+
+/// Read-only access to Drive files + the account's e-mail address (shown as "연결됨: …").
+pub const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive.readonly";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Tokens {
+    pub refresh_token: String,
+    pub access_token: String,
+    /// unix seconds
+    pub expires_at: i64,
+    pub email: Option<String>,
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// PKCE pair (RFC 7636): random verifier and its S256 challenge.
+pub fn pkce() -> (String, String) {
+    let verifier = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+    (verifier.clone(), challenge(&verifier))
+}
+fn challenge(verifier: &str) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+pub fn auth_url(client: &OAuthClient, redirect: &str, challenge: &str, state: &str) -> String {
+    format!(
+        "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
+        urlencode(&client.client_id), urlencode(redirect), urlencode(SCOPES), challenge, state
+    )
+}
+
+/// `code` from the browser's redirect ("GET /?state=…&code=…"), checking `state`.
+pub fn parse_callback(request_line: &str, state: &str) -> Result<String> {
+    let target = request_line.split_whitespace().nth(1).unwrap_or("");
+    let query = target.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let get = |k: &str| query.split('&').find_map(|kv| kv.split_once('=').filter(|(a, _)| *a == k).map(|(_, v)| v.to_string()));
+    if let Some(e) = get("error") {
+        return Err(Error::Invalid(if e == "access_denied" { "로그인을 취소했어요".into() } else { format!("Google 로그인 오류: {e}") }));
+    }
+    if get("state").as_deref() != Some(state) {
+        return Err(Error::Invalid("로그인 응답이 이 요청과 맞지 않아요".into()));
+    }
+    get("code").map(|c| c.replace("%2F", "/")).ok_or_else(|| Error::Invalid("로그인 응답에 코드가 없어요".into()))
+}
+
+const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Curio</title><body style=\"font-family:system-ui;display:grid;place-items:center;height:90vh;color:#444\"><div style=\"text-align:center\"><h2>연결됐어요</h2><p>이 창을 닫고 Curio로 돌아가세요.</p></div>";
+const FAIL_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Curio</title><body style=\"font-family:system-ui;display:grid;place-items:center;height:90vh;color:#444\"><div style=\"text-align:center\"><h2>연결하지 못했어요</h2><p>Curio로 돌아가 다시 시도해 주세요.</p></div>";
+
+/// Full sign-in: listen on 127.0.0.1, open the Google page in the browser, wait for the redirect
+/// (up to 5 minutes), then trade the code for tokens.
+pub fn login(client: &OAuthClient, open_browser: &dyn Fn(&str) -> Result<()>) -> Result<Tokens> {
+    let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    let redirect = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
+    let (verifier, ch) = pkce();
+    let state = uuid::Uuid::new_v4().simple().to_string();
+    open_browser(&auth_url(client, &redirect, &ch, &state))?;
+
+    listener.set_nonblocking(true)?;
+    let deadline = Instant::now() + Duration::from_secs(300);
+    let code = loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                stream.set_nonblocking(false)?;
+                stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+                let mut line = String::new();
+                BufReader::new(&stream).read_line(&mut line)?;
+                if line.starts_with("GET /favicon") {
+                    continue;
+                }
+                let res = parse_callback(&line, &state);
+                let page = if res.is_ok() { DONE_PAGE } else { FAIL_PAGE };
+                let mut s = &stream;
+                let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}", page.len());
+                break res?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if Instant::now() > deadline {
+                    return Err(Error::Invalid("로그인 시간이 지났어요. 다시 시도해 주세요".into()));
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            Err(e) => return Err(e.into()),
+        }
+    };
+    let v = token_request(&[
+        ("client_id", &client.client_id), ("client_secret", &client.client_secret), ("code", &code),
+        ("code_verifier", &verifier), ("grant_type", "authorization_code"), ("redirect_uri", &redirect),
+    ])?;
+    let refresh = v["refresh_token"].as_str().ok_or_else(|| Error::Invalid("Google이 갱신 토큰을 주지 않았어요".into()))?.to_string();
+    let access = v["access_token"].as_str().unwrap_or_default().to_string();
+    let email = account_email(&access).ok();
+    Ok(Tokens { refresh_token: refresh, access_token: access, expires_at: now_secs() + v["expires_in"].as_i64().unwrap_or(3600) - 60, email })
+}
+
+fn token_request(form: &[(&str, &str)]) -> Result<Value> {
+    let body = form.iter().map(|(k, v)| format!("{k}={}", urlencode(v))).collect::<Vec<_>>().join("&");
+    match agent().post("https://oauth2.googleapis.com/token").set("Content-Type", "application/x-www-form-urlencoded").send_string(&body) {
+        Ok(r) => Ok(r.into_json()?),
+        Err(ureq::Error::Status(_, r)) => {
+            let v: Value = r.into_json().unwrap_or_default();
+            let e = v["error"].as_str().unwrap_or("unknown");
+            Err(Error::Invalid(if e == "invalid_grant" { "드라이브 연결이 만료됐어요. 다시 연결해 주세요".into() } else { format!("Google 토큰 오류: {e}") }))
+        }
+        Err(e) => Err(net(e)),
+    }
+}
+
+/// Fresh access token from the stored refresh token (call when `expires_at` has passed).
+pub fn refresh(client: &OAuthClient, t: &Tokens) -> Result<Tokens> {
+    let v = token_request(&[("client_id", &client.client_id), ("client_secret", &client.client_secret), ("refresh_token", &t.refresh_token), ("grant_type", "refresh_token")])?;
+    Ok(Tokens {
+        access_token: v["access_token"].as_str().unwrap_or_default().to_string(),
+        expires_at: now_secs() + v["expires_in"].as_i64().unwrap_or(3600) - 60,
+        ..t.clone()
+    })
+}
+impl Tokens {
+    pub fn expired(&self) -> bool {
+        now_secs() >= self.expires_at
+    }
+}
+
+/// Sign out: Google forgets the permission too.
+pub fn revoke(t: &Tokens) {
+    let _ = agent().post("https://oauth2.googleapis.com/revoke").set("Content-Type", "application/x-www-form-urlencoded").send_string(&format!("token={}", urlencode(&t.refresh_token)));
+}
+
+fn account_email(access: &str) -> Result<String> {
+    let v: Value = agent().get("https://openidconnect.googleapis.com/v1/userinfo").set("Authorization", &format!("Bearer {access}")).call().map_err(net)?.into_json()?;
+    v["email"].as_str().map(String::from).ok_or_else(|| Error::NotFound("email".into()))
+}
+
+// ---------------------------------------------------------------- files
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveFile {
+    pub id: String,
+    pub name: String,
+    pub mime_type: String,
+    pub size: Option<i64>,
+    pub modified: Option<String>,
+    pub is_folder: bool,
+}
+
+/// Folder id from a Drive link ("…/folders/<id>", "?id=<id>") or a bare id.
+pub fn folder_id(link: &str) -> Option<String> {
+    let re = regex::Regex::new(r"(?:folders/|[?&]id=)([A-Za-z0-9_-]{10,})").unwrap();
+    re.captures(link).map(|c| c[1].to_string()).or_else(|| {
+        let t = link.trim();
+        (t.len() >= 10 && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).then(|| t.to_string())
+    })
+}
+
+/// Name of a folder (also checks it is one and that this account can see it).
+pub fn folder_name(access: &str, id: &str) -> Result<String> {
+    let v = get_json(access, &format!("{API}/{id}"), &[("fields", "name,mimeType"), ("supportsAllDrives", "true")])?;
+    if v["mimeType"].as_str() != Some("application/vnd.google-apps.folder") {
+        return Err(Error::Invalid("드라이브 폴더 주소가 아니에요".into()));
+    }
+    Ok(v["name"].as_str().unwrap_or("폴더").to_string())
+}
+
+/// Everything directly inside a folder (all pages).
+pub fn list_folder(access: &str, id: &str) -> Result<Vec<DriveFile>> {
+    let mut out = vec![];
+    let mut page: Option<String> = None;
+    loop {
+        let q = format!("'{id}' in parents and trashed = false");
+        let mut params = vec![("q", q.as_str()), ("fields", "nextPageToken,files(id,name,mimeType,size,modifiedTime)"), ("pageSize", "1000"),
+            ("supportsAllDrives", "true"), ("includeItemsFromAllDrives", "true"), ("orderBy", "name_natural")];
+        if let Some(p) = page.as_deref() {
+            params.push(("pageToken", p));
+        }
+        let v = get_json(access, API, &params)?;
+        for f in v["files"].as_array().into_iter().flatten() {
+            let mime = f["mimeType"].as_str().unwrap_or("").to_string();
+            out.push(DriveFile {
+                id: f["id"].as_str().unwrap_or("").into(),
+                name: f["name"].as_str().unwrap_or("").into(),
+                is_folder: mime == "application/vnd.google-apps.folder",
+                size: f["size"].as_str().and_then(|s| s.parse().ok()),
+                modified: f["modifiedTime"].as_str().map(String::from),
+                mime_type: mime,
+            });
+        }
+        page = v["nextPageToken"].as_str().map(String::from);
+        if page.is_none() {
+            return Ok(out);
+        }
+    }
+}
+
+/// Download a file to `dest` (streamed, written atomically). Google Docs/Sheets are skipped by callers.
+pub fn download(access: &str, file: &DriveFile, dest: &Path) -> Result<PathBuf> {
+    if let Some(d) = dest.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let res = agent()
+        .get(&format!("{API}/{}", file.id))
+        .query("alt", "media")
+        .query("supportsAllDrives", "true")
+        .set("Authorization", &format!("Bearer {access}"))
+        .timeout(Duration::from_secs(60 * 60))
+        .call()
+        .map_err(net)?;
+    let tmp = dest.with_extension("part");
+    let mut w = std::fs::File::create(&tmp)?;
+    std::io::copy(&mut res.into_reader().take(u64::MAX), &mut w)?;
+    w.flush()?;
+    std::fs::rename(&tmp, dest)?;
+    Ok(dest.to_path_buf())
+}
+
+fn get_json(access: &str, url: &str, params: &[(&str, &str)]) -> Result<Value> {
+    let mut r = agent().get(url).set("Authorization", &format!("Bearer {access}"));
+    for (k, v) in params {
+        r = r.query(k, v);
+    }
+    match r.call() {
+        Ok(r) => Ok(r.into_json()?),
+        Err(ureq::Error::Status(404, _)) => Err(Error::NotFound("드라이브에서 찾을 수 없어요 (주소나 공유 권한을 확인해 주세요)".into())),
+        Err(e) => Err(net(e)),
+    }
+}
+
+// ---------------------------------------------------------------- folder colours
 
 /// Drive's folder colour palette (About.folderColorPalette).
 pub const DRIVE_PALETTE: [&str; 24] = [
@@ -129,6 +387,22 @@ pub fn set_folder_color(token: &str, folder_id: &str, curio_color: Option<&str>)
 mod tests {
     use super::*;
     #[test]
+    fn oauth_pieces() {
+        // RFC 7636 appendix B test vector
+        assert_eq!(challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+        let (v, c) = pkce();
+        assert!(v.len() >= 43 && c.len() == 43);
+        assert_eq!(parse_callback("GET /?state=abc&code=4%2F0AX&scope=email HTTP/1.1", "abc").unwrap(), "4/0AX");
+        assert!(parse_callback("GET /?state=zzz&code=1 HTTP/1.1", "abc").is_err());
+        assert!(parse_callback("GET /?error=access_denied&state=abc HTTP/1.1", "abc").unwrap_err().to_string().contains("취소"));
+        let url = auth_url(&OAuthClient { client_id: "id.apps.googleusercontent.com".into(), client_secret: "x".into() }, "http://127.0.0.1:5000", "CH", "ST");
+        assert!(url.contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A5000") && url.contains("code_challenge=CH") && url.contains("drive.readonly"));
+        assert_eq!(folder_id("https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp?usp=sharing").as_deref(), Some("1AbCdEfGhIjKlMnOp"));
+        assert_eq!(folder_id("https://drive.google.com/open?id=1AbCdEfGhIjKl").as_deref(), Some("1AbCdEfGhIjKl"));
+        assert_eq!(folder_id("not a link"), None);
+    }
+
+    #[test]
     fn colour_mapping() {
         assert_eq!(to_drive(None), DRIVE_DEFAULT);
         assert_eq!(to_drive(Some("red")), "#f83a22");
@@ -143,5 +417,30 @@ mod tests {
         assert_eq!(from_drive("#4986e7", Some("#0ea5e9")).as_deref(), Some("#0ea5e9"));
         assert_eq!(from_drive("#f83a22", Some("#0ea5e9")).as_deref(), Some("red"));
         assert_eq!(from_drive(DRIVE_DEFAULT, Some("red")), None);
+    }
+
+    /// Browser stand-in: follows the auth URL's redirect with a made-up code. Google then refuses
+    /// the code, which shows the loopback listener, state check and token request all ran.
+    #[test]
+    #[ignore = "network"]
+    fn live_login_loop() {
+        let client = OAuthClient { client_id: "000-test.apps.googleusercontent.com".into(), client_secret: "x".into() };
+        let err = login(&client, &|url: &str| {
+            let q = |k: &str| url.split(&format!("{k}=")).nth(1).and_then(|r| r.split('&').next()).unwrap_or("").to_string();
+            let redirect = q("redirect_uri").replace("%3A", ":").replace("%2F", "/");
+            let state = q("state");
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(200));
+                let addr = redirect.trim_start_matches("http://");
+                let mut s = std::net::TcpStream::connect(addr).unwrap();
+                write!(s, "GET /?state={state}&code=fake HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+                let mut page = String::new();
+                let _ = s.read_to_string(&mut page);
+                assert!(page.contains("연결됐어요"), "{page}");
+            });
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("Google 토큰 오류") || err.to_string().contains("만료"), "{err}");
     }
 }

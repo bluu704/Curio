@@ -97,6 +97,19 @@ function initial(): ThemeMode {
 }
 
 const CUSTOM_KEY = "curio.customColors";
+let paletteTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Load "내 색" from the library (shared by every device using it); first run uploads this device's. */
+export async function loadLibraryPalette() {
+  const { api } = await import("@/api");
+  const saved = await api.getSettings<{ custom?: string[] }>("palette").catch(() => null);
+  if (saved?.custom) {
+    try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(saved.custom)); } catch { /* ignore */ }
+    useTheme.setState({ custom: saved.custom });
+  } else if (useTheme.getState().custom.length) {
+    await api.setSettings("palette", { custom: useTheme.getState().custom }).catch(() => undefined);
+  }
+}
 const initialCustom = (): string[] => {
   try { const v = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; }
 };
@@ -116,6 +129,9 @@ export const useTheme = create<{
     const custom = [...new Set(list.map((c) => c.toLowerCase()))].slice(0, 24);
     try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom)); } catch { /* ignore */ }
     set({ custom });
+    // kept in the library too, so other devices / the web version show the same colours
+    clearTimeout(paletteTimer);
+    paletteTimer = setTimeout(() => void import("@/api").then(({ api }) => api.setSettings("palette", { custom })).catch(() => undefined), 400);
   },
   setText(p) {
     const text = { ...get().text, ...p };

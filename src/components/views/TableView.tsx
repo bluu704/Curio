@@ -45,7 +45,7 @@ function Row({ item, cols, template }: { item: Item; cols: ColumnDef[]; template
   const picked = usePicked(item.id);
   const title = (
     <div className="flex min-w-0 items-center gap-2.5">
-      <PickBox id={item.id} className="h-5 w-5 shrink-0 border-line bg-surface hover:bg-subtle" />
+      <PickBox id={item.id} row className="h-5 w-5" />
       <Cover item={item} className="h-9 w-7 shrink-0 rounded" iconSize={13} />
       {item.code && <span className="shrink-0 rounded bg-subtle px-1.5 font-mono text-[length:calc(11px*var(--ts))] text-muted">{item.code}</span>}
       <span className="truncate font-medium">{item.title}</span>

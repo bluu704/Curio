@@ -74,6 +74,11 @@ export function createHttpClient(baseUrl: string): ApiClient {
     applyMetadata: (itemId, c, overwriteTitle) => req("POST", `/items/${itemId}/metadata`, { candidate: c, overwriteTitle }),
     autofill: (itemId) => req("POST", `/items/${itemId}/autofill`),
     fetchLyrics: (itemId) => req("POST", `/items/${itemId}/lyrics`),
+    driveStatus: () => req("GET", "/drive"),
+    driveLogin: () => Promise.reject(new Error("웹 버전에서는 구글 계정을 연결할 수 없어요. 데스크톱 앱에서 연결하면 여기서도 쓸 수 있어요.")),
+    driveLogout: () => req("POST", "/drive/logout"),
+    driveFolder: (link) => req("POST", "/drive/folder", { link }),
+    driveImport: (link, t) => req("POST", "/drive/import", { link, ...t }),
     coverFromVideo: (itemId, fileId, seconds) => req("POST", `/items/${itemId}/cover-from-video`, { fileId, seconds }),
 
     listPages: (f) => req("GET", `/files/${f.id}/pages`),

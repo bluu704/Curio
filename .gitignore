@@ -9,3 +9,4 @@ dist-preview
 client_secret*.json
 *.oauth.json
 *.tsbuildinfo
+google-oauth.json

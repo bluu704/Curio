@@ -54,6 +54,11 @@ export function createTauriClient(): ApiClient {
     applyMetadata: (itemId, candidate, overwriteTitle) => invoke("apply_metadata", { itemId, candidate, overwriteTitle }),
     autofill: (itemId) => invoke("autofill", { itemId }),
     fetchLyrics: (itemId) => invoke("fetch_lyrics", { itemId }),
+    driveStatus: () => invoke("drive_status"),
+    driveLogin: () => invoke("drive_login"),
+    driveLogout: () => invoke("drive_logout"),
+    driveFolder: (link) => invoke("drive_folder", { link }),
+    driveImport: (link, t) => invoke("drive_import", { link, kind: t?.kind, list: t?.list, archiveId: t?.archiveId }),
     coverFromVideo: (itemId, fileId, seconds) => invoke("cover_from_video", { itemId, fileId, seconds }),
 
     listPages: (f) => invoke("list_pages", { fileId: f.id }),

@@ -515,6 +515,12 @@ export function createMockClient(): ApiClient {
       it.updatedAt = now(); commit();
       return delay(it);
     },
+    // preview: no Google sign-in in the browser sandbox
+    async driveStatus() { return { available: false, builtin: false, connected: false, email: null }; },
+    async driveLogin() { throw new Error("미리보기에서는 구글 계정을 연결할 수 없어요. 데스크톱 앱에서 연결해 주세요."); },
+    async driveLogout() { return { available: false, builtin: false, connected: false, email: null }; },
+    async driveFolder() { throw new Error("미리보기에서는 드라이브를 열 수 없어요"); },
+    async driveImport() { throw new Error("미리보기에서는 드라이브를 열 수 없어요"); },
     async fetchLyrics(itemId) {
       // preview: LRCLIB straight from the browser (the desktop app also tries YouTube Music first)
       const it = find(itemId);

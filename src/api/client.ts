@@ -1,5 +1,5 @@
 import type {
-  Archive, ArchiveCount, Candidate, Capabilities, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, ItemQuery, Kind,
+  Archive, ArchiveCount, Candidate, DriveImport, DriveStatus, Capabilities, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, ItemQuery, Kind,
   ListKind, NewItem, StatusDef, TrashedItem, Tag, TagCategory, View, WatchFolder,
 } from "./types";
 
@@ -69,6 +69,15 @@ export interface ApiClient {
   autofill(itemId: ID): Promise<boolean>;
   /** Find lyrics (YouTube Music → LRCLIB) and store them in props._lyrics. null = none found. */
   fetchLyrics(itemId: ID): Promise<Item | null>;
+
+  // ---- Google Drive (desktop app signs in; the web version uses a library that is already connected)
+  driveStatus(): Promise<DriveStatus>;
+  /** Opens Google sign-in in the browser; resolves when the user has finished. */
+  driveLogin(): Promise<DriveStatus>;
+  driveLogout(): Promise<DriveStatus>;
+  driveFolder(link: string): Promise<{ id: string; name: string }>;
+  /** Download a Drive folder to this PC and add its files as items (new files only on repeat). */
+  driveImport(link: string, target?: ImportTarget): Promise<DriveImport>;
   /** Cover = frame of one of the item's videos (server side, ffmpeg). Absent where the browser can capture it. */
   coverFromVideo?(itemId: ID, fileId: ID, seconds: number): Promise<Item>;
 

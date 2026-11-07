@@ -39,7 +39,7 @@ export function ListView({ items, card }: { items: Item[]; card: CardConfig }) {
             )}
             style={{ transform: `translateY(${row.start - v.options.scrollMargin}px)` }}
           >
-            <PickBox id={it.id} className="shrink-0 border-line bg-surface hover:bg-subtle" />
+            <PickBox id={it.id} row />
             <Cover item={it} className="h-14 w-10 shrink-0 rounded-md" iconSize={16} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">

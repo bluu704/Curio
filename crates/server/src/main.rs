@@ -108,6 +108,16 @@ async fn main() {
         .route("/items/:id/cover-from-video", post(|State(s): S, Path(id): Path<String>, Json(b): Json<serde_json::Value>| async move {
             json!(s, move |l| l.cover_from_video(&id, b["fileId"].as_str().unwrap_or_default(), b["seconds"].as_f64().unwrap_or(0.0)))
         }))
+        .route("/drive", get(|State(s): S| async move { json!(s, move |l| Ok(l.drive_status())) }))
+        .route("/drive/logout", post(|State(s): S| async move { json!(s, move |l| l.drive_logout()) }))
+        .route("/drive/folder", post(|State(s): S, Json(b): Json<serde_json::Value>| async move { json!(s, move |l| l.drive_folder(b["link"].as_str().unwrap_or_default())) }))
+        .route("/drive/import", post(|State(s): S, Json(b): Json<serde_json::Value>| async move {
+            json!(s, move |l| {
+                let kind = b.get("kind").and_then(|k| serde_json::from_value(k.clone()).ok());
+                let list = b.get("list").and_then(|k| serde_json::from_value(k.clone()).ok());
+                l.drive_import(b["link"].as_str().unwrap_or_default(), kind, list, b["archiveId"].as_str().map(String::from))
+            })
+        }))
         .route("/items/:id/lyrics", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.fetch_lyrics(&id)) }))
         .route("/metadata/search", post(|State(s): S, Json(b): Json<Search>| async move { json!(s, move |l| l.search_metadata(b.kind, &b.query)) }))
         .route("/files/:id", delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.detach_file(&id)) }))

@@ -12,13 +12,40 @@ use serde_json::{Map, Value};
 use crate::metadata::{self, codes};
 use crate::models::*;
 use crate::storage::{self, StorageProvider};
-use crate::{db, media, scan, Error, Result};
+use crate::{db, drive, media, scan, Error, Result};
 
 pub struct Library {
     conn: Mutex<Connection>,
     cache_dir: PathBuf,
+    /// Where downloaded cloud files are kept (next to the database).
+    data_dir: PathBuf,
     /// Last opened archive for the reader (page turns must not re-open a 2 GB zip).
     reader: Mutex<Option<media::PageSource>>,
+}
+
+const SECRET: &str = "secret:";
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveStatus {
+    /// sign-in is possible (an OAuth client is built in or was added)
+    pub available: bool,
+    /// the client comes with the app (nothing for the user to set up)
+    pub builtin: bool,
+    pub connected: bool,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DriveFolderInfo {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DriveImport {
+    pub items: Vec<Item>,
+    pub skipped: usize,
 }
 
 pub(crate) fn now() -> i64 {
@@ -88,11 +115,12 @@ fn norm_code(code: Option<String>) -> Option<String> {
 impl Library {
     /// Open (or create) a library at `db_path`. Thumbnails/images go to `cache_dir`.
     pub fn open(db_path: &Path, cache_dir: &Path) -> Result<Self> {
-        Ok(Self { conn: Mutex::new(db::open(db_path)?), cache_dir: cache_dir.to_path_buf(), reader: Mutex::new(None) })
+        let data_dir = db_path.parent().map(Path::to_path_buf).unwrap_or_else(|| cache_dir.join("data"));
+        Ok(Self { conn: Mutex::new(db::open(db_path)?), cache_dir: cache_dir.to_path_buf(), data_dir, reader: Mutex::new(None) })
     }
 
     pub fn open_in_memory(cache_dir: &Path) -> Result<Self> {
-        Ok(Self { conn: Mutex::new(db::open_in_memory()?), cache_dir: cache_dir.to_path_buf(), reader: Mutex::new(None) })
+        Ok(Self { conn: Mutex::new(db::open_in_memory()?), cache_dir: cache_dir.to_path_buf(), data_dir: cache_dir.join("data"), reader: Mutex::new(None) })
     }
 
     pub fn cache_dir(&self) -> &Path {
@@ -347,11 +375,117 @@ impl Library {
     // ------------------------------------------------------------------ settings (JSON blobs, e.g. formats)
 
     pub fn get_settings(&self, key: &str) -> Result<Option<serde_json::Value>> {
+        if key.starts_with(SECRET) {
+            return Err(Error::Invalid("private setting".into()));
+        }
         Ok(self.get_setting(key)?.and_then(|s| serde_json::from_str(&s).ok()))
     }
 
     pub fn set_settings(&self, key: &str, value: &serde_json::Value) -> Result<()> {
+        if key.starts_with(SECRET) {
+            return Err(Error::Invalid("private setting".into()));
+        }
         self.set_setting(key, &value.to_string())
+    }
+
+    /// Settings the UI / web API never sees (sign-in tokens).
+    fn secret<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+        self.get_setting(&format!("{SECRET}{key}")).ok().flatten().and_then(|s| serde_json::from_str(&s).ok())
+    }
+    fn set_secret<T: serde::Serialize>(&self, key: &str, v: Option<&T>) -> Result<()> {
+        let k = format!("{SECRET}{key}");
+        match v {
+            Some(v) => self.set_setting(&k, &serde_json::to_string(v)?),
+            None => { self.conn().execute("DELETE FROM settings WHERE key = ?", [k])?; Ok(()) }
+        }
+    }
+
+    // ------------------------------------------------------------------ Google Drive
+
+    /// OAuth client: the one built into the app, else one the user added in Settings → 클라우드.
+    fn drive_client(&self) -> Option<drive::OAuthClient> {
+        drive::builtin_client().or_else(|| {
+            let g = self.get_settings("cloud").ok().flatten()?.get("google")?.clone();
+            Some(drive::OAuthClient { client_id: g["clientId"].as_str()?.into(), client_secret: g["clientSecret"].as_str().unwrap_or("").into() })
+        })
+    }
+
+    pub fn drive_status(&self) -> DriveStatus {
+        let t: Option<drive::Tokens> = self.secret("drive");
+        DriveStatus { available: self.drive_client().is_some(), builtin: drive::builtin_client().is_some(), email: t.as_ref().and_then(|t| t.email.clone()), connected: t.is_some() }
+    }
+
+    /// Sign in with Google in the browser (blocks until the user finishes, max 5 minutes).
+    pub fn drive_login(&self, open_browser: &dyn Fn(&str) -> Result<()>) -> Result<DriveStatus> {
+        let client = self.drive_client().ok_or_else(|| Error::Invalid("이 앱에는 구글 연결 정보가 없어요 (설정 → 클라우드 → 고급)".into()))?;
+        let t = drive::login(&client, open_browser)?;
+        self.set_secret("drive", Some(&t))?;
+        Ok(self.drive_status())
+    }
+
+    pub fn drive_logout(&self) -> Result<DriveStatus> {
+        if let Some(t) = self.secret::<drive::Tokens>("drive") {
+            drive::revoke(&t);
+        }
+        self.set_secret::<drive::Tokens>("drive", None)?;
+        Ok(self.drive_status())
+    }
+
+    /// Valid access token (refreshed and saved when it has expired).
+    fn drive_token(&self) -> Result<String> {
+        let t: drive::Tokens = self.secret("drive").ok_or_else(|| Error::Invalid("먼저 구글 계정을 연결해 주세요".into()))?;
+        if !t.expired() {
+            return Ok(t.access_token);
+        }
+        let client = self.drive_client().ok_or_else(|| Error::Invalid("구글 연결 정보가 없어요".into()))?;
+        let fresh = drive::refresh(&client, &t)?;
+        self.set_secret("drive", Some(&fresh))?;
+        Ok(fresh.access_token)
+    }
+
+    /// Name of a Drive folder from its link (checks the account can open it).
+    pub fn drive_folder(&self, link: &str) -> Result<DriveFolderInfo> {
+        let id = drive::folder_id(link).ok_or_else(|| Error::Invalid("드라이브 폴더 주소를 넣어 주세요".into()))?;
+        let name = drive::folder_name(&self.drive_token()?, &id)?;
+        Ok(DriveFolderInfo { id, name })
+    }
+
+    /// Download a Drive folder (and its sub-folders) to this PC and add the files as items.
+    /// Files already brought in before are skipped, so running it again only adds new ones.
+    pub fn drive_import(&self, link: &str, kind: Option<Kind>, list: Option<ListKind>, archive_id: Option<String>) -> Result<DriveImport> {
+        let id = drive::folder_id(link).ok_or_else(|| Error::Invalid("드라이브 폴더 주소를 넣어 주세요".into()))?;
+        let token = self.drive_token()?;
+        let root = self.data_dir.join("drive").join(&id);
+        let mut queue = vec![(id, root, 0usize)];
+        let (mut new_paths, mut skipped) = (vec![], 0usize);
+        while let Some((fid, dir, depth)) = queue.pop() {
+            for f in drive::list_folder(&token, &fid)? {
+                let safe: String = f.name.chars().map(|c| if r#"\/:*?"<>|"#.contains(c) { '_' } else { c }).collect();
+                if f.is_folder {
+                    if depth < 4 { queue.push((f.id.clone(), dir.join(&safe), depth + 1)); }
+                    continue;
+                }
+                if f.mime_type.starts_with("application/vnd.google-apps.") {
+                    skipped += 1; // Docs / Sheets / shortcuts have no file to download
+                    continue;
+                }
+                let dest = dir.join(&safe);
+                let path = dest.to_string_lossy().into_owned();
+                let have = std::fs::metadata(&dest).map(|m| Some(m.len() as i64) == f.size).unwrap_or(false);
+                if have && self.is_known_media(&path) {
+                    skipped += 1;
+                    continue;
+                }
+                if !have {
+                    drive::download(&token, &f, &dest)?;
+                }
+                if !self.is_known_media(&path) {
+                    new_paths.push(path);
+                }
+            }
+        }
+        let items = self.import_paths_as(&new_paths, kind, list, archive_id)?;
+        Ok(DriveImport { items, skipped })
     }
 
     // ------------------------------------------------------------------ tags

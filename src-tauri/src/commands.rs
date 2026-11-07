@@ -2,8 +2,10 @@
 //! `async` = runs on Tauri's thread pool, never blocks the UI thread
 //! (import decodes images / opens archives, metadata hits the network).
 
+use curio_core::library::{DriveFolderInfo, DriveImport, DriveStatus};
 use curio_core::{models::*, Error, Library};
-use tauri::State;
+use tauri::{Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 type R<T> = Result<T, Error>;
 
@@ -72,3 +74,22 @@ type R<T> = Result<T, Error>;
 #[tauri::command] pub async fn empty_trash(lib: State<'_, Library>, older_than: Option<i64>) -> R<usize> { lib.empty_trash(older_than) }
 #[tauri::command] pub async fn get_settings(lib: State<'_, Library>, key: String) -> R<Option<serde_json::Value>> { lib.get_settings(&key) }
 #[tauri::command] pub async fn set_settings(lib: State<'_, Library>, key: String, value: serde_json::Value) -> R<()> { lib.set_settings(&key, &value) }
+
+// ---- Google Drive
+#[tauri::command] pub async fn drive_status(lib: State<'_, Library>) -> R<DriveStatus> { Ok(lib.drive_status()) }
+#[tauri::command] pub async fn drive_logout(lib: State<'_, Library>) -> R<DriveStatus> { lib.drive_logout() }
+#[tauri::command] pub async fn drive_folder(lib: State<'_, Library>, link: String) -> R<DriveFolderInfo> { lib.drive_folder(&link) }
+/// Opens Google sign-in in the browser and waits (off the UI thread) until the user is done.
+#[tauri::command] pub async fn drive_login(app: tauri::AppHandle) -> R<DriveStatus> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let lib = app.state::<Library>();
+        lib.drive_login(&|url| app.opener().open_url(url, None::<&str>).map_err(|e| Error::Invalid(e.to_string())))
+    })
+    .await
+    .map_err(|e| Error::Invalid(e.to_string()))?
+}
+#[tauri::command] pub async fn drive_import(app: tauri::AppHandle, link: String, kind: Option<Kind>, list: Option<ListKind>, archive_id: Option<String>) -> R<DriveImport> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<Library>().drive_import(&link, kind, list, archive_id))
+        .await
+        .map_err(|e| Error::Invalid(e.to_string()))?
+}

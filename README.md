@@ -81,6 +81,17 @@ VITE_API_URL=http://127.0.0.1:8787 npm run dev
 
 Windows 사전 준비: [Rust](https://rustup.rs), Node 20+, WebView2(윈10/11 기본 포함), VS C++ Build Tools.
 
+### 구글 드라이브 연결 넣어서 빌드하기
+
+쓰는 사람이 "구글 계정으로 연결" 버튼만 누르면 되도록, 구글 연결 정보는 빌드할 때 앱 안에 넣어요.
+
+1. Google Cloud 콘솔 → API 및 서비스 → **Google Drive API 사용** 설정
+2. OAuth 동의 화면: 범위에 `drive.readonly`, `email` 추가 · 앱을 "테스트" 상태로 두는 동안은 **테스트 사용자**에 쓸 사람의 이메일을 넣어 주세요 (최대 100명)
+3. 사용자 인증 정보 → OAuth 클라이언트 ID → **데스크톱 앱** → JSON 다운로드
+4. 받은 `client_secret_….json`을 이 저장소 맨 위 폴더에 그대로 두고 빌드 (`npm run tauri build`)
+
+이 파일은 `.gitignore`에 들어 있어서 GitHub에 올라가지 않아요. 환경 변수 `CURIO_GOOGLE_CLIENT_ID` / `CURIO_GOOGLE_CLIENT_SECRET`로 넣어도 돼요.
+
 ## 5. 구현 현황 / 로드맵
 
 - [x] 아카이브: 일러스트 · 게임 · 애니 · 웹툰 · 라이트노벨 · 웹소설 · 노래 · 동인지 · 품번 (+만화 · 영화), 각각 위시리스트 (비어 있으면 숨김)

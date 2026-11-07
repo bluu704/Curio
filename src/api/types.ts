@@ -233,6 +233,10 @@ export interface Archive {
 }
 
 /** Where imported files go. */
+/** Google Drive connection of this library. */
+export interface DriveStatus { available: boolean; builtin: boolean; connected: boolean; email: string | null }
+export interface DriveImport { items: Item[]; skipped: number }
+
 export interface ImportTarget { archiveId?: ID; kind?: Kind; list?: ListKind }
 
 export interface WatchFolder { id: ID; path: string; kind: Kind; list: ListKind; lastScan: number | null }
