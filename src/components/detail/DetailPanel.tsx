@@ -8,7 +8,9 @@ import { useApp } from "@/store/app";
 import { KIND_META, TAG_META } from "@/lib/meta";
 import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
 import { cn } from "@/lib/cn";
-import { FLAG, isCalendarHidden, isCloudSynced, withFlag } from "@/lib/itemFlags";
+import { LyricsSection } from "./LyricsSection";
+import { FLAG, isCalendarHidden, isCloudSynced, mainFile, withFlag } from "@/lib/itemFlags";
+import { MainContent } from "./MainContent";
 import { Cover } from "@/components/ui/Cover";
 import { Popover } from "@/components/ui/Popover";
 import { Stars } from "@/components/ui/Stars";
@@ -44,11 +46,13 @@ export function DetailPanel() {
   // primary file action: read (pdf/zip/images) › play (video/audio) › view (text) › open with the OS
   const primary = item.files.find(isReadable) ?? item.files.find(isViewable) ?? item.files[0];
   const act = primary ? fileAction(primary) : null;
+  const showOpen = !!primary && primary.id !== mainFile(item)?.id; // the item's own file is already shown inline
   const banner = api.mediaUrl(item.bannerUri);
   const yt = item.kind === "music" ? ytId(item.url) : null;
   const wish = item.list === "wishlist";
   const people = item.tags.filter((t) => ["author", "studio", "circle", "director"].includes(t.category)).slice(0, 3);
 
+  const main = mainFile(item);
   const cloud = isCloudSynced(item);
   const calHidden = isCalendarHidden(item);
   return (
@@ -62,12 +66,12 @@ export function DetailPanel() {
           {full ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
         <div className="flex-1" />
-        {primary && act && (
+        {showOpen && act && (
           <button className="btn btn-primary mr-1 h-8 px-2.5" onClick={() => openReader(item, primary)} data-tip={primary.name}>
             <act.icon size={15} />{act.label.split("·")[0]}
           </button>
         )}
-        {primary && !act && (
+        {showOpen && !act && (
           <button className="btn-icon" onClick={() => void api.openFile(primary)} data-tip={`열기: ${primary.name}`}><Play size={16} /></button>
         )}
         {item.kind !== "doujin" && (
@@ -120,7 +124,7 @@ export function DetailPanel() {
         </div>
 
         <div className={cn("relative flex gap-4 px-7", banner && "-mt-16", full && "mx-auto w-full max-w-3xl")}>
-          <CoverPicker item={item} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", cfg.aspect === "1/1" ? "aspect-square w-28" : cfg.aspect === "16/9" ? "aspect-video w-40" : "aspect-[2/3] w-28")} />
+          {main?.kind !== "image" && <CoverPicker item={item} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", cfg.aspect === "1/1" ? "aspect-square w-28" : cfg.aspect === "16/9" ? "aspect-video w-40" : "aspect-[2/3] w-28")} />}
           <div className="flex min-w-0 flex-1 flex-col pt-1">
             <div className={cn(banner && "pt-10")}><TitleInput item={item} /></div>
             {/* rating right under the title, then the key facts as pills */}
@@ -155,9 +159,13 @@ export function DetailPanel() {
             </div>
           )}
 
+          {main && <MainContent item={item} file={main} />}
+
           {item.summary && <Summary text={item.summary} />}
 
           <PropertyList item={item} editing={editProps} onDone={() => setEditProps(false)} />
+
+          {item.kind === "music" && <LyricsSection item={item} />}
 
           <div className="mt-6 border-t border-line pt-5"><FileList item={item} /></div>
 

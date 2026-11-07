@@ -1,3 +1,4 @@
+import { isAniName, parseAni } from "@/lib/ani";
 import { unzipSync } from "fflate";
 import type { ApiClient } from "../client";
 import type {
@@ -212,16 +213,57 @@ export function kindFromName(name: string): FileKind {
   if (["mp3", "flac", "wav", "m4a", "ogg", "oga", "aac", "opus"].includes(ext)) return "audio";
   if (["txt", "md", "markdown", "log", "csv", "json", "yaml", "yml", "srt", "vtt"].includes(ext)) return "text";
   if (["zip", "cbz", "rar", "cbr", "7z"].includes(ext)) return "archive";
-  if (["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "psd"].includes(ext)) return "image";
+  if (["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "psd", "ani", "ico", "cur"].includes(ext)) return "image";
   if (["pdf", "epub"].includes(ext)) return "document";
   return name.includes(".") ? "other" : "folder";
 }
 
 const IMG_RE = /\.(jpe?g|png|webp|gif|avif|bmp)$/i;
+const imageMime = (n: string) => {
+  const e = n.split(".").pop()!.toLowerCase();
+  return e === "jpg" ? "image/jpeg" : `image/${e}`;
+};
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 
 /** Session-only blobs for browser uploads (fileId → File). */
-const blobs = new Map<ID, File>();
+/**
+ * Uploaded files. Kept in IndexedDB as well so they survive a reload of the preview (before, items
+ * stayed but their files vanished → "파일이 없어요"). Falls back to memory where storage is blocked.
+ */
+const blobs = (() => {
+  const mem = new Map<ID, File>();
+  let db: Promise<IDBDatabase | null>;
+  try {
+    db = new Promise((res) => {
+      const r = indexedDB.open("curio-mock-files", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("files");
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => res(null);
+    });
+  } catch { db = Promise.resolve(null); }
+  const tx = (mode: IDBTransactionMode, run: (st: IDBObjectStore) => void) =>
+    void db.then((d) => { try { if (d) run(d.transaction("files", mode).objectStore("files")); } catch { /* quota / closed */ } });
+  const ready: Promise<void> = db.then((d) => new Promise<void>((res) => {
+    if (!d) return res();
+    try {
+      const st = d.transaction("files").objectStore("files");
+      const req = st.openCursor();
+      req.onsuccess = () => {
+        const c = req.result;
+        if (!c) return res();
+        if (!mem.has(c.key as ID)) mem.set(c.key as ID, c.value as File);
+        c.continue();
+      };
+      req.onerror = () => res();
+    } catch { res(); }
+  }));
+  return {
+    ready,
+    get: (id: ID) => mem.get(id),
+    set(id: ID, f: File) { mem.set(id, f); tx("readwrite", (st) => st.put(f, id)); },
+    delete(id: ID) { mem.delete(id); tx("readwrite", (st) => st.delete(id)); },
+  };
+})();
 const pageCache = new Map<ID, { names: string[]; urls: string[] }>();
 
 export function createMockClient(): ApiClient {
@@ -473,6 +515,23 @@ export function createMockClient(): ApiClient {
       it.updatedAt = now(); commit();
       return delay(it);
     },
+    async fetchLyrics(itemId) {
+      // preview: LRCLIB straight from the browser (the desktop app also tries YouTube Music first)
+      const it = find(itemId);
+      const artist = it.tags.find((t) => t.category === "author")?.name ?? "";
+      const norm = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
+      let hits: { trackName: string; artistName: string; plainLyrics?: string; syncedLyrics?: string; instrumental?: boolean }[];
+      try {
+        hits = await (await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${it.title} ${artist}`.trim())}`, { signal: AbortSignal.timeout(10000) })).json();
+      } catch { throw new Error("미리보기에서는 가사 사이트에 접속할 수 없어요. 데스크톱 앱에서 불러와요."); }
+      const t = norm(it.title);
+      const h = hits.find((x) => !x.instrumental && (norm(x.trackName).includes(t) || x.trackName.includes(it.title)) && (!artist || norm(x.artistName).includes(norm(artist)) || norm(artist).includes(norm(x.artistName))));
+      if (!h) return null;
+      const synced = h.syncedLyrics ?? "";
+      it.props = { ...it.props, _lyrics: { plain: h.plainLyrics || synced.replace(/^\s*(\[[0-9:.]+\]\s*)+/gm, ""), synced, source: "LRCLIB" } };
+      commit();
+      return delay(it);
+    },
     async autofill(itemId) {
       const it = find(itemId);
       try {
@@ -484,17 +543,28 @@ export function createMockClient(): ApiClient {
     },
 
     async listPages(f) {
+      await blobs.ready;
       const blob = blobs.get(f.id);
-      if (!blob) throw new Error("브라우저 미리보기: 이 세션에서 업로드한 파일만 열 수 있어요");
+      if (!blob) {
+        // sample data: no real file behind it → show the item's cover so the reader is not empty
+        const cover = db.items.find((x) => x.id === f.itemId)?.coverUri;
+        if (!cover) throw new Error("미리보기 예시 파일이라 내용이 없어요. 직접 올린 파일은 열 수 있어요.");
+        pageCache.set(f.id, { names: [f.name], urls: [cover] });
+        return [f.name];
+      }
       const cached = pageCache.get(f.id);
       if (cached) return cached.names;
       if (IMG_RE.test(f.name)) {
         pageCache.set(f.id, { names: [f.name], urls: [URL.createObjectURL(blob)] });
         return [f.name];
       }
-      const entries = unzipSync(new Uint8Array(await blob.arrayBuffer()), { filter: (e) => IMG_RE.test(e.name) && !e.name.startsWith("__MACOSX") });
+      if (isAniName(f.name)) { // animated cursor → first frame (the reader plays the whole thing)
+        pageCache.set(f.id, { names: [f.name], urls: [parseAni(await blob.arrayBuffer()).frames[0]] });
+        return [f.name];
+      }
+      const entries = unzipSync(new Uint8Array(await blob.arrayBuffer()), { filter: (e) => IMG_RE.test(e.name) && !e.name.startsWith("__MACOSX") && !/(^|\/)\._/.test(e.name) });
       const names = Object.keys(entries).sort(natural);
-      const urls = names.map((n) => URL.createObjectURL(new Blob([entries[n]])));
+      const urls = names.map((n) => URL.createObjectURL(new Blob([entries[n]], { type: imageMime(n) })));
       pageCache.set(f.id, { names, urls });
       return names;
     },
@@ -504,8 +574,9 @@ export function createMockClient(): ApiClient {
       return b ? URL.createObjectURL(b) : null;
     },
     async readText(f) {
+      await blobs.ready;
       const b = blobs.get(f.id);
-      if (!b) throw new Error("미리보기: 이 세션에서 올린 파일만 열 수 있어요");
+      if (!b) throw new Error("미리보기 예시 파일이라 내용이 없어요. 직접 올린 파일은 열 수 있어요.");
       return await b.text();
     },
     async writeText(f, content) {
@@ -555,11 +626,15 @@ export function createMockClient(): ApiClient {
         img.onerror = () => res(null); // broken image → fall back to a generated cover
         setTimeout(() => res(null), 8000);
         img.onload = () => {
-          const scale = Math.min(1, 480 / img.width);
+          // tiny pictures (cursors, icons, pixel art) are enlarged with sharp pixels and keep transparency
+          const tiny = img.width < 128;
+          const scale = tiny ? Math.floor(256 / Math.max(1, img.width)) || 1 : Math.min(1, 480 / img.width);
           const c = document.createElement("canvas");
           c.width = img.width * scale; c.height = img.height * scale;
-          c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
-          res(c.toDataURL("image/jpeg", 0.85));
+          const g = c.getContext("2d")!;
+          g.imageSmoothingEnabled = !tiny;
+          g.drawImage(img, 0, 0, c.width, c.height);
+          res(tiny ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.85));
         };
         img.src = URL.createObjectURL(blob);
       });

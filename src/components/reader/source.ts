@@ -1,5 +1,6 @@
 import { api } from "@/api";
 import type { FileRef } from "@/api/types";
+import { aniPages, disposeAni, isAniName, parseAni } from "@/lib/ani";
 
 /** A readable document = N pages, each resolvable to an image URL. */
 export interface PageSource {
@@ -10,12 +11,23 @@ export interface PageSource {
 
 const isPdf = (f: FileRef) => /\.pdf$/i.test(f.name);
 export const isReadable = (f: FileRef) =>
-  isPdf(f) || /\.(zip|cbz)$/i.test(f.name) || f.kind === "folder" || f.kind === "image";
+  isPdf(f) || /\.(zip|cbz)$/i.test(f.name) || f.kind === "folder" || f.kind === "image" || isAniName(f.name);
 
 export async function openSource(file: FileRef): Promise<PageSource> {
   if (isPdf(file)) return openPdf(file);
+  if (isAniName(file.name)) return openAni(file);
   const names = await api.listPages(file);
   return { count: names.length, url: async (i) => api.pageUrl(file, i), dispose() {} };
+}
+
+/** Animated cursor: one "page" that the reader plays (see AniImage). */
+async function openAni(file: FileRef): Promise<PageSource> {
+  const url = api.fileUrl(file);
+  if (!url) throw new Error("파일을 열 수 없어요");
+  const anim = parseAni(await (await fetch(url)).arrayBuffer());
+  const key = `ani:${file.id}`;
+  aniPages.set(key, anim);
+  return { count: 1, url: async () => key, dispose() { aniPages.delete(key); disposeAni(anim); } };
 }
 
 let workerPort: Worker | null = null;

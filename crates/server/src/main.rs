@@ -105,6 +105,7 @@ async fn main() {
             json!(s, move |l| l.apply_metadata(&id, b.candidate, b.overwrite_title))
         }))
         .route("/items/:id/autofill", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.autofill(&id)) }))
+        .route("/items/:id/lyrics", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.fetch_lyrics(&id)) }))
         .route("/metadata/search", post(|State(s): S, Json(b): Json<Search>| async move { json!(s, move |l| l.search_metadata(b.kind, &b.query)) }))
         .route("/files/:id", delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.detach_file(&id)) }))
         .route("/files/:id/raw", get(raw_file))

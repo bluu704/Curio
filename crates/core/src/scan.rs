@@ -30,7 +30,7 @@ pub fn file_kind(p: &Path) -> FileKind {
         FileKind::Text
     } else if ARCHIVE_EXT.contains(&e) {
         FileKind::Archive
-    } else if IMAGE_EXT.contains(&e) || e == "psd" {
+    } else if IMAGE_EXT.contains(&e) || matches!(e, "psd" | "ani" | "ico" | "cur") {
         FileKind::Image
     } else if DOC_EXT.contains(&e) {
         FileKind::Document

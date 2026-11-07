@@ -84,7 +84,7 @@ function General() {
       </div>
 
       <div className="label mb-2 mt-6">강조색</div>
-      <div className="flex flex-nowrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {ACCENTS.map((a) => {
           const on = (accent ?? "#6366f1").toLowerCase() === a.hex;
           return (
@@ -95,7 +95,7 @@ function General() {
         })}
         {/* rainbow wheel → native color picker for any other color */}
         <label data-tip="다른 색 고르기"
-          className={cn("relative ml-auto h-7 w-7 shrink-0 cursor-pointer rounded-full ring-offset-2 ring-offset-elevated transition-transform hover:scale-110",
+          className={cn("relative h-7 w-7 shrink-0 cursor-pointer rounded-full ring-offset-2 ring-offset-elevated transition-transform hover:scale-110",
             accent && !ACCENTS.some((a) => a.hex === accent.toLowerCase()) && "ring-2 ring-fg/60")}
           style={{ background: "conic-gradient(#f43f5e, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #f43f5e)" }}>
           <input type="color" value={accent ?? "#6366f1"} onChange={(e) => setAccent(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />

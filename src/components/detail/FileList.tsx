@@ -6,6 +6,7 @@ import { api } from "@/api";
 import type { FileRef, Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { FILE_META } from "@/lib/meta";
+import { mainFile } from "@/lib/itemFlags";
 import { bytes } from "@/lib/format";
 
 /** Main action for a file: play (video/audio), view/edit (text), read (pdf/zip/images). */
@@ -20,6 +21,8 @@ export function FileList({ item }: { item: Item }) {
   const { attachPaths, attachBlobs, detachFile, updateItem, openReader } = useApp();
   const input = useRef<HTMLInputElement>(null);
   const desktop = api.caps.localFiles;
+  const mainId = mainFile(item)?.id;
+  const files = item.files.filter((f) => f.id !== mainId); // the item's own picture/text/video is shown above
   const fail = (e: unknown) => useApp.setState({ error: e instanceof Error ? e.message : String(e) });
 
   // Any file type: desktop links the original path, the browser uploads the file.
@@ -49,18 +52,18 @@ export function FileList({ item }: { item: Item }) {
   return (
     <section>
       <div className="mb-1 flex items-center">
-        <div className="label flex-1">파일 · {item.files.length}</div>
+        <div className="label flex-1">{mainId ? "첨부 파일" : "파일"} · {files.length}</div>
         <input ref={input} type="file" multiple hidden onChange={(e) => { void attachBlobs(item.id, [...(e.target.files ?? [])]); e.target.value = ""; }} />
         <button className="btn-icon h-7 w-7" onClick={() => void addFiles()} data-tip="파일 추가 (모든 형식)"><FilePlus size={15} /></button>
         {desktop && <button className="btn-icon h-7 w-7" onClick={() => void addFolder()} data-tip="폴더 연결"><FolderPlus size={15} /></button>}
       </div>
-      {item.files.length === 0 && (
+      {files.length === 0 && (
         <button onClick={() => void addFiles()} className="w-full truncate whitespace-nowrap rounded-lg border border-dashed border-line px-3 py-4 text-center text-[length:calc(12px*var(--ts))] text-muted hover:bg-subtle">
           파일을 끌어다 놓거나 눌러서 추가
         </button>
       )}
       <div className="space-y-0.5">
-        {item.files.map((f) => {
+        {files.map((f) => {
           const Icon = FILE_META[f.kind];
           const act = fileAction(f);
           return (

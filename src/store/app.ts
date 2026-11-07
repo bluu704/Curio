@@ -1,3 +1,4 @@
+import { FLAG, isMainKind } from "@/lib/itemFlags";
 import { create } from "zustand";
 import { api } from "@/api";
 import type {
@@ -89,6 +90,8 @@ interface AppState {
   bulkCreate(inputs: NewItem[]): Promise<ID[]>;
 
   applyMetadata(itemId: ID, c: Candidate, overwriteTitle: boolean): Promise<void>;
+  /** Lyrics for a song item; `quiet` = no toast when nothing is found (automatic lookups). */
+  fetchLyrics(itemId: ID, quiet?: boolean): Promise<boolean>;
   autofill(itemIds: ID[], onProgress?: (done: number, hit: number) => void): Promise<number>;
 
   ensureTag(name: string, category: TagCategory): Promise<Tag>;
@@ -150,6 +153,13 @@ export const useApp = create<AppState>((set, get) => {
       detail: s.detail?.id === id ? fn(s.detail) : s.detail,
     }));
   const fail = (e: unknown) => set({ error: e instanceof Error ? e.message : String(e) });
+  /** An item made from one image / text / video file *is* that file (shown inline, not as an attachment). */
+  const markMain = async (created: Item[]) => {
+    for (const it of created) {
+      const f = it.files.length === 1 ? it.files[0] : null;
+      if (f && isMainKind(f)) await api.updateItem(it.id, { props: { ...it.props, [FLAG.main]: f.id } }).catch(() => undefined);
+    }
+  };
   const reloadDetail = async () => {
     const id = get().selectedId;
     if (!id) return;
@@ -318,6 +328,7 @@ export const useApp = create<AppState>((set, get) => {
       const ctx = viewContext(activeView(get()));
       try {
         const created = await api.importPaths(paths, ctx);
+        await markMain(created);
         const cat = get().categoryId;
         if (cat && created.length) await api.addToCategory(created.map((c) => c.id), cat);
         set({ tags: await api.listTags() });
@@ -332,6 +343,9 @@ export const useApp = create<AppState>((set, get) => {
       const ctx = viewContext(activeView(get()));
       try {
         const created = await api.importBlobs(files, ctx);
+        await markMain(created);
+        const cat = get().categoryId;
+        if (cat && created.length) await api.addToCategory(created.map((c) => c.id), cat);
         await get().refresh();
         if (created.length === 1) await get().select(created[0].id);
         get().notify(`${created.length}개 파일을 올렸어요`);
@@ -368,6 +382,21 @@ export const useApp = create<AppState>((set, get) => {
       mapItem(itemId, () => saved);
       set({ tags: await api.listTags() });
       void get().refresh();
+      // songs: look for lyrics in the background
+      if (saved.kind === "music" && !saved.props?._lyrics) void get().fetchLyrics(itemId, true);
+    },
+
+    async fetchLyrics(itemId, quiet) {
+      try {
+        const it = await api.fetchLyrics(itemId);
+        if (!it) { if (!quiet) get().notify("가사를 찾지 못했어요"); return false; }
+        mapItem(itemId, () => it);
+        if (!quiet) get().notify("가사를 불러왔어요");
+        return true;
+      } catch (e) {
+        if (!quiet) fail(e);
+        return false;
+      }
     },
 
     async autofill(itemIds, onProgress) {

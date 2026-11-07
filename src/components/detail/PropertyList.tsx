@@ -13,7 +13,8 @@ import { TagInput } from "./TagInput";
 import { FieldInput } from "./FieldInput";
 import { CategoryPicker } from "./CategoryPicker";
 
-interface Row { key: string; icon: LucideIcon; label: string; node: React.ReactNode; custom?: string }
+/** `wide` rows (links, dates, long text) take the full width; the rest sit two per line. */
+interface Row { key: string; icon: LucideIcon; label: string; node: React.ReactNode; custom?: string; wide?: boolean }
 
 /**
  * The item's properties. Which ones show is decided per archive (saved in the archive's view):
@@ -71,10 +72,11 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
       ),
     },
     { key: "category", icon: Folder, label: "카테고리", node: <CategoryPicker item={item} /> },
-    ...tagCats.map(([c, label]): Row => ({ key: `tag:${c}`, icon: TAG_META[c].icon, label, node: <TagInput item={item} category={c} label={label} /> })),
+    ...tagCats.map(([c, label]): Row => ({ key: `tag:${c}`, icon: TAG_META[c].icon, label, node: <TagInput item={item} category={c} label={label} />,
+      wide: item.tags.filter((t) => t.category === c).length > 2 })),
     ...(showCode ? [{ key: "code", icon: Hash, label: "품번", node: <TextProp value={item.code} mono placeholder="ABC-123" onSave={(code) => void updateItem(item.id, { code })} /> }] : []),
     ...(showUrl ? [{
-      key: "url", icon: Link2, label: "링크",
+      key: "url", icon: Link2, label: "링크", wide: true,
       node: (
         <div className="flex items-center">
           <TextProp value={item.url} placeholder="https://" onSave={(url) => void updateItem(item.id, { url })} />
@@ -83,13 +85,21 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
       ),
     }] : []),
     { key: "year", icon: CalendarDays, label: "연도", node: <TextProp value={item.year?.toString() ?? null} placeholder="2024" onSave={(v) => void updateItem(item.id, { year: v && /^\d{4}$/.test(v) ? Number(v) : null })} /> },
-    ...fields.map((f): Row => ({ key: `field:${f.id}`, icon: FIELD_ICONS[f.type], label: f.name, node: <FieldInput item={item} field={f} />, custom: f.id })),
-    { key: "added", icon: CalendarPlus, label: "추가일", node: <span className="px-1.5 text-muted">{date(item.createdAt)}</span> },
+    ...fields.map((f): Row => ({ key: `field:${f.id}`, icon: FIELD_ICONS[f.type], label: f.name, node: <FieldInput item={item} field={f} />, custom: f.id,
+      wide: ["text", "url", "date", "multi_select"].includes(f.type) })),
+    { key: "added", icon: CalendarPlus, label: "추가일", wide: true, node: <span className="px-1.5 text-muted">{date(item.createdAt)}</span> },
   ];
 
   const toggle = (key: string) =>
     s.setPropLayout(item.archiveId, { hidden: hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key] });
   const visible = editing ? rows : rows.filter((r) => !hidden.includes(r.key));
+  // two per line: a short row left alone before a wide one stretches instead of leaving a hole
+  const spans = visible.map((r) => !!r.wide);
+  for (let i = 0, col = 0; i < visible.length; i++) {
+    if (spans[i]) { col = 0; continue; }
+    const nextWide = i + 1 >= visible.length || spans[i + 1];
+    if (col === 0 && nextWide) spans[i] = true; else col = (col + 1) % 2;
+  }
 
   // things that can be added: tag categories not shown yet, 품번/링크, or a brand-new custom property
   const addable = [
@@ -106,12 +116,12 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
           <button className="btn btn-primary h-7" onClick={onDone}>완료</button>
         </div>
       )}
-      <div className="space-y-0.5">
-        {visible.map((r) => {
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+        {visible.map((r, i) => {
           const off = hidden.includes(r.key);
           return (
-            <div key={r.key} className={cn("group/prop flex min-h-8 items-start gap-2", editing && off && "opacity-40")}>
-              <div className="flex h-8 w-[100px] shrink-0 items-center gap-2 text-[length:calc(12px*var(--ts))] text-muted">
+            <div key={r.key} className={cn("group/prop flex min-h-8 min-w-0 items-start gap-2", spans[i] && "col-span-2", editing && off && "opacity-40")}>
+              <div className={cn("flex h-8 shrink-0 items-center gap-2 text-[length:calc(12px*var(--ts))] text-muted", "w-[84px]")}>
                 {editing ? (
                   <button className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-subtle hover:text-fg" onClick={() => toggle(r.key)} data-tip={off ? "보이기" : "숨기기"}>
                     {off ? <EyeOff size={14} /> : <Eye size={14} />}

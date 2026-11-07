@@ -67,6 +67,8 @@ export interface ApiClient {
   /** Fetch details, download hi-res images locally, link people/genres. */
   applyMetadata(itemId: ID, candidate: Candidate, overwriteTitle: boolean): Promise<Item>;
   autofill(itemId: ID): Promise<boolean>;
+  /** Find lyrics (YouTube Music → LRCLIB) and store them in props._lyrics. null = none found. */
+  fetchLyrics(itemId: ID): Promise<Item | null>;
 
   /** Reader: page names of a zip/cbz/image folder; PDFs use `fileUrl`. */
   listPages(file: FileRef): Promise<string[]>;

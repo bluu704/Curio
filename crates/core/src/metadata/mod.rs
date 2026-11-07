@@ -17,6 +17,7 @@
 
 pub(crate) mod anilist;
 mod googleplay;
+pub mod lyrics;
 mod more;
 mod music;
 mod naver;
@@ -191,6 +192,11 @@ pub(crate) fn first_ok(urls: &[String]) -> Option<String> {
 use std::io::Read as _;
 
 /// Loose title similarity used by auto-fill (only apply when we are fairly sure).
+/// YouTube video id of a song link (watch / youtu.be / music.youtube / shorts).
+pub fn music_video_id(url: &str) -> Option<String> {
+    music::youtube_id(url)
+}
+
 pub fn title_matches(a: &str, b: &str) -> bool {
     let norm = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
     let (a, b) = (norm(a), norm(b));

@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/store/app";
 import { cn } from "@/lib/cn";
 import { openSource, type PageSource } from "./source";
+import { aniPages } from "@/lib/ani";
+import { AniImage } from "@/components/ui/AniImage";
 
 type Mode = "single" | "double" | "scroll";
 interface Prefs { mode: Mode; rtl: boolean; fit: "height" | "width" }
@@ -173,6 +175,8 @@ function PageImg({ src, index, fit, half }: { src: PageSource; index: number; fi
     return () => { alive = false; };
   }, [src, index]);
   if (!url) return <Loader2 className="m-auto animate-spin text-white/40" size={24} />;
+  const ani = aniPages.get(url);
+  if (ani) return <AniImage anim={ani} className="m-auto select-none" />;
   return (
     <img
       src={url}
@@ -222,7 +226,7 @@ function LazyPage({ src, index }: { src: PageSource; index: number }) {
   }, [src, index]);
   return (
     <div ref={ref} data-page={index} className={cn(!url && "flex aspect-[2/3] items-center justify-center")}>
-      {url ? <img src={url} alt="" draggable={false} className="block w-full select-none" /> : <Loader2 className="animate-spin text-white/30" size={22} />}
+      {url && aniPages.has(url) ? <AniImage anim={aniPages.get(url)!} className="mx-auto my-8 select-none" /> : url ? <img src={url} alt="" draggable={false} className="block w-full select-none" /> : <Loader2 className="animate-spin text-white/30" size={22} />}
     </div>
   );
 }

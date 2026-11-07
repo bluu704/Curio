@@ -745,6 +745,18 @@ impl Library {
         }
     }
 
+    /// Find lyrics for a song item (YouTube Music → LRCLIB) and keep them in `props._lyrics`.
+    /// Returns the updated item, or None when no lyrics were found.
+    pub fn fetch_lyrics(&self, item_id: &str) -> Result<Option<Item>> {
+        let it = self.get_item(item_id)?;
+        let artist = it.tags.iter().find(|t| t.category == TagCategory::Author).map(|t| t.name.clone()).unwrap_or_default();
+        let vid = it.url.as_deref().and_then(metadata::music_video_id);
+        let Some(l) = metadata::lyrics::find_lyrics(&it.title, &artist, vid.as_deref())? else { return Ok(None) };
+        let mut props = it.props.clone();
+        props.insert("_lyrics".into(), serde_json::to_value(l)?);
+        Ok(Some(self.update_item(item_id, ItemPatch { props: Some(props), ..Default::default() })?))
+    }
+
     // ------------------------------------------------------------------ watched folders
 
     pub fn list_watch_folders(&self) -> Result<Vec<WatchFolder>> {

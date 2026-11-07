@@ -74,7 +74,7 @@ export function Toolbar() {
             data-search-input
             value={s.search}
             onChange={(e) => s.setSearch(e.target.value)}
-            placeholder="검색  Ctrl+F"
+            placeholder={narrow ? "검색" : "검색  Ctrl+F"}
             className="input h-8 w-28 pl-8 pr-7 sm:w-52"
           />
           {s.search && (
@@ -152,7 +152,10 @@ export function Toolbar() {
             { value: "list", icon: List, tip: "리스트" },
           ]}
         />
+      </div>
 
+      {/* outside the scrolling row so "+" is always on screen, also on phones */}
+      <div className="shrink-0">
         <Popover
           align="end"
           width={236}

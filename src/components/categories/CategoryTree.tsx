@@ -58,10 +58,16 @@ export function CategoryTree() {
           onDoubleClick={() => setEditing(c.id)}
           className={cn(
             "group/node flex h-8 cursor-pointer items-center gap-1 rounded-lg pr-1 text-[length:calc(13px*var(--ts))] transition-colors",
-            active ? "bg-accent/10 text-accent" : "text-fg/85 hover:bg-subtle",
+            // a coloured folder tints its own selection / hover background
+            c.color
+              ? active ? "bg-[var(--fc-on)] font-medium text-fg" : "text-fg/85 hover:bg-[var(--fc-hover)]"
+              : active ? "bg-accent/10 text-accent" : "text-fg/85 hover:bg-subtle",
             dragging && overId === c.id && "bg-accent/20 ring-1 ring-accent",
           )}
-          style={{ paddingLeft: 6 + depth * 14 }}
+          style={{
+            paddingLeft: 6 + depth * 14,
+            ...(c.color ? { "--fc-on": tint(folderColor(c.color), 0.2), "--fc-hover": tint(folderColor(c.color), 0.11) } as React.CSSProperties : {}),
+          }}
         >
           <button
             className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-line/60", !kids.length && "invisible")}
@@ -139,4 +145,12 @@ export function CategoryTree() {
       </div>
     </div>
   );
+}
+
+/** "#rrggbb" (or any CSS colour) at the given opacity. */
+function tint(color: string, alpha: number) {
+  const m = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!m) return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
