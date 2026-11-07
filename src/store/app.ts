@@ -546,10 +546,19 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     openReader(item, file) {
+      // web version: a PC file is fetched from Drive first (when it travels with the library)
+      if (api.ensureFile) {
+        const toast = setTimeout(() => get().notify("드라이브에서 파일을 받는 중…"), 400);
+        void api.ensureFile(file).then(() => { clearTimeout(toast); open(); }, (e) => { clearTimeout(toast); fail(e); });
+        return;
+      }
+      open();
+      function open() {
       // one entry point for every file: reader (pdf/zip/images), viewer (video/audio/text), else the OS app
       if (isViewable(file)) set({ viewer: { item, file } });
       else if (isReadable(file)) set({ reader: { item, file } });
       else void api.openFile(file).catch(fail);
+      }
     },
     closeReader() { set({ reader: null }); },
     setDialog(dialog) { set({ dialog }); },

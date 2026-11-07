@@ -14,7 +14,10 @@ import { AniImage } from "@/components/ui/AniImage";
 export function MainContent({ item, file }: { item: Item; file: FileRef }) {
   const openReader = useApp((s) => s.openReader);
   // one URL per file: the preview makes a fresh blob: URL on every call (would reload / restart the video)
-  const url = useMemo(() => api.fileUrl(file), [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [fetched, setFetched] = useState(0);
+  // web version: bring a PC file from Drive first (when it travels with the library)
+  useEffect(() => { if (api.ensureFile && !api.fileUrl(file)) void api.ensureFile(file).then(() => setFetched((n) => n + 1), () => undefined); }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const url = useMemo(() => api.fileUrl(file), [file.id, fetched]); // eslint-disable-line react-hooks/exhaustive-deps
   if (file.kind === "image" && isAniName(file.name)) return <AniContent item={item} file={file} />;
   if (file.kind === "image") {
     const src = url ?? api.mediaUrl(item.coverUri);

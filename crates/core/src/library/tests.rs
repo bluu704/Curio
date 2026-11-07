@@ -321,3 +321,13 @@ fn web_fixture() {
     }
     l.sync_commit(&snap).unwrap();
 }
+
+#[test]
+fn file_sync_limit_setting() {
+    let (l, _d) = lib();
+    assert_eq!(l.file_sync_limit(), 50 * 1024 * 1024, "default 50 MB");
+    l.set_settings("cloud", &serde_json::json!({ "fileSyncMb": 200 })).unwrap();
+    assert_eq!(l.file_sync_limit(), 200 * 1024 * 1024);
+    l.set_settings("cloud", &serde_json::json!({ "fileSyncMb": 0 })).unwrap();
+    assert_eq!(l.file_sync_limit(), 0, "0 = files stay on the PC");
+}

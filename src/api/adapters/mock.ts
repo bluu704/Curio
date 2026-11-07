@@ -270,6 +270,10 @@ const blobs = (() => {
   };
 })();
 const pageCache = new Map<ID, { names: string[]; urls: string[] }>();
+/** Web version: keep a file fetched from Drive (stored like an upload, so every viewer works). */
+export const putMockBlob = (id: ID, f: File) => { blobs.set(id, f); pageCache.delete(id); };
+export const hasMockBlob = (id: ID) => !!blobs.get(id);
+export const mockBlobsReady = () => blobs.ready;
 
 /** Direct access to the engine's data (used by the web version's Drive sync). */
 export const mockDb: { get(): DB; set(next: DB): void } = { get: () => { throw new Error("not ready"); }, set: () => undefined };

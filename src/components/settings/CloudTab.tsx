@@ -15,6 +15,8 @@ export interface CloudConfig {
   autoImport: boolean;
   /** keep the library in sync with the Drive copy (on start, every few minutes, when the window is hidden) */
   autoSync?: boolean;
+  /** attachments up to this size (MB) travel with the library so the web version can open them; 0 = none */
+  fileSyncMb?: number;
 }
 const EMPTY: CloudConfig = { folders: [], autoImport: true, autoSync: true };
 
@@ -26,7 +28,7 @@ export function syncLibrary(quiet = false): Promise<SyncReport | null> {
     try {
       const r = await api.driveSync();
       if (r.pulled > 0) await s.reloadAll();
-      if (!quiet) s.notify(r.pulled || r.pushed ? `동기화했어요 · 받은 변경 ${r.pulled} · 보낸 변경 ${r.pushed}` : "이미 최신이에요");
+      if (!quiet) s.notify(r.pulled || r.pushed || r.filesUp ? `동기화했어요 · 받은 변경 ${r.pulled} · 보낸 변경 ${r.pushed}${r.filesUp ? ` · 올린 파일 ${r.filesUp}` : ""}` : "이미 최신이에요");
       return r;
     } catch (e) {
       if (!quiet) useApp.setState({ error: e instanceof Error ? e.message : String(e) });
@@ -171,10 +173,11 @@ export function CloudTab() {
           <input type="checkbox" checked={cfg.autoSync !== false} onChange={(e) => save({ ...cfg, autoSync: e.target.checked })} className="h-4 w-4 accent-[rgb(var(--accent))]" />
           {web ? "자동으로 동기화 (로그인한 동안 3분마다 · 탭을 벗어날 때)" : "자동으로 동기화 (앱을 열 때 · 3분마다 · 창을 내릴 때)"}
         </label>
+        <FileSizeLimit value={cfg.fileSyncMb ?? 50} onChange={(mb) => save({ ...cfg, fileSyncMb: mb })} />
         <p className="text-[length:calc(11px*var(--ts))] text-muted">
           {web
-            ? "데스크톱 앱과 같은 라이브러리예요. 이 브라우저에서 올린 파일과 PC에만 있는 원본 파일(영상·PDF 등)은 옮겨지지 않아요."
-            : "드라이브의 숨은 앱 폴더에 저장돼서 내 드라이브 목록에는 보이지 않아요. 표지 이미지도 함께 옮겨지고, 연결해 둔 원본 파일(영상·PDF 등)은 각 기기에 그대로 있어요."}
+            ? "데스크톱 앱과 같은 라이브러리예요. PC 파일은 위 크기 이하인 것만 웹에서 열 수 있고, 이 브라우저에서 올린 파일은 여기에만 있어요."
+            : "드라이브의 숨은 앱 폴더에 저장돼서 내 드라이브 목록에는 보이지 않아요. 표지 이미지와 위 크기 이하의 파일이 함께 올라가 웹 버전에서도 열 수 있어요. 더 큰 파일은 이 PC에만 있어요."}
         </p>
       </section>
 
@@ -243,6 +246,29 @@ export function CloudTab() {
       <div className="flex gap-2 text-[length:calc(12px*var(--ts))] text-muted">
         {["OneDrive", "Dropbox"].map((n) => <span key={n} className="rounded-md bg-subtle px-2 py-1">{n} · 준비 중</span>)}
       </div>
+    </div>
+  );
+}
+
+/** "함께 올릴 파일 크기": attachments up to N MB are uploaded with the library (0 = off). */
+function FileSizeLimit({ value, onChange }: { value: number; onChange: (mb: number) => void }) {
+  const [v, setV] = useState(String(value));
+  useEffect(() => setV(String(value)), [value]);
+  const commit = () => {
+    const n = Math.round(Number(v));
+    const mb = Number.isFinite(n) ? Math.min(2000, Math.max(0, n)) : value;
+    setV(String(mb));
+    if (mb !== value) onChange(mb);
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span>함께 올릴 파일 크기</span>
+      <div className="flex items-center gap-1">
+        <input type="number" min={0} max={2000} step={10} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()}
+          className="input h-8 w-20 text-right tabular-nums" aria-label="함께 올릴 파일 크기 (MB)" />
+        <span className="text-muted">MB 이하</span>
+      </div>
+      <span className="text-[length:calc(11px*var(--ts))] text-muted">{value === 0 ? "· 파일은 올리지 않아요" : "· 0으로 하면 파일은 올리지 않아요"}</span>
     </div>
   );
 }

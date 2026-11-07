@@ -1,6 +1,6 @@
 import type { ApiClient } from "../client";
-import type { DriveStatus, SyncReport } from "../types";
-import { createMockClient, emptyDb, mockDb, type DB } from "./mock";
+import type { DriveStatus, FileRef, SyncReport } from "../types";
+import { createMockClient, emptyDb, hasMockBlob, mockBlobsReady, mockDb, putMockBlob, type DB } from "./mock";
 import { cacheRefs, changes, fromSnapshot, isBrowserFile, merge, toSnapshot, type Snapshot } from "@/web/snapshot";
 import * as g from "@/web/google";
 
@@ -31,7 +31,7 @@ const idb = (() => {
 })();
 
 const LIB = "library.json.gz";
-const ON_PC = "이 파일은 데스크톱 앱이 있는 PC에 있어서 웹에서는 열거나 내려받을 수 없어요. 웹에서 직접 올린 파일은 돼요.";
+const ON_PC = "이 파일은 PC에만 있어요. 설정 → 클라우드의 '함께 올릴 파일 크기'보다 크거나, 그 PC에서 아직 동기화하지 않았어요.";
 /** desktop cover "@cache/thumbs/a.jpg" → app-folder file name "cache~thumbs~a.jpg" (same as the desktop) */
 const imageName = (p: string) => `cache~${p.slice("@cache/".length).replace(/\//g, "~")}`;
 const images = new Map<string, string>(); // "@cache/…" → blob: URL
@@ -51,11 +51,31 @@ export function createWebClient(): ApiClient {
     }
   })();
 
+  // app-folder files by name (refreshed on every sync, remembered between visits)
+  let appFiles = new Map<string, string>();
+  void idb.get<[string, string][]>("kv", "appfiles").then((v) => { if (v) appFiles = new Map(v); });
+  const rememberFiles = (list: { id: string; name: string }[]) => { appFiles = new Map(list.map((f) => [f.name, f.id])); void idb.put("kv", "appfiles", [...appFiles]); };
+  const driveCopy = (fileId: string) => [...appFiles.keys()].filter((n) => n.startsWith(`file~${fileId}~`)).sort().pop();
+
+  /** Bytes of a PC file that travels with the library: from this browser's cache, else from Drive. */
+  async function ensureFile(f: FileRef) {
+    await ready;
+    await mockBlobsReady();
+    if (isBrowserFile(f) || hasMockBlob(f.id)) return;
+    let name = driveCopy(f.id);
+    if (!name) { rememberFiles(await g.listAppFiles()); name = driveCopy(f.id); }
+    if (!name) throw new Error(ON_PC);
+    const blob = await g.getAppFile(appFiles.get(name)!);
+    putMockBlob(f.id, new File([blob], f.name, { type: blob.type || "application/octet-stream" }));
+  }
+  const fetched = (f: FileRef) => isBrowserFile(f) || hasMockBlob(f.id);
+
   const status = (): DriveStatus => ({ available: !!g.clientId(), builtin: g.builtinClient(), connected: !!g.account(), email: g.account() });
 
   async function sync(): Promise<SyncReport> {
     await ready;
     const files = await g.listAppFiles();
+    rememberFiles(files);
     const lib = files.find((f) => f.name === LIB);
     const remote: Snapshot | null = lib ? JSON.parse(await g.gunzip(await g.getAppFile(lib.id))) : null;
     const baseSnap = (await idb.get<Snapshot>("kv", "base")) ?? null;
@@ -103,12 +123,13 @@ export function createWebClient(): ApiClient {
     driveFolder: async () => { throw new Error("드라이브 폴더 가져오기는 데스크톱 앱에서 할 수 있어요"); },
     driveImport: async () => { throw new Error("드라이브 폴더 가져오기는 데스크톱 앱에서 할 수 있어요"); },
     fetchLyrics: base.fetchLyrics,
-    // files linked on a PC (synced as records only) cannot be opened or downloaded here
-    downloadFile: async (f) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.downloadFile(f); },
-    listPages: async (f) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.listPages(f); },
-    readText: async (f) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.readText(f); },
-    writeText: async (f, t) => { if (!isBrowserFile(f)) throw new Error(ON_PC); return base.writeText(f, t); },
-    fileUrl: (f) => (isBrowserFile(f) ? base.fileUrl(f) : null),
+    // PC files: fetched from Drive on first use (when small enough to travel with the library)
+    ensureFile,
+    downloadFile: async (f) => { await ensureFile(f); return base.downloadFile(f); },
+    listPages: async (f) => { await ensureFile(f); return base.listPages(f); },
+    readText: async (f) => { await ensureFile(f); return base.readText(f); },
+    writeText: async (f, t) => { if (!isBrowserFile(f)) throw new Error("PC에 있는 파일은 웹에서 고칠 수 없어요"); return base.writeText(f, t); },
+    fileUrl: (f) => (fetched(f) ? base.fileUrl(f) : null),
   };
   const merged = { ...base, ...web } as ApiClient;
 

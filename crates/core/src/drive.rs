@@ -323,6 +323,13 @@ pub fn appdata_put(access: &str, name: &str, bytes: &[u8], existing: Option<&str
     Ok(v["id"].as_str().unwrap_or_default().to_string())
 }
 
+pub fn appdata_delete(access: &str, id: &str) -> Result<()> {
+    match agent().delete(&format!("{API}/{id}")).set("Authorization", &format!("Bearer {access}")).call() {
+        Ok(_) | Err(ureq::Error::Status(404, _)) => Ok(()),
+        Err(e) => Err(scope_err(e)),
+    }
+}
+
 /// 403 on the app folder = signed in before sync existed (permission missing).
 fn scope_err(e: ureq::Error) -> Error {
     match e {

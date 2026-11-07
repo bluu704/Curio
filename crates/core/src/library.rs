@@ -45,6 +45,8 @@ pub struct SyncReport {
     pub pushed: usize,
     pub images_up: usize,
     pub images_down: usize,
+    /// attachments uploaded so the web version can open them
+    pub files_up: usize,
     pub at: i64,
 }
 
@@ -982,9 +984,50 @@ impl Library {
                 _ => {}
             }
         }
+        let files_up = self.sync_small_files(&token, &merged, &files)?;
         let at = now();
         self.set_settings("sync", &serde_json::json!({ "lastSync": at }))?;
-        Ok(SyncReport { pulled, pushed, images_up: up, images_down: down, at })
+        Ok(SyncReport { pulled, pushed, images_up: up, images_down: down, files_up, at })
+    }
+
+    /// Size limit for attachments that travel with the library (Settings → 클라우드; 0 = off).
+    pub fn file_sync_limit(&self) -> u64 {
+        let mb = self.get_settings("cloud").ok().flatten().and_then(|c| c.get("fileSyncMb").and_then(serde_json::Value::as_f64)).unwrap_or(50.0);
+        (mb.max(0.0) * 1024.0 * 1024.0) as u64
+    }
+
+    /// Upload this PC's attachments up to the size limit (named "file~<id>~<mtime>", so an edited file
+    /// replaces its old copy), so the web version can open and download them too.
+    fn sync_small_files(&self, token: &str, merged: &sync::Snapshot, files: &[drive::AppFile]) -> Result<usize> {
+        let limit = self.file_sync_limit();
+        if limit == 0 {
+            return Ok(0);
+        }
+        let mut up = 0;
+        for row in merged.tables.get("files").map(|t| t.values().collect::<Vec<_>>()).unwrap_or_default() {
+            let (Some(id), Some(uri)) = (row.get("id").and_then(serde_json::Value::as_str), row.get("uri").and_then(serde_json::Value::as_str)) else { continue };
+            if row.get("provider").and_then(serde_json::Value::as_str) != Some("local") {
+                continue;
+            }
+            let path = PathBuf::from(sync::local_path(uri, &self.cache_dir, &self.data_dir));
+            let Ok(meta) = std::fs::metadata(&path) else { continue }; // not on this PC
+            if !meta.is_file() || meta.len() > limit {
+                continue;
+            }
+            let mtime = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+            let name = format!("file~{id}~{mtime}");
+            if files.iter().any(|f| f.name == name) {
+                continue;
+            }
+            let bytes = std::fs::read(&path)?;
+            drive::appdata_put(token, &name, &bytes, None)?;
+            up += 1;
+            // older copies of the same attachment
+            for old in files.iter().filter(|f| f.name.starts_with(&format!("file~{id}~")) && f.name != name) {
+                let _ = drive::appdata_delete(token, &old.id);
+            }
+        }
+        Ok(up)
     }
 
     // ------------------------------------------------------------------ watched folders

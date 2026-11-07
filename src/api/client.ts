@@ -78,6 +78,8 @@ export interface ApiClient {
   driveFolder(link: string): Promise<{ id: string; name: string }>;
   /** Download a Drive folder to this PC and add its files as items (new files only on repeat). */
   driveImport(link: string, target?: ImportTarget): Promise<DriveImport>;
+  /** Web version: make a file's bytes available here (fetched from Drive when it travels with the library). */
+  ensureFile?(file: FileRef): Promise<void>;
   /** Merge this library with its copy in Drive (other devices' changes in, this device's out). */
   driveSync(): Promise<SyncReport>;
   /** Cover = frame of one of the item's videos (server side, ffmpeg). Absent where the browser can capture it. */
