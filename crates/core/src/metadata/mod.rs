@@ -84,7 +84,16 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
         Kind::Game => vec![Box::new(|| steam::search(q)), Box::new(|| googleplay::search(q)), Box::new(|| more::vndb(q)), wiki],
         Kind::Music => vec![Box::new(|| music::search(q)), Box::new(|| music::search_youtube(q, true)), wiki],
         Kind::Movie => vec![wiki, Box::new(|| music::search_youtube(q, false))],
-        Kind::Other => vec![Box::new(|| music::search_youtube(q, false)), wiki],
+        // no specific category (custom formats): ask every kind of source and let the user pick
+        Kind::Other => vec![
+            Box::new(|| anilist::search(q, anilist::Scope::Anime)),
+            Box::new(|| steam::search(q)),
+            Box::new(|| more::tvmaze(q)),
+            Box::new(|| more::open_library(q)),
+            Box::new(|| music::search(q)),
+            Box::new(|| music::search_youtube(q, false)),
+            wiki,
+        ],
         _ => vec![wiki],
     };
     let results: Vec<Result<Vec<Candidate>>> = std::thread::scope(|sc| {

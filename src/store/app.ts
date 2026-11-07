@@ -83,8 +83,8 @@ interface AppState {
   openMenu(m: ContextMenu): void;
   /** Show/hide/add detail-panel properties for an archive (saved in its view). */
   setPropLayout(archiveId: ID | null, patch: { hidden?: string[]; extra?: string[] }): void;
-  attachPaths(itemId: ID, paths: string[]): Promise<void>;
-  attachBlobs(itemId: ID, files: File[]): Promise<void>;
+  attachPaths(itemId: ID, paths: string[]): Promise<FileRef[]>;
+  attachBlobs(itemId: ID, files: File[]): Promise<FileRef[]>;
   detachFile(itemId: ID, fileId: ID): Promise<void>;
   bulkCreate(inputs: NewItem[]): Promise<ID[]>;
 
@@ -341,12 +341,14 @@ export const useApp = create<AppState>((set, get) => {
     async attachPaths(itemId, paths) {
       const refs = await api.attachPaths(itemId, paths);
       mapItem(itemId, (it) => ({ ...it, files: [...it.files, ...refs] }));
+      return refs;
     },
 
     async attachBlobs(itemId, files) {
-      if (!api.attachBlobs) return;
+      if (!api.attachBlobs) return [];
       const refs = await api.attachBlobs(itemId, files);
       mapItem(itemId, (it) => ({ ...it, files: [...it.files, ...refs] }));
+      return refs;
     },
 
     async detachFile(itemId, fileId) {

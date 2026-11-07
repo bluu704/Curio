@@ -11,6 +11,7 @@ import { STATUS_ICONS, TONES, TONE_HEX } from "@/lib/statuses";
 import { ICON_CHOICES, iconOf } from "@/lib/icons";
 import { Popover } from "@/components/ui/Popover";
 import { FormatsTab } from "./FormatsTab";
+import { CloudTab } from "./CloudTab";
 import { IconGrid } from "@/components/ui/IconGrid";
 import { ACTIONS, FIXED, comboOf, prettyCombo, recording, useKeymap, type ActionId } from "@/hooks/useShortcuts";
 import { uid } from "@/lib/format";
@@ -18,7 +19,7 @@ import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
 import { FIELD_ICONS, FIELD_LABELS } from "./fieldIcons";
 
-type Tab = "general" | "text" | "status" | "formats" | "fields" | "watch" | "keys" | "storage" | "about";
+type Tab = "general" | "text" | "status" | "formats" | "fields" | "watch" | "cloud" | "keys" | "storage" | "about";
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "일반", icon: Palette },
   { id: "text", label: "글자", icon: Type },
@@ -26,6 +27,7 @@ const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "formats", label: "형식", icon: LayoutTemplate },
   { id: "fields", label: "속성", icon: Shapes },
   { id: "watch", label: "감시 폴더", icon: FolderSearch },
+  { id: "cloud", label: "클라우드", icon: Cloud },
   { id: "keys", label: "단축키", icon: Keyboard },
   { id: "storage", label: "저장소", icon: HardDrive },
   { id: "about", label: "정보", icon: Info },
@@ -53,6 +55,7 @@ export function SettingsModal() {
           {tab === "keys" && <Keys />}
           {tab === "fields" && <Fields />}
           {tab === "watch" && <Watch />}
+          {tab === "cloud" && <CloudTab />}
           {tab === "storage" && <Storage />}
           {tab === "about" && <About />}
         </div>
@@ -348,7 +351,6 @@ function Storage() {
     { icon: Database, title: "로컬 라이브러리", desc: "SQLite · 앱 데이터 폴더/curio.db", status: api.caps.platform === "tauri" ? "사용 중" : "미리보기 모드", on: true },
     { icon: HardDrive, title: "로컬 파일 연결", desc: "원본을 복사하지 않고 경로만 기록", status: api.caps.localFiles ? "사용 가능" : "데스크톱 앱 필요", on: api.caps.localFiles },
     { icon: Server, title: "개인 서버 (웹 접속)", desc: "curio-server · CURIO_TOKEN 으로 접속 보호", status: api.caps.platform === "http" ? "연결됨" : "사용 가능", on: api.caps.platform === "http" },
-    { icon: Cloud, title: "Google Drive", desc: "OAuth 클라이언트 ID가 필요해요", status: "준비 중", on: false },
   ];
   return (
     <div className="space-y-2">

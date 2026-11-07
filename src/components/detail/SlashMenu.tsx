@@ -1,5 +1,5 @@
 import {
-  AtSign, Bookmark as BookmarkIcon, CalendarDays, CalendarRange, ChevronsRightLeft, Clapperboard, Code2, Image as ImageIcon, ListTree, Heading1, Heading2, Heading3, Lightbulb, Link, List, ListOrdered, Minus, Pilcrow, Sigma,
+  AtSign, Paperclip, Bookmark as BookmarkIcon, CalendarDays, CalendarRange, ChevronsRightLeft, Clapperboard, Code2, Image as ImageIcon, ListTree, Heading1, Heading2, Heading3, Lightbulb, Link, List, ListOrdered, Minus, Pilcrow, Sigma,
   SquareCheck, Table, TextQuote, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -32,6 +32,7 @@ export const COMMANDS: SlashCommand[] = [
   { id: "toggle2", label: "토글 제목 2", icon: Heading2, keys: "toggle heading 토글제목 접는 제목", kind: "type", type: "toggle", data: { level: 2 } },
   { id: "toggle3", label: "토글 제목 3", icon: Heading3, keys: "toggle heading 토글제목 접는 제목", kind: "type", type: "toggle", data: { level: 3 } },
   { id: "image", label: "이미지", icon: ImageIcon, keys: "image picture 사진 그림 이미지", kind: "type", type: "image" },
+  { id: "file", label: "파일", icon: Paperclip, keys: "file attach 첨부 파일 pdf zip mp3 mp4", kind: "type", type: "file" },
   { id: "video", label: "동영상", icon: Clapperboard, keys: "video youtube 유튜브 영상 동영상", kind: "type", type: "video" },
   { id: "bookmark", label: "북마크", icon: BookmarkIcon, keys: "bookmark 북마크 웹 사이트 카드", kind: "type", type: "bookmark" },
   { id: "calendar", label: "달력", icon: CalendarRange, keys: "calendar 달력 캘린더 일정 월간", kind: "type", type: "calendar" },

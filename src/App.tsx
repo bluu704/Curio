@@ -43,6 +43,11 @@ export default function App() {
   /** Dropped on the open item panel → attach to it; anywhere else → new items in the current archive. */
   const onDrop = useCallback((paths: string[], files: File[] | undefined, attachTo: string | null) => {
     const st = useApp.getState();
+    if (attachTo?.startsWith("memo:")) {
+      // dropped on a memo → BlockEditor turns them into image / file blocks
+      window.dispatchEvent(new CustomEvent("curio:memo-drop", { detail: { itemId: attachTo.slice(5), paths, files } }));
+      return;
+    }
     if (attachTo) {
       if (files?.length) void st.attachBlobs(attachTo, files).then(() => st.notify(`파일 ${files.length}개를 연결했어요`));
       else void st.attachPaths(attachTo, paths).then(() => st.notify(`파일 ${paths.length}개를 연결했어요`));
@@ -109,7 +114,7 @@ export default function App() {
         <div className="anim-fade pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-accent/10 p-6 backdrop-blur-[2px]">
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-accent/60 text-accent">
             <Upload size={36} strokeWidth={1.6} />
-            <div className="text-[length:calc(15px*var(--ts))] font-semibold">{drag.attach ? "놓으면 이 항목에 파일이 연결돼요" : "놓으면 지금 보고 있는 아카이브에 추가돼요"}</div>
+            <div className="text-[length:calc(15px*var(--ts))] font-semibold">{drag.attach?.startsWith("memo:") ? "놓으면 메모에 넣어요" : drag.attach ? "놓으면 이 항목에 파일이 연결돼요" : "놓으면 지금 보고 있는 아카이브에 추가돼요"}</div>
             <div className="text-[length:calc(12px*var(--ts))] text-accent/80">PDF·ZIP은 바로 읽을 수 있고, 원본 파일은 이동·복사되지 않아요</div>
           </div>
         </div>

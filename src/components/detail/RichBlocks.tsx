@@ -4,6 +4,11 @@ import { api } from "@/api";
 import type { Block } from "@/api/types";
 import { cn } from "@/lib/cn";
 import { renderInline } from "@/lib/markdown";
+import { useApp } from "@/store/app";
+import { FILE_META } from "@/lib/meta";
+import { bytes } from "@/lib/format";
+import { Download, FilePlus } from "lucide-react";
+import { fileAction } from "./FileList";
 
 type Patch = (p: Partial<Block>) => void;
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -17,7 +22,7 @@ export function richDefaults(type: Block["type"]): Partial<Block> {
   return {};
 }
 
-export const RICH_TYPES = ["toggle", "image", "video", "bookmark", "calendar", "toc"] as const;
+export const RICH_TYPES = ["toggle", "image", "video", "bookmark", "calendar", "toc", "file"] as const;
 
 export function RichBlock({ block, onPatch, all }: { block: Block; onPatch: Patch; all: Block[] }) {
   switch (block.type) {
@@ -27,6 +32,7 @@ export function RichBlock({ block, onPatch, all }: { block: Block; onPatch: Patc
     case "bookmark": return <BookmarkBlock block={block} onPatch={onPatch} />;
     case "calendar": return <CalendarBlock block={block} onPatch={onPatch} />;
     case "toc": return <TocBlock all={all} />;
+    case "file": return <FileBlock block={block} onPatch={onPatch} />;
     default: return null;
   }
 }
@@ -223,4 +229,64 @@ export function pickDate(): Promise<string | null> {
     try { (i as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { done(i.value); }
     i.focus();
   });
+}
+
+/** Shrink an image file into a data URL (memo images stay light). */
+export function imageFileToDataUrl(f: File, max = 1600): Promise<string> {
+  return new Promise((res, rej) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = Object.assign(document.createElement("canvas"), { width: img.width * k, height: img.height * k });
+      c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+      res(c.toDataURL(f.type === "image/png" ? "image/png" : "image/jpeg", 0.88));
+    };
+    img.onerror = () => rej(new Error("이미지를 읽을 수 없어요"));
+    img.src = URL.createObjectURL(f);
+  });
+}
+
+/** A file attached to the item, shown inside the memo (open / play / download). */
+function FileBlock({ block, onPatch }: { block: Block; onPatch: Patch }) {
+  const s = useApp();
+  const item = s.detail;
+  const f = item?.files.find((x) => x.id === block.data?.fileId);
+  const pick = async () => {
+    if (!item) return;
+    let refs = [];
+    if (api.attachBlobs) {
+      const files = await new Promise<File[]>((res) => {
+        const i = Object.assign(document.createElement("input"), { type: "file", multiple: false });
+        i.onchange = () => res([...(i.files ?? [])]);
+        i.click();
+      });
+      if (!files.length) return;
+      refs = await s.attachBlobs(item.id, files);
+    } else {
+      const p = await api.pickPaths({ multiple: false });
+      if (!p?.length) return;
+      refs = await s.attachPaths(item.id, p);
+    }
+    if (refs[0]) onPatch({ data: { ...block.data, fileId: refs[0].id, name: refs[0].name } });
+  };
+  if (!f) {
+    return (
+      <button onClick={() => void pick()} className="my-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line p-3 text-muted hover:bg-subtle">
+        <FilePlus size={16} />{block.data?.fileId ? `${String(block.data?.name ?? "파일")} (항목에서 빠진 파일 · 다시 선택)` : "파일 선택"}
+      </button>
+    );
+  }
+  const Icon = FILE_META[f.kind];
+  const act = fileAction(f);
+  return (
+    <div className="group/file my-1 flex items-center gap-3 rounded-lg border border-line p-2.5 hover:bg-subtle">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-subtle text-muted"><Icon size={17} /></span>
+      <button className="min-w-0 flex-1 text-left" onClick={() => item && s.openReader(item, f)}>
+        <div className="truncate font-medium">{f.name}</div>
+        <div className="text-[length:calc(11px*var(--ts))] text-muted">{bytes(f.size) || f.kind}</div>
+      </button>
+      {act && item && <button className="btn h-8 border border-line" onClick={() => s.openReader(item, f)}><act.icon size={14} />{act.label.split("·")[0]}</button>}
+      <button className="btn-icon h-8 w-8" onClick={() => void api.downloadFile(f).catch((e) => useApp.setState({ error: String(e) }))} data-tip="다운로드"><Download size={14} /></button>
+    </div>
+  );
 }

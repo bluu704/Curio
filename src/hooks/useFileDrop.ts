@@ -7,8 +7,13 @@ import { api } from "@/api";
  * - Browser: real File objects (uploaded to the preview backend; PDF/ZIP become readable).
  */
 /** Element under the pointer with `data-drop-attach` = item id to attach files to. */
-const attachAt = (x: number, y: number) =>
-  (document.elementFromPoint(x, y)?.closest("[data-drop-attach]") as HTMLElement | null)?.dataset.dropAttach ?? null;
+/** Over an item's memo (`data-drop-memo`) → "memo:<id>": files become memo blocks. */
+const attachAt = (x: number, y: number) => {
+  const el = document.elementFromPoint(x, y);
+  const memo = (el?.closest("[data-drop-memo]") as HTMLElement | null)?.dataset.dropMemo;
+  if (memo) return `memo:${memo}`;
+  return (el?.closest("[data-drop-attach]") as HTMLElement | null)?.dataset.dropAttach ?? null;
+};
 
 export function useFileDrop(onPaths: (paths: string[], files: File[] | undefined, attachTo: string | null) => void) {
   const [over, setOverState] = useState(false);

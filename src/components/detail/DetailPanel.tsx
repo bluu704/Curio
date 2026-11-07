@@ -154,7 +154,7 @@ export function DetailPanel() {
           <div className="mt-6 border-t border-line pt-5">
             <div className="label mb-2">메모</div>
             {item.blocks ? (
-              <BlockEditor key={item.id} initial={item.blocks} onChange={(blocks) => void updateItem(item.id, { blocks })} />
+              <BlockEditor key={item.id} itemId={item.id} initial={item.blocks} onChange={(blocks) => void updateItem(item.id, { blocks })} />
             ) : (
               <div className="h-8 animate-pulse rounded-md bg-subtle" />
             )}

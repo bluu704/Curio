@@ -64,7 +64,7 @@ export interface FieldDef {
 
 /** "heading" = H2 (kept for older notes). */
 export type BlockType = "paragraph" | "h1" | "heading" | "h3" | "bullet" | "numbered" | "quote" | "todo" | "callout" | "code" | "math" | "table" | "divider"
-  | "toggle" | "image" | "video" | "bookmark" | "calendar" | "toc";
+  | "toggle" | "image" | "video" | "bookmark" | "calendar" | "toc" | "file";
 
 export interface Block {
   id: ID;

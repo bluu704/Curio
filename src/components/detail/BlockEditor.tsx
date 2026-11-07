@@ -1,7 +1,7 @@
 import {
   ArrowDown, ArrowUp, Code2, GripVertical, Heading1, Heading2, Heading3, Lightbulb, List, ListOrdered, Minus, Pilcrow, Plus,
   Sigma, SquareCheck, Table, TextQuote, Trash2, type LucideIcon, ChevronsRightLeft, Image as ImageIcon, Clapperboard, Bookmark as BookmarkIcon,
-  CalendarRange, ListTree,
+  CalendarRange, ListTree, Paperclip,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Block, BlockType } from "@/api/types";
@@ -11,7 +11,8 @@ import { PREFIXES, parseMarkdown, renderInline, tex } from "@/lib/markdown";
 import { Popover } from "@/components/ui/Popover";
 import { SlashMenu, matchCommands, type SlashCommand } from "./SlashMenu";
 import { TableBlock } from "./TableBlock";
-import { RICH_TYPES, RichBlock, pickDate, richDefaults } from "./RichBlocks";
+import { RICH_TYPES, RichBlock, imageFileToDataUrl, pickDate, richDefaults } from "./RichBlocks";
+import { useApp } from "@/store/app";
 import type { Item } from "@/api/types";
 import { MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
 
@@ -30,6 +31,7 @@ const TYPES: { type: BlockType; label: string; icon: LucideIcon }[] = [
   { type: "table", label: "표", icon: Table },
   { type: "toggle", label: "토글", icon: ChevronsRightLeft },
   { type: "image", label: "이미지", icon: ImageIcon },
+  { type: "file", label: "파일", icon: Paperclip },
   { type: "video", label: "동영상", icon: Clapperboard },
   { type: "bookmark", label: "북마크", icon: BookmarkIcon },
   { type: "calendar", label: "달력", icon: CalendarRange },
@@ -45,7 +47,7 @@ const CONTINUES: BlockType[] = ["bullet", "numbered", "todo"];
  * at the start converts the block, and pasting multi-line markdown splits it into blocks.
  * Owns its state; the parent mounts it with `key={item.id}` and receives debounced `onChange`.
  */
-export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange: (b: Block[]) => void }) {
+export function BlockEditor({ itemId, initial, onChange }: { itemId: string; initial: Block[]; onChange: (b: Block[]) => void }) {
   const [blocks, setBlocks] = useState<Block[]>(initial);
   const [editing, setEditing] = useState<string | null>(null);
   const cb = useRef(onChange);
@@ -102,6 +104,43 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
     window.addEventListener("pointerup", up);
   };
 
+  /**
+   * Files into the memo: images → image blocks (browser files are embedded, desktop paths are linked);
+   * everything else is attached to the item and shown as a file block.
+   */
+  const addFiles = async (files: File[], paths: string[], after: string | null) => {
+    const st = useApp.getState();
+    const out: Block[] = [];
+    for (const f of files) {
+      if (f.type.startsWith("image/")) {
+        out.push({ id: uid(), type: "image", text: "", data: { src: await imageFileToDataUrl(f) } });
+      } else {
+        const [ref] = await st.attachBlobs(itemId, [f]);
+        if (ref) out.push({ id: uid(), type: "file", text: "", data: { fileId: ref.id, name: ref.name } });
+      }
+    }
+    if (paths.length) {
+      const refs = await st.attachPaths(itemId, paths);
+      for (const r of refs) {
+        out.push(r.kind === "image"
+          ? { id: uid(), type: "image", text: "", data: { src: r.uri } }
+          : { id: uid(), type: "file", text: "", data: { fileId: r.id, name: r.name } });
+      }
+    }
+    if (out.length) insertAfter(after ?? (blocks[blocks.length - 1]?.id ?? null), "paragraph", out);
+  };
+  const addFilesRef = useRef(addFiles);
+  addFilesRef.current = addFiles;
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ itemId: string; paths: string[]; files?: File[] }>).detail;
+      if (d.itemId !== itemId) return;
+      void addFilesRef.current(d.files ?? [], d.files?.length ? [] : d.paths, null);
+    };
+    window.addEventListener("curio:memo-drop", on);
+    return () => window.removeEventListener("curio:memo-drop", on);
+  }, [itemId]);
+
   const patch = (id: string, p: Partial<Block>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...p } : b)));
   const insertAfter = (id: string | null, type: BlockType = "paragraph", more: Block[] = []) => {
     const nb: Block = { id: uid(), type, text: "", ...(type === "todo" ? { checked: false } : {}), ...(type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : {}), ...richDefaults(type) };
@@ -139,7 +178,7 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
   };
 
   return (
-    <div className="-ml-7 space-y-0.5">
+    <div className="-ml-7 space-y-0.5" data-drop-memo={itemId}>
       {blocks.map((b, i) => (
         <div key={b.id} data-block-id={b.id} className={cn("relative", drag?.id === b.id && "opacity-40")}>
         {drag && drag.over === b.id && drag.id !== b.id && (
@@ -161,6 +200,7 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
               if (type === "divider") insertAfter(b.id);
             } else patch(b.id, { text });
           }}
+          onPasteFiles={(files) => void addFiles(files, [], b.id)}
           onPasteMarkdown={(md) => {
             const parsed = parseMarkdown(md);
             if (!parsed.length) return;
@@ -191,11 +231,11 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
 }
 
 function BlockRow({
-  all, onGripDown, gripClickAllowed, block, number, editing, onEdit, onText, onPasteMarkdown, onPatch, onEnter, onBackspaceEmpty, onInsert, onRemove, onMove,
+  onPasteFiles, all, onGripDown, gripClickAllowed, block, number, editing, onEdit, onText, onPasteMarkdown, onPatch, onEnter, onBackspaceEmpty, onInsert, onRemove, onMove,
 }: {
   all: Block[]; onGripDown: (e: React.PointerEvent) => void; gripClickAllowed: () => boolean;
   block: Block; number: number; editing: boolean; onEdit: (v: boolean) => void;
-  onText: (t: string) => void; onPasteMarkdown: (md: string) => void; onPatch: (p: Partial<Block>) => void;
+  onText: (t: string) => void; onPasteMarkdown: (md: string) => void; onPasteFiles: (f: File[]) => void; onPatch: (p: Partial<Block>) => void;
   onEnter: () => void; onBackspaceEmpty: () => void; onInsert: (t: BlockType) => void; onRemove: () => void; onMove: (d: -1 | 1) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -345,6 +385,9 @@ function BlockRow({
         } else if (!isCode) detectSlash(e.target.value, e.target.selectionStart);
       }}
       onPaste={(e) => {
+        // pasted images / files (e.g. a screenshot) become blocks below
+        const pasted = [...e.clipboardData.files];
+        if (pasted.length) { e.preventDefault(); onPasteFiles(pasted); return; }
         const t = e.clipboardData.getData("text/plain");
         if (!isCode && t.includes("\n")) { e.preventDefault(); onPasteMarkdown(t); }
       }}

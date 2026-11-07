@@ -1,8 +1,7 @@
-import { ChevronDown, EyeOff, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { KINDS, TAG_CATEGORIES, type CardAspect, type Layout, type TagCategory } from "@/api/types";
+import { TAG_CATEGORIES, type CardAspect, type Layout, type TagCategory } from "@/api/types";
 import { useFormats, type Format } from "@/lib/formats";
-import { KIND_CONFIG } from "@/lib/kinds";
 import { TAG_META } from "@/lib/meta";
 import { iconOf } from "@/lib/icons";
 import { uid } from "@/lib/format";
@@ -14,7 +13,8 @@ import { Segmented } from "@/components/ui/Segmented";
 /** Settings → 형식: add, edit, hide/delete archive formats. */
 export function FormatsTab() {
   const fm = useFormats();
-  const list = fm.all(true);
+  const list = fm.all();
+  const hidden = fm.stored.hidden;
   const [open, setOpen] = useState<string | null>(null);
   const add = async () => {
     const f: Format = { id: `fmt:${uid()}`, name: "새 형식", icon: "package", base: "other", aspect: "3/4", layout: "gallery", tagCats: [["author", "작가"], ["tag", "태그"]], showUrl: true, custom: true };
@@ -23,30 +23,32 @@ export function FormatsTab() {
   };
   return (
     <div className="space-y-3">
-      <p className="text-[length:calc(12px*var(--ts))] text-muted">형식은 아카이브의 카드 모양·표시할 속성·자동 검색 사이트를 정해요.</p>
+      <p className="text-[length:calc(12px*var(--ts))] text-muted">형식은 아카이브의 카드 모양과 표시할 속성을 정해요. 링크를 넣으면 형식과 관계없이 알맞은 사이트에서 정보를 찾아와요.</p>
       <div className="space-y-1">
         {list.map((f) => <FormatRow key={f.id} f={f} open={open === f.id} onToggle={() => setOpen(open === f.id ? null : f.id)} />)}
       </div>
       <button className="btn w-full justify-center border border-dashed border-line text-muted" onClick={() => void add()}><Plus size={15} />형식 추가</button>
+      {hidden.length > 0 && (
+        <button className="w-full text-center text-[length:calc(12px*var(--ts))] text-muted hover:text-fg hover:underline" onClick={() => void Promise.all(hidden.map((id) => fm.restore(id)))}>
+          삭제한 기본 형식 {hidden.length}개 되살리기
+        </button>
+      )}
     </div>
   );
 }
 
 function FormatRow({ f, open, onToggle }: { f: Format; open: boolean; onToggle: () => void }) {
   const fm = useFormats();
-  const hidden = fm.isHidden(f.id);
   const I = iconOf(f.icon);
   const save = (p: Partial<Format>) => void fm.save({ ...f, ...p });
   const has = (c: TagCategory) => f.tagCats.some(([x]) => x === c);
   const toggleCat = (c: TagCategory) => save({ tagCats: has(c) ? f.tagCats.filter(([x]) => x !== c) : [...f.tagCats, [c, TAG_META[c].label]] });
   const relabel = (c: TagCategory, label: string) => save({ tagCats: f.tagCats.map(([x, l]) => (x === c ? [x, label || TAG_META[c].label] : [x, l])) });
   return (
-    <div className={cn("rounded-lg border border-line", hidden && "opacity-50")}>
+    <div className="rounded-lg border border-line">
       <div className="flex h-11 cursor-pointer items-center gap-2 px-2" onClick={onToggle}>
         <span className="flex h-7 w-7 items-center justify-center rounded-md bg-subtle"><I size={15} /></span>
         <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
-        {hidden && <span className="chip h-5 text-[length:calc(11px*var(--ts))]">숨김</span>}
-        {!f.custom && <span className="text-[length:calc(11px*var(--ts))] text-muted">기본</span>}
         <ChevronDown size={15} className={cn("text-muted transition-transform", open && "rotate-180")} />
       </div>
       {open && (
@@ -59,11 +61,6 @@ function FormatRow({ f, open, onToggle }: { f: Format; open: boolean; onToggle: 
             </Popover>
             <input className="input h-9 flex-1" defaultValue={f.name} onBlur={(e) => e.target.value.trim() && save({ name: e.target.value.trim() })} />
           </div>
-          <Row label="자동 검색">
-            <select className="input h-8 w-44" value={f.base} onChange={(e) => save({ base: e.target.value as Format["base"] })}>
-              {KINDS.map((k) => <option key={k} value={k}>{KIND_CONFIG[k].label} 사이트</option>)}
-            </select>
-          </Row>
           <Row label="카드 비율">
             <Segmented<CardAspect> value={f.aspect} onChange={(aspect) => save({ aspect })}
               options={[{ value: "2/3", label: "2:3" }, { value: "3/4", label: "3:4" }, { value: "1/1", label: "1:1" }, { value: "16/9", label: "16:9" }]} />
@@ -91,9 +88,8 @@ function FormatRow({ f, open, onToggle }: { f: Format; open: boolean; onToggle: 
             </div>
           </div>
           <div className="flex justify-end gap-2">
-            {!f.custom && (hidden ? null : <button className="btn h-8 border border-line" onClick={() => void fm.remove(f.id)}><EyeOff size={14} />숨기기</button>)}
-            {!f.custom && <button className="btn h-8 border border-line" onClick={() => void fm.restore(f.id)}><RotateCcw size={14} />기본값으로</button>}
-            {f.custom && <button className="btn h-8 border border-line text-danger" onClick={() => void fm.remove(f.id)}><Trash2 size={14} />삭제</button>}
+            {!f.custom && fm.stored.overrides[f.id] && <button className="btn h-8 border border-line" onClick={() => void fm.restore(f.id)}><RotateCcw size={14} />처음 상태로</button>}
+            <button className="btn h-8 border border-line text-danger" onClick={() => void fm.remove(f.id)}><Trash2 size={14} />삭제</button>
           </div>
         </div>
       )}
