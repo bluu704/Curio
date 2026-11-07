@@ -1,6 +1,6 @@
-import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Palette, Pencil, Pipette, Trash2 } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Palette, Pencil, Trash2 } from "lucide-react";
 import { Popover } from "@/components/ui/Popover";
-import { ColorPicker } from "@/components/ui/ColorPicker";
+import { CustomSwatches } from "@/components/ui/CustomSwatches";
 import { FOLDER_COLORS, FOLDER_NAMES, folderColor } from "@/lib/statuses";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Category, ID, Kind } from "@/api/types";
@@ -152,20 +152,10 @@ function tint(color: string, alpha: number) {
   return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
-/** Preset folder colours + "직접 고르기" with the app's colour picker. */
+/** Preset folder colours, the user's own colours, and the wheel for a new one. */
 function FolderColorPanel({ c, onDone }: { c: Category; onDone: () => void }) {
   const s = useApp();
-  const [custom, setCustom] = useState(false);
-  const isCustom = !!c.color && !(FOLDER_COLORS as readonly string[]).includes(c.color);
-  const [draft, setDraft] = useState(isCustom ? c.color! : "#f59e0b");
-  const pick = (color: string | null) => { void s.saveCategory({ ...c, color }); onDone(); };
-  if (custom) {
-    return (
-      <div onClick={(e) => e.stopPropagation()}>
-        <ColorPicker value={draft} onChange={setDraft} onDone={() => pick(draft)} />
-      </div>
-    );
-  }
+  const pick = (color: string | null, close = true) => { void s.saveCategory({ ...c, color }); if (close) onDone(); };
   return (
     <div className="grid grid-cols-6 gap-1.5 p-2.5" onClick={(e) => e.stopPropagation()}>
       {[null, ...FOLDER_COLORS].map((t) => (
@@ -175,11 +165,8 @@ function FolderColorPanel({ c, onDone }: { c: Category; onDone: () => void }) {
           <Folder size={13} className="text-white" />
         </button>
       ))}
-      <button onClick={() => setCustom(true)} data-tip="직접 고르기"
-        className={cn("flex h-7 w-7 items-center justify-center rounded-full text-white ring-offset-2 ring-offset-elevated transition-transform hover:scale-110", isCustom && "ring-2 ring-fg/60")}
-        style={{ background: isCustom ? c.color! : "conic-gradient(#f43f5e, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #f43f5e)" }}>
-        <Pipette size={12} />
-      </button>
+      {/* own colours: picking one keeps this menu open so it can be adjusted */}
+      <CustomSwatches value={c.color ?? null} onPick={(hex) => pick(hex, false)} />
     </div>
   );
 }
@@ -198,7 +185,8 @@ function FolderMenu({ c, at, onClose, onRename, onAdd }: {
     setPos({ left: Math.max(8, Math.min(at.x, innerWidth - el.offsetWidth - 8)), top: Math.max(8, Math.min(at.y, innerHeight - el.offsetHeight - 8)) });
   }, [at.x, at.y, sure]);
   useEffect(() => {
-    const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    // stay open while a colour picker opened from this menu is used
+    const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest?.(".popover")) onClose(); };
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("mousedown", down);
     document.addEventListener("keydown", key);

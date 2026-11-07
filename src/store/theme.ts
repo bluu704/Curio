@@ -96,13 +96,27 @@ function initial(): ThemeMode {
   return "system";
 }
 
+const CUSTOM_KEY = "curio.customColors";
+const initialCustom = (): string[] => {
+  try { const v = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; }
+};
+
 export const useTheme = create<{
   mode: ThemeMode; accent: string | null; text: TextPrefs;
+  /** colours the user made with the colour picker (shown as extra swatches) */
+  custom: string[];
   set(m: ThemeMode): void; cycle(): void; setAccent(hex: string | null): void; setText(p: Partial<TextPrefs>): void;
+  setCustom(list: string[]): void;
 }>((set, get) => ({
   mode: initial(),
   accent: initialAccent(),
   text: initialText(),
+  custom: initialCustom(),
+  setCustom(list) {
+    const custom = [...new Set(list.map((c) => c.toLowerCase()))].slice(0, 24);
+    try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom)); } catch { /* ignore */ }
+    set({ custom });
+  },
   setText(p) {
     const text = { ...get().text, ...p };
     try { localStorage.setItem(TEXT_KEY, JSON.stringify(text)); } catch { /* ignore */ }

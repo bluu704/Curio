@@ -45,13 +45,15 @@ export function Popover({ trigger, children, align = "start", className, width }
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (!panel.current?.contains(t) && !anchor.current?.contains(t)) close();
+      // clicks inside a popover opened from this one (e.g. a colour picker) keep this one open
+      const inOther = (t as HTMLElement).closest?.(".popover") && !panel.current?.contains(t);
+      if (!panel.current?.contains(t) && !anchor.current?.contains(t) && !inOther) close();
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("mousedown", onDown, true); // capture: modals stop the bubbling event
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("mousedown", onDown, true);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -63,7 +65,7 @@ export function Popover({ trigger, children, align = "start", className, width }
         createPortal(
           <div
             ref={panel}
-            className={cn("popover anim-pop fixed z-50", className)}
+            className={cn("popover anim-pop fixed z-[70]", className)}
             style={{ top: pos?.top ?? -9999, left: pos?.left ?? -9999, width }}
           >
             {typeof children === "function" ? children(close) : children}

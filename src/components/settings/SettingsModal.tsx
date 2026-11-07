@@ -10,7 +10,7 @@ import { ACCENTS, FONTS, useTheme, type ThemeMode, type Weight } from "@/store/t
 import { STATUS_ICONS, TONES, TONE_HEX } from "@/lib/statuses";
 import { ICON_CHOICES, iconOf } from "@/lib/icons";
 import { Popover } from "@/components/ui/Popover";
-import { ColorPicker } from "@/components/ui/ColorPicker";
+import { CustomSwatches } from "@/components/ui/CustomSwatches";
 import { FormatsTab } from "./FormatsTab";
 import { CloudTab } from "./CloudTab";
 import { IconGrid } from "@/components/ui/IconGrid";
@@ -94,15 +94,8 @@ function General() {
               style={{ background: a.hex }} />
           );
         })}
-        {/* rainbow wheel → the app's own colour picker for any other colour */}
-        <Popover trigger={({ toggle, open }) => (
-          <button onClick={toggle} data-tip="다른 색 고르기"
-            className={cn("h-7 w-7 shrink-0 rounded-full ring-offset-2 ring-offset-elevated transition-transform hover:scale-110",
-              (open || (accent && !ACCENTS.some((a) => a.hex === accent.toLowerCase()))) && "ring-2 ring-fg/60")}
-            style={{ background: "conic-gradient(#f43f5e, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #f43f5e)" }} />
-        )}>
-          {(close) => <ColorPicker value={accent ?? "#6366f1"} onChange={(hex) => setAccent(hex)} onDone={close} />}
-        </Popover>
+        {/* my colours, then the wheel for a new one */}
+        <CustomSwatches value={accent} live onPick={(hex) => setAccent(hex)} exclude={ACCENTS.map((a) => a.hex)} />
       </div>
     </div>
   );
