@@ -3,6 +3,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { Block, BlockType } from "@/api/types";
 import { uid } from "./format";
+import { useApp } from "@/store/app";
 
 /**
  * Inline markdown → React nodes (no innerHTML, so nothing in a note can inject markup).
@@ -13,7 +14,7 @@ export function tex(src: string, display: boolean): string {
   return katex.renderToString(src, { displayMode: display, throwOnError: false, trust: false, strict: "ignore", output: "htmlAndMathml" });
 }
 
-const INLINE = /(\$[^\s$](?:[^$]*?[^\s$])?\$|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|`[^`]+`|\[[^\]]+\]\((?:https?:\/\/|mailto:)[^)\s]+\)|https?:\/\/[^\s<>()]+|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g;
+const INLINE = /(\$[^\s$](?:[^$]*?[^\s$])?\$|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|`[^`]+`|\[[^\]]+\]\((?:https?:\/\/|mailto:|curio:item\/)[^)\s]+\)|https?:\/\/[^\s<>()]+|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g;
 
 export function renderInline(text: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -29,7 +30,10 @@ export function renderInline(text: string): ReactNode[] {
     else if (t.startsWith("`")) out.push(<code key={k} className="rounded bg-subtle px-1 py-0.5 font-mono text-[0.9em] text-pink-600 dark:text-pink-400">{t.slice(1, -1)}</code>);
     else if (t.startsWith("[")) {
       const [, label, href] = t.match(/^\[([^\]]+)\]\(([^)]+)\)$/)!;
-      out.push(<a key={k} href={href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2" onClick={(e) => e.stopPropagation()}>{renderInline(label)}</a>);
+      if (href.startsWith("curio:item/")) {
+        // link to another item in the library → opens it
+        out.push(<button key={k} className="rounded bg-accent/10 px-1 text-accent hover:bg-accent/20" onClick={(e) => { e.stopPropagation(); void useApp.getState().select(href.slice(11)); }}>↗ {renderInline(label)}</button>);
+      } else out.push(<a key={k} href={href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2" onClick={(e) => e.stopPropagation()}>{renderInline(label)}</a>);
     } else if (t.startsWith("http")) out.push(<a key={k} href={t} target="_blank" rel="noreferrer" className="break-all text-accent underline underline-offset-2" onClick={(e) => e.stopPropagation()}>{t}</a>);
     else out.push(<em key={k}>{renderInline(t.slice(1, -1))}</em>);
     last = m.index! + t.length;
@@ -58,6 +62,17 @@ export function parseMarkdown(md: string): Block[] {
       while (++i < lines.length && !lines[i].trim().endsWith("$$")) body.push(lines[i]);
       if (i < lines.length) { const last = lines[i].trim().slice(0, -2); if (last) body.push(last); }
       out.push({ id: uid(), type: "math", text: body.join("\n") });
+      continue;
+    }
+    // | a | b |  tables (separator row |---|---| is skipped)
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      const rows: string[][] = [];
+      for (; i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i]); i++) {
+        if (/^\s*\|[\s:|-]+\|\s*$/.test(lines[i])) continue;
+        rows.push(lines[i].trim().slice(1, -1).split("|").map((c) => c.trim()));
+      }
+      i--;
+      out.push({ id: uid(), type: "table", text: "", rows });
       continue;
     }
     if (line.startsWith("```")) {

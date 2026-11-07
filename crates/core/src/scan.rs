@@ -8,7 +8,9 @@ use crate::models::{FileKind, Kind};
 pub const IMAGE_EXT: &[&str] = &["jpg", "jpeg", "png", "webp", "gif", "bmp", "avif"];
 const VIDEO_EXT: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "m4v", "wmv", "ts"];
 const ARCHIVE_EXT: &[&str] = &["zip", "cbz", "rar", "cbr", "7z", "cb7"];
-const DOC_EXT: &[&str] = &["pdf", "epub", "txt", "md"];
+const AUDIO_EXT: &[&str] = &["mp3", "flac", "wav", "m4a", "ogg", "oga", "aac", "opus", "wma"];
+pub const TEXT_EXT: &[&str] = &["txt", "md", "markdown", "log", "csv", "json", "yaml", "yml", "srt", "vtt", "ini", "toml", "html", "xml"];
+const DOC_EXT: &[&str] = &["pdf", "epub", "docx", "hwp", "hwpx"];
 
 pub fn ext_of(p: &Path) -> String {
     p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
@@ -22,6 +24,10 @@ pub fn file_kind(p: &Path) -> FileKind {
     let e = e.as_str();
     if VIDEO_EXT.contains(&e) {
         FileKind::Video
+    } else if AUDIO_EXT.contains(&e) {
+        FileKind::Audio
+    } else if TEXT_EXT.contains(&e) {
+        FileKind::Text
     } else if ARCHIVE_EXT.contains(&e) {
         FileKind::Archive
     } else if IMAGE_EXT.contains(&e) || e == "psd" {
@@ -37,6 +43,8 @@ pub fn file_kind(p: &Path) -> FileKind {
 pub fn guess_kind(p: &Path) -> Kind {
     match file_kind(p) {
         FileKind::Video => Kind::Movie,
+        FileKind::Audio => Kind::Music,
+        FileKind::Text => Kind::Other,
         FileKind::Archive | FileKind::Document => Kind::Manga,
         FileKind::Image => Kind::Illust,
         FileKind::Folder => {

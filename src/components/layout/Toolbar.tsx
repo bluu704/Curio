@@ -1,5 +1,5 @@
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, ClipboardPaste, Menu, FilePlus, FileUp, FolderPlus, FolderTree, LayoutDashboard,
+  ArrowDown, ArrowUp, ArrowUpDown, ClipboardPaste, Menu, FileUp, FolderPlus, FolderTree, LayoutDashboard,
   LayoutGrid, Link2, List, ListFilter, Plus, Search, SlidersHorizontal, Star, Table2, X,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -167,16 +167,19 @@ export function Toolbar() {
               <MenuItem icon={Link2} onClick={() => { s.setDialog({ type: "link" }); close(); }}>링크·제목으로 추가</MenuItem>
               <MenuItem icon={ClipboardPaste} onClick={() => { s.setDialog({ type: "import" }); close(); }}>목록 붙여넣기</MenuItem>
               <MenuSep />
-              {api.importBlobs && (
-                <MenuItem icon={FileUp} onClick={() => { uploadRef.current?.click(); close(); }}>파일 올리기</MenuItem>
-              )}
-              <MenuItem icon={FilePlus} onClick={async () => { close(); const p = await api.pickPaths({ multiple: true }); if (p) await s.importPaths(p); }}>파일에서 가져오기</MenuItem>
+              {/* any file type: browser uploads, desktop links the originals */}
+              <MenuItem icon={FileUp} onClick={async () => {
+                close();
+                if (api.importBlobs) return uploadRef.current?.click();
+                const p = await api.pickPaths({ multiple: true });
+                if (p) await s.importPaths(p);
+              }}>파일 올리기</MenuItem>
               <MenuItem icon={FolderPlus} onClick={async () => { close(); const p = await api.pickPaths({ directory: true, multiple: true }); if (p) await s.importPaths(p); }}>폴더에서 가져오기</MenuItem>
             </>
           )}
         </Popover>
       </div>
-      <input ref={uploadRef} type="file" multiple hidden accept=".pdf,.zip,.cbz,image/*" onChange={(e) => { void s.importBlobs([...(e.target.files ?? [])]); e.target.value = ""; }} />
+      <input ref={uploadRef} type="file" multiple hidden onChange={(e) => { void s.importBlobs([...(e.target.files ?? [])]); e.target.value = ""; }} />
     </header>
   );
 }

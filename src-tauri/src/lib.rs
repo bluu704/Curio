@@ -75,6 +75,9 @@ pub fn run() {
             commands::add_watch_folder,
             commands::remove_watch_folder,
             commands::rescan,
+            commands::read_text,
+            commands::write_text,
+            commands::export_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Curio");

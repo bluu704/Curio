@@ -543,6 +543,53 @@ impl Library {
         Ok(out)
     }
 
+    // ------------------------------------------------------------------ text files / export
+
+    /// Read a linked text file (txt, md…) for the built-in viewer. Max 5 MB.
+    pub fn read_text(&self, file_id: &str) -> Result<String> {
+        let f = self.get_file(file_id)?;
+        if f.kind != FileKind::Text {
+            return Err(Error::Unsupported(format!("not a text file: {}", f.name)));
+        }
+        let len = std::fs::metadata(&f.uri)?.len();
+        if len > 5 * 1024 * 1024 {
+            return Err(Error::Invalid("text file is larger than 5 MB".into()));
+        }
+        let bytes = std::fs::read(&f.uri)?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    /// Save edits back to the original text file (atomic: write a temp file, then rename).
+    pub fn write_text(&self, file_id: &str, content: &str) -> Result<FileRef> {
+        let f = self.get_file(file_id)?;
+        if f.kind != FileKind::Text {
+            return Err(Error::Unsupported(format!("not a text file: {}", f.name)));
+        }
+        let path = Path::new(&f.uri);
+        let tmp = path.with_extension(format!("{}.curio-tmp", scan::ext_of(path)));
+        std::fs::write(&tmp, content)?;
+        std::fs::rename(&tmp, path)?;
+        let st = scan::stat(path)?;
+        self.conn().execute("UPDATE files SET size = ?1, mtime = ?2 WHERE id = ?3", params![st.size, st.mtime, file_id])?;
+        self.get_file(file_id)
+    }
+
+    /// Copy a linked file (or folder) to `dest` — "download" / save-as in the desktop app.
+    pub fn export_file(&self, file_id: &str, dest: &str) -> Result<()> {
+        let f = self.get_file(file_id)?;
+        let src = Path::new(&f.uri);
+        if src.is_dir() {
+            for e in walkdir::WalkDir::new(src).into_iter().flatten() {
+                let rel = e.path().strip_prefix(src).unwrap_or(e.path());
+                let to = Path::new(dest).join(rel);
+                if e.file_type().is_dir() { std::fs::create_dir_all(&to)?; } else { std::fs::copy(e.path(), &to)?; }
+            }
+        } else {
+            std::fs::copy(src, dest)?;
+        }
+        Ok(())
+    }
+
     // ------------------------------------------------------------------ reader
 
     /// Pages of a readable file (zip/cbz, image folder, single image). PDFs are rendered client-side.

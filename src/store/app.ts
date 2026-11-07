@@ -7,6 +7,8 @@ import type {
 import { DEFAULT_VIEWS, archiveViews } from "@/lib/defaults";
 import { KIND_CONFIG } from "@/lib/kinds";
 import { uid } from "@/lib/format";
+import { isViewable } from "@/components/viewer/files";
+import { isReadable } from "@/components/reader/source";
 
 export type Dialog =
   | null
@@ -51,6 +53,8 @@ interface AppState {
   settingsOpen: boolean;
   dialog: Dialog;
   reader: { item: Item; file: FileRef } | null;
+  /** Video / audio / text viewer */
+  viewer: { item: Item; file: FileRef } | null;
 
   init(): Promise<void>;
   refresh(): Promise<void>;
@@ -174,6 +178,7 @@ export const useApp = create<AppState>((set, get) => {
     settingsOpen: false,
     dialog: null,
     reader: null,
+    viewer: null,
 
     async init() {
       try {
@@ -472,7 +477,12 @@ export const useApp = create<AppState>((set, get) => {
       void api.saveView(next);
     },
 
-    openReader(item, file) { set({ reader: { item, file } }); },
+    openReader(item, file) {
+      // one entry point for every file: reader (pdf/zip/images), viewer (video/audio/text), else the OS app
+      if (isViewable(file)) set({ viewer: { item, file } });
+      else if (isReadable(file)) set({ reader: { item, file } });
+      else void api.openFile(file).catch(fail);
+    },
     closeReader() { set({ reader: null }); },
     setDialog(dialog) { set({ dialog }); },
     notify(toast) {

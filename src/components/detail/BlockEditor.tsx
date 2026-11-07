@@ -1,6 +1,6 @@
 import {
   ArrowDown, ArrowUp, Code2, GripVertical, Heading1, Heading2, Heading3, Lightbulb, List, ListOrdered, Minus, Pilcrow, Plus,
-  Sigma, SquareCheck, TextQuote, Trash2, type LucideIcon,
+  Sigma, SquareCheck, Table, TextQuote, Trash2, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Block, BlockType } from "@/api/types";
@@ -8,6 +8,9 @@ import { uid } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { PREFIXES, parseMarkdown, renderInline, tex } from "@/lib/markdown";
 import { Popover } from "@/components/ui/Popover";
+import { SlashMenu, matchCommands, type SlashCommand } from "./SlashMenu";
+import { TableBlock } from "./TableBlock";
+import type { Item } from "@/api/types";
 import { MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
 
 const TYPES: { type: BlockType; label: string; icon: LucideIcon }[] = [
@@ -22,6 +25,7 @@ const TYPES: { type: BlockType; label: string; icon: LucideIcon }[] = [
   { type: "callout", label: "콜아웃  (!)", icon: Lightbulb },
   { type: "code", label: "코드  (```)", icon: Code2 },
   { type: "math", label: "수식 LaTeX  ($$)", icon: Sigma },
+  { type: "table", label: "표  (/표)", icon: Table },
   { type: "divider", label: "구분선  (---)", icon: Minus },
 ];
 /** Types that continue on Enter (like lists in any editor). */
@@ -92,7 +96,7 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
 
   const patch = (id: string, p: Partial<Block>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...p } : b)));
   const insertAfter = (id: string | null, type: BlockType = "paragraph", more: Block[] = []) => {
-    const nb: Block = { id: uid(), type, text: "", ...(type === "todo" ? { checked: false } : {}) };
+    const nb: Block = { id: uid(), type, text: "", ...(type === "todo" ? { checked: false } : {}), ...(type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : {}) };
     const add = more.length ? more : [nb];
     setBlocks((bs) => {
       const i = id ? bs.findIndex((b) => b.id === id) : bs.length - 1;
@@ -170,7 +174,8 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
         onClick={() => insertAfter(null)}
       >
         <Plus size={14} />
-        {blocks.length ? "블록 추가" : "메모를 작성하세요…  (마크다운 · LaTeX $수식$ 지원)"}
+        {/* User request: keep this exact text. Do not append hints (markdown, LaTeX, /…) here. */}
+        {blocks.length ? "블록 추가" : "메모를 작성하세요…"}
       </button>
     </div>
   );
@@ -186,6 +191,46 @@ function BlockRow({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const showEditor = editing || !block.text;
+  // ---- "/" command menu
+  const [slash, setSlash] = useState<{ start: number; query: string; mode: "commands" | "items" } | null>(null);
+  const [sel, setSel] = useState(0);
+  const pendingItems = useRef<Item[]>([]);
+  const detectSlash = (text: string, caret: number) => {
+    const before = text.slice(0, caret);
+    const m = before.match(/(^|\s)\/([^\s/]{0,14})$/);
+    if (m) { setSlash((s) => ({ start: caret - m[2].length - 1, query: m[2], mode: s?.mode ?? "commands" })); setSel(0); }
+    else if (slash?.mode !== "items") setSlash(null);
+  };
+  const applyCommand = (c: SlashCommand) => {
+    const el = ref.current;
+    const caret = el?.selectionStart ?? block.text.length;
+    const start = slash?.start ?? caret;
+    const rest = block.text.slice(0, start) + block.text.slice(caret);
+    if (c.kind === "mention") { onText(rest); setSlash({ start, query: "", mode: "items" }); setSel(0); return; }
+    setSlash(null);
+    if (c.kind === "type") {
+      const extra = c.type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : c.type === "todo" ? { checked: false } : {};
+      if (!rest.trim()) onPatch({ type: c.type, text: "", ...extra });
+      else { onPatch({ text: rest }); onInsert(c.type); }
+      return;
+    }
+    const insert = c.kind === "link" ? "[링크 텍스트](https://)" : new Date().toISOString().slice(0, 10);
+    onPatch({ text: rest.slice(0, start) + insert + rest.slice(start) });
+    requestAnimationFrame(() => {
+      const t = ref.current;
+      if (!t) return;
+      t.focus();
+      if (c.kind === "link") t.setSelectionRange(start + 1, start + 7); // select "링크 텍스트"
+      else t.setSelectionRange(start + insert.length, start + insert.length);
+    });
+  };
+  const applyItem = (it: Item) => {
+    const start = slash?.start ?? block.text.length;
+    const caret = ref.current?.selectionStart ?? block.text.length;
+    const link = `[${it.title}](curio:item/${it.id})`;
+    onPatch({ text: block.text.slice(0, start) + link + block.text.slice(caret) });
+    setSlash(null);
+  };
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -267,14 +312,28 @@ function BlockRow({
       value={block.text}
       placeholder={block.type.startsWith("h") ? "제목" : isMath ? "LaTeX 수식  예: E = mc^2" : isCode ? "코드" : "내용 입력"}
       onFocus={() => onEdit(true)}
-      onBlur={() => onEdit(false)}
-      onChange={(e) => onText(e.target.value)}
+      onBlur={() => { onEdit(false); setTimeout(() => setSlash(null), 150); }}
+      onChange={(e) => {
+        onText(e.target.value);
+        if (slash?.mode === "items") {
+          const caret = e.target.selectionStart;
+          if (caret < slash.start) setSlash(null);
+          else setSlash({ ...slash, query: e.target.value.slice(slash.start, caret) });
+        } else if (!isCode) detectSlash(e.target.value, e.target.selectionStart);
+      }}
       onPaste={(e) => {
         const t = e.clipboardData.getData("text/plain");
         if (!isCode && t.includes("\n")) { e.preventDefault(); onPasteMarkdown(t); }
       }}
       onKeyDown={(e) => {
         if (e.nativeEvent.isComposing) return;
+        if (slash) {
+          const n = slash.mode === "commands" ? matchCommands(slash.query).length : pendingItems.current.length;
+          if (e.key === "ArrowDown") { e.preventDefault(); setSel((x) => (n ? (x + 1) % n : 0)); return; }
+          if (e.key === "ArrowUp") { e.preventDefault(); setSel((x) => (n ? (x - 1 + n) % n : 0)); return; }
+          if (e.key === "Escape") { e.preventDefault(); setSlash(null); return; }
+          if (e.key === "Enter" && slash.mode === "commands") { e.preventDefault(); const c = matchCommands(slash.query)[sel]; if (c) applyCommand(c); return; }
+        }
         if (e.key === "Enter" && !e.shiftKey && (!isCode || e.ctrlKey || e.metaKey)) { e.preventDefault(); onEnter(); }
         if (e.key === "Backspace" && block.text === "") { e.preventDefault(); onBackspaceEmpty(); }
         if (e.key === "Escape") e.currentTarget.blur();
@@ -292,10 +351,22 @@ function BlockRow({
     )
   );
 
+  if (block.type === "table") {
+    return (
+      <div className="group/block flex items-start">
+        {gutter}
+        <div className="min-w-0 flex-1"><TableBlock block={block} onPatch={onPatch} /></div>
+      </div>
+    );
+  }
+
   return (
     <div className="group/block flex items-start">
       {gutter}
-      <div className="min-w-0 flex-1">
+      <div className="relative min-w-0 flex-1">
+        {slash && (
+          <SlashMenu query={slash.query} sel={sel} mode={slash.mode} onHover={setSel} onPick={applyCommand} onPickItem={applyItem} />
+        )}
         {block.type === "quote" && <div className="border-l-[3px] border-fg/25 pl-3 italic text-fg/80">{body}</div>}
         {block.type === "callout" && (
           <div className="flex gap-2 rounded-lg bg-subtle px-3 py-1.5"><Lightbulb size={16} className="mt-1.5 shrink-0 text-amber-500" /><div className="min-w-0 flex-1">{body}</div></div>

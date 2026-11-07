@@ -61,8 +61,13 @@ export interface ApiClient {
   /** Reader: page names of a zip/cbz/image folder; PDFs use `fileUrl`. */
   listPages(file: FileRef): Promise<string[]>;
   pageUrl(file: FileRef, index: number): string;
-  /** URL to the raw file (PDF reader, video). */
+  /** URL to the raw file (PDF reader, video/audio playback). */
   fileUrl(file: FileRef): string | null;
+  /** Text files (txt, md…): read for the viewer and save edits back to the original file. */
+  readText(file: FileRef): Promise<string>;
+  writeText(file: FileRef, content: string): Promise<FileRef>;
+  /** Save a copy of a linked/uploaded file (desktop: save dialog; web: browser download). */
+  downloadFile(file: FileRef): Promise<void>;
 
   listWatchFolders(): Promise<WatchFolder[]>;
   addWatchFolder(path: string, kind: Kind, list: ListKind): Promise<WatchFolder>; // eslint-disable-line

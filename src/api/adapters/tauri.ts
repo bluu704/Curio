@@ -1,6 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { ApiClient } from "../client";
 
@@ -51,6 +51,12 @@ export function createTauriClient(): ApiClient {
     // Custom protocol registered in src-tauri/src/lib.rs (streams one zip entry per request).
     pageUrl: (f, i) => convertFileSrc(`page/${f.id}/${i}`, "curio"),
     fileUrl: (f) => (f.provider === "local" ? convertFileSrc(f.uri) : null),
+    readText: (f) => invoke("read_text", { fileId: f.id }),
+    writeText: (f, content) => invoke("write_text", { fileId: f.id, content }),
+    downloadFile: async (f) => {
+      const dest = await saveDialog({ defaultPath: f.name });
+      if (dest) await invoke("export_file", { fileId: f.id, dest });
+    },
 
     listWatchFolders: () => invoke("list_watch_folders"),
     addWatchFolder: (path, kind, list) => invoke("add_watch_folder", { path, kind, list }),

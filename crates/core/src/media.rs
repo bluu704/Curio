@@ -154,7 +154,20 @@ pub fn mime_of(name: &str) -> &'static str {
         Some("avif") => "image/avif",
         Some("bmp") => "image/bmp",
         Some("pdf") => "application/pdf",
-        _ => "image/jpeg",
+        Some("mp4") | Some("m4v") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mkv") => "video/x-matroska",
+        Some("mov") => "video/quicktime",
+        Some("mp3") => "audio/mpeg",
+        Some("m4a") | Some("aac") => "audio/mp4",
+        Some("flac") => "audio/flac",
+        Some("wav") => "audio/wav",
+        Some("ogg") | Some("oga") | Some("opus") => "audio/ogg",
+        Some("txt") | Some("log") | Some("srt") => "text/plain; charset=utf-8",
+        Some("md") | Some("markdown") => "text/markdown; charset=utf-8",
+        Some("json") => "application/json",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        _ => "application/octet-stream",
     }
 }
 

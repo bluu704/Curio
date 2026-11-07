@@ -34,7 +34,7 @@ export interface Tag {
   color: string | null;
 }
 
-export type FileKind = "video" | "archive" | "image" | "folder" | "document" | "other";
+export type FileKind = "video" | "audio" | "archive" | "image" | "folder" | "document" | "text" | "other";
 
 /** Where the bytes live. `local` = absolute path on this machine. */
 export type StorageProvider = "local" | "gdrive" | "http";
@@ -63,13 +63,15 @@ export interface FieldDef {
 }
 
 /** "heading" = H2 (kept for older notes). */
-export type BlockType = "paragraph" | "h1" | "heading" | "h3" | "bullet" | "numbered" | "quote" | "todo" | "callout" | "code" | "math" | "divider";
+export type BlockType = "paragraph" | "h1" | "heading" | "h3" | "bullet" | "numbered" | "quote" | "todo" | "callout" | "code" | "math" | "table" | "divider";
 
 export interface Block {
   id: ID;
   type: BlockType;
   text: string;
   checked?: boolean;
+  /** table blocks: rows × cells (first row = header) */
+  rows?: string[][];
 }
 
 export interface Item {

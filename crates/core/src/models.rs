@@ -47,7 +47,7 @@ str_enum!(TagCategory {
     Author = "author", Director = "director", Studio = "studio", Publisher = "publisher", Cast = "cast",
     Circle = "circle", Series = "series", Genre = "genre", Tag = "tag",
 });
-str_enum!(FileKind { Video = "video", Archive = "archive", Image = "image", Folder = "folder", Document = "document", Other = "other" });
+str_enum!(FileKind { Video = "video", Audio = "audio", Archive = "archive", Image = "image", Folder = "folder", Document = "document", Text = "text", Other = "other" });
 str_enum!(Provider { Local = "local", GDrive = "gdrive", Http = "http" });
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

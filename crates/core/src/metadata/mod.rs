@@ -52,7 +52,10 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
     }
     // Direct links resolve to exactly one candidate.
     if music::youtube_id(q).is_some() {
-        return music::from_youtube(q).map(|c| vec![c]);
+        return if kind == Kind::Music { music::from_youtube(q) } else { music::video(q) }.map(|c| vec![c]);
+    }
+    if let Some(id) = regex::Regex::new(r"comic\.naver\.com/webtoon/(?:list|detail)\?(?:.*&)?titleId=(\d+)").unwrap().captures(q) {
+        return naver::fetch(&id[1]).map(|c| vec![c]);
     }
     if let Some(id) = steam::app_id_from_url(q) {
         return steam::fetch(&id).map(|c| vec![c]);
@@ -69,7 +72,9 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
         Kind::LightNovel => vec![Box::new(|| anilist::search(q, anilist::Scope::Novel)), wiki],
         Kind::Manga => vec![Box::new(|| anilist::search(q, anilist::Scope::Comic)), wiki],
         Kind::Game => vec![Box::new(|| steam::search(q)), Box::new(|| googleplay::search(q)), wiki],
-        Kind::Music => vec![Box::new(|| music::search(q)), wiki],
+        Kind::Music => vec![Box::new(|| music::search(q)), Box::new(|| music::search_youtube(q, true)), wiki],
+        Kind::Movie => vec![wiki, Box::new(|| music::search_youtube(q, false))],
+        Kind::Other => vec![Box::new(|| music::search_youtube(q, false)), wiki],
         _ => vec![wiki],
     };
     let results: Vec<Result<Vec<Candidate>>> = std::thread::scope(|sc| {
@@ -102,6 +107,7 @@ pub fn fetch(provider: &str, id: &str) -> Result<Candidate> {
         "naver" => naver::fetch(id),
         "wikipedia" => wikipedia::fetch(id),
         "youtube" => music::from_youtube(id),
+        "youtube-video" => music::video(id),
         "deezer" => music::fetch_deezer(id),
         p => Err(Error::Invalid(format!("unknown provider {p}"))),
     }
@@ -123,7 +129,13 @@ pub fn download_image(url: &str, cache_dir: &Path) -> Result<PathBuf> {
     if out.exists() {
         return Ok(out);
     }
-    let resp = agent().get(url).call().map_err(net)?;
+    // Some CDNs only serve images to their own pages (Naver: image-comic.pstatic.net → 403 without Referer).
+    let referer = if url.contains("pstatic.net") { Some("https://comic.naver.com/") } else { None };
+    let mut req = agent().get(url);
+    if let Some(r) = referer {
+        req = req.set("Referer", r);
+    }
+    let resp = req.call().map_err(net)?;
     let mut bytes = Vec::new();
     std::io::Read::read_to_end(&mut resp.into_reader().take(40 * 1024 * 1024), &mut bytes)?;
     if bytes.len() < 100 {
@@ -184,5 +196,39 @@ mod live {
         let dir = std::env::temp_dir().join("curio-live");
         let p = download_image(a[0].banner_url.as_deref().unwrap(), &dir).unwrap();
         println!("downloaded {} bytes", std::fs::metadata(p).unwrap().len());
+    }
+}
+
+#[cfg(test)]
+mod live_links {
+    //! `cargo test -p curio-core live_links -- --ignored --nocapture` — title/link → cover for each archive type.
+    use super::*;
+    #[test]
+    #[ignore]
+    fn titles_and_links_bring_covers() {
+        let cases: &[(Kind, &str)] = &[
+            (Kind::Webtoon, "화산귀환"),
+            (Kind::Webtoon, "https://comic.naver.com/webtoon/list?titleId=769209"),
+            (Kind::Game, "Stardew Valley"),
+            (Kind::Game, "https://store.steampowered.com/app/413150/Stardew_Valley/"),
+            (Kind::Game, "https://play.google.com/store/apps/details?id=com.HoYoverse.hkrpgoversea"),
+            (Kind::Music, "아이유 밤편지"),
+            (Kind::Music, "https://music.youtube.com/watch?v=ZRtdQ81jPUQ"),
+            (Kind::Movie, "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            (Kind::Other, "Never Gonna Give You Up official video"),
+        ];
+        let dir = std::env::temp_dir().join("curio-live-links");
+        for (k, q) in cases {
+            match search(*k, q) {
+                Ok(hits) if !hits.is_empty() => {
+                    let h = &hits[0];
+                    let full = fetch(&h.provider, &h.id).unwrap_or_else(|_| h.clone());
+                    let img = full.cover_url.as_deref().map(|u| download_image(u, &dir).map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)));
+                    println!("{:<8?} {:<60} → [{}] {} | cover {:?} | banner {}", k, q.chars().take(60).collect::<String>(), full.provider, full.title, img.map(|r| r.map_err(|e| e.to_string())), full.banner_url.is_some());
+                }
+                Ok(_) => println!("{k:<8?} {q} → NO RESULTS"),
+                Err(e) => println!("{k:<8?} {q} → ERROR {e}"),
+            }
+        }
     }
 }

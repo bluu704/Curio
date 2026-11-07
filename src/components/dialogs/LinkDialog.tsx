@@ -28,7 +28,9 @@ export function LinkDialog() {
   useEffect(() => { if (open) setKind(ctx.kind && ctx.kind !== "doujin" ? ctx.kind : "anime"); }, [open, ctx.kind]);
   if (!open) return null;
 
-  const detected = kindFromLink(text);
+  // A YouTube link in a movie/anime/기타 archive is a video, not a song.
+  const raw = kindFromLink(text);
+  const detected = raw === "music" && ctx.kind && ["movie", "anime", "other"].includes(ctx.kind) ? ctx.kind : raw;
   const k = detected ?? kind;
   const isUrl = /^https?:\/\//i.test(text.trim());
 
@@ -64,7 +66,7 @@ export function LinkDialog() {
           <span className="ml-auto">{ctx.list === "wishlist" ? "위시리스트에 추가" : "아카이브에 추가"}</span>
         </div>
         <p className="text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">
-          노래는 YouTube 주소만 넣으면 곡명·아티스트·앨범 커버(1000px)를 가져와요. 결과가 확실하지 않으면 후보 목록을 보여드려요.
+          노래는 YouTube·YouTube Music 주소나 곡명, 영상은 YouTube 주소나 제목, 웹툰은 네이버 웹툰 주소, 게임은 Steam·Google Play 주소만 넣어도 표지·썸네일까지 가져와요. 결과가 확실하지 않으면 후보 목록을 보여드려요.
         </p>
         <div className="flex justify-end">
           <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void submit()}>

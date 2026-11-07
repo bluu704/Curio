@@ -206,9 +206,11 @@ export function applyQuery(items: Item[], q: ItemQuery, cats: Category[] = []): 
 export function kindFromName(name: string): FileKind {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   if (["mp4", "mkv", "webm", "avi", "mov", "m4v"].includes(ext)) return "video";
+  if (["mp3", "flac", "wav", "m4a", "ogg", "oga", "aac", "opus"].includes(ext)) return "audio";
+  if (["txt", "md", "markdown", "log", "csv", "json", "yaml", "yml", "srt", "vtt"].includes(ext)) return "text";
   if (["zip", "cbz", "rar", "cbr", "7z"].includes(ext)) return "archive";
   if (["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "psd"].includes(ext)) return "image";
-  if (["pdf", "epub", "txt"].includes(ext)) return "document";
+  if (["pdf", "epub"].includes(ext)) return "document";
   return name.includes(".") ? "other" : "folder";
 }
 
@@ -382,7 +384,7 @@ export function createMockClient(): ApiClient {
       const created: Item[] = [];
       for (const f of files) {
         const fk = kindFromName(f.name);
-        const guess: Kind = fk === "archive" || fk === "document" ? "doujin" : fk === "image" ? "illust" : fk === "video" ? "movie" : "other";
+        const guess: Kind = fk === "archive" || fk === "document" ? "doujin" : fk === "image" ? "illust" : fk === "video" ? "movie" : fk === "audio" ? "music" : "other";
         const it = insert({ title: f.name.replace(/\.[^.]+$/, ""), kind: kind ?? guess, archiveId: t?.archiveId, list });
         const [ref] = await api.attachBlobs!(it.id, [f]);
         const fresh = find(it.id);
@@ -466,6 +468,27 @@ export function createMockClient(): ApiClient {
     fileUrl: (f) => {
       const b = blobs.get(f.id);
       return b ? URL.createObjectURL(b) : null;
+    },
+    async readText(f) {
+      const b = blobs.get(f.id);
+      if (!b) throw new Error("미리보기: 이 세션에서 올린 파일만 열 수 있어요");
+      return await b.text();
+    },
+    async writeText(f, content) {
+      const b = blobs.get(f.id);
+      if (!b) throw new Error("미리보기: 이 세션에서 올린 파일만 수정할 수 있어요");
+      const nf = new File([content], f.name, { type: b.type || "text/plain" });
+      blobs.set(f.id, nf);
+      const it = find(f.itemId);
+      const ref = it.files.find((x) => x.id === f.id)!;
+      ref.size = nf.size; ref.mtime = Date.now(); commit();
+      return clone(ref);
+    },
+    async downloadFile(f) {
+      const b = blobs.get(f.id);
+      if (!b) throw new Error("미리보기: 이 세션에서 올린 파일만 내려받을 수 있어요");
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(b), download: f.name });
+      document.body.appendChild(a); a.click(); a.remove();
     },
 
     async listWatchFolders() { return delay(db.watch); },

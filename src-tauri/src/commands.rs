@@ -58,3 +58,7 @@ type R<T> = Result<T, Error>;
     Ok(())
 }
 #[tauri::command] pub async fn rescan(lib: State<'_, Library>) -> R<usize> { lib.rescan_watch_folders() }
+
+#[tauri::command] pub async fn read_text(lib: State<'_, Library>, file_id: String) -> R<String> { lib.read_text(&file_id) }
+#[tauri::command] pub async fn write_text(lib: State<'_, Library>, file_id: String, content: String) -> R<FileRef> { lib.write_text(&file_id, &content) }
+#[tauri::command] pub async fn export_file(lib: State<'_, Library>, file_id: String, dest: String) -> R<()> { lib.export_file(&file_id, &dest) }

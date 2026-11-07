@@ -1,6 +1,6 @@
 import {
   Clapperboard, Building2, Mic2, Megaphone,
-  File, FileArchive, FileImage, FileText, FileVideo, Folder,
+  File, FileArchive, FileAudio, FileCode2, FileImage, FileText, FileVideo, Folder,
   Hash, UserRound, Shapes, Layers, Users, type LucideIcon,
 } from "lucide-react";
 import { KIND_CONFIG } from "./kinds";
@@ -26,6 +26,8 @@ export const TAG_META: Record<TagCategory, { label: string; icon: LucideIcon }> 
 
 export const FILE_META: Record<FileKind, LucideIcon> = {
   video: FileVideo,
+  audio: FileAudio,
+  text: FileCode2,
   archive: FileArchive,
   image: FileImage,
   folder: Folder,

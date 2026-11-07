@@ -70,6 +70,12 @@ export function createHttpClient(baseUrl: string): ApiClient {
     listPages: (f) => req("GET", `/files/${f.id}/pages`),
     pageUrl: (f, i) => withToken(`${base}/api/files/${f.id}/pages/${i}`),
     fileUrl: (f) => withToken(`${base}/api/files/${f.id}/raw`),
+    readText: (f) => req("GET", `/files/${f.id}/text`),
+    writeText: (f, content) => req("PUT", `/files/${f.id}/text`, { content }),
+    downloadFile: async (f) => {
+      const a = Object.assign(document.createElement("a"), { href: withToken(`${base}/api/files/${f.id}/raw?download=1`), download: f.name });
+      document.body.appendChild(a); a.click(); a.remove();
+    },
 
     listWatchFolders: () => req("GET", "/watch"),
     addWatchFolder: (path, kind, list) => req("POST", "/watch", { path, kind, list }),

@@ -18,14 +18,34 @@ export async function openSource(file: FileRef): Promise<PageSource> {
   return { count: names.length, url: async (i) => api.pageUrl(file, i), dispose() {} };
 }
 
+let workerPort: Worker | null = null;
+/**
+ * pdf.js worker started from a blob: URL built from the bundled worker source. A file URL breaks in the
+ * single-file preview / sandboxed pages ("Setting up fake worker failed: failed to fetch dynamically imported module").
+ */
+async function pdfWorker(): Promise<Worker> {
+  if (!workerPort) {
+    const code = (await import("pdfjs-dist/build/pdf.worker.min.mjs?raw")).default as string;
+    workerPort = new Worker(URL.createObjectURL(new Blob([code], { type: "text/javascript" })), { type: "module" });
+  }
+  return workerPort;
+}
+
 /** PDF via pdf.js (lazy-loaded). Pages are rendered to canvas → blob URLs on demand and cached. */
 async function openPdf(file: FileRef): Promise<PageSource> {
   const url = api.fileUrl(file);
   if (!url) throw new Error("PDF를 열 수 없어요");
   const pdfjs = await import("pdfjs-dist");
-  const worker = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
-  pdfjs.GlobalWorkerOptions.workerSrc = worker;
-  const doc = await pdfjs.getDocument({ url }).promise;
+  if (self.origin === "null" || location.protocol === "file:") {
+    // Sandboxed / file:// pages (opaque origin) cannot run the worker. pdf.js then runs its parser on the
+    // main thread, and finds it here instead of trying to import a file (which is what failed before).
+    (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = await import("pdfjs-dist/build/pdf.worker.min.mjs");
+  } else {
+    pdfjs.GlobalWorkerOptions.workerPort = await pdfWorker();
+  }
+  // Hand pdf.js the bytes (not the URL): works the same for asset://, blob: and sandboxed/opaque origins.
+  const data = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const doc = await pdfjs.getDocument({ data }).promise;
   const cache = new Map<number, Promise<string>>();
   const render = async (i: number) => {
     const page = await doc.getPage(i + 1);

@@ -1,11 +1,11 @@
 import {
-  Archive, BookOpen, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
+  type LucideIcon, Archive, CalendarDays, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import type { Item } from "@/api/types";
 import { useApp } from "@/store/app";
-import { KIND_META } from "@/lib/meta";
+import { KIND_META, TAG_META } from "@/lib/meta";
 import { KIND_CONFIG } from "@/lib/kinds";
 import { cn } from "@/lib/cn";
 import { Cover } from "@/components/ui/Cover";
@@ -13,6 +13,8 @@ import { Popover } from "@/components/ui/Popover";
 import { Stars } from "@/components/ui/Stars";
 import { MenuItem, MenuSep } from "@/components/ui/Menu";
 import { PropertyList } from "./PropertyList";
+import { fileAction } from "./FileList";
+import { isViewable } from "@/components/viewer/files";
 import { isReadable } from "@/components/reader/source";
 import { FileList } from "./FileList";
 import { BlockEditor } from "./BlockEditor";
@@ -37,8 +39,9 @@ export function DetailPanel() {
   if (!item) return null;
   const K = KIND_META[item.kind];
   const cfg = KIND_CONFIG[item.kind];
-  const readable = item.files.find(isReadable);
-  const firstFile = item.files[0];
+  // primary file action: read (pdf/zip/images) › play (video/audio) › view (text) › open with the OS
+  const primary = item.files.find(isReadable) ?? item.files.find(isViewable) ?? item.files[0];
+  const act = primary ? fileAction(primary) : null;
   const banner = api.mediaUrl(item.bannerUri);
   const yt = item.kind === "music" ? ytId(item.url) : null;
   const wish = item.list === "wishlist";
@@ -55,13 +58,13 @@ export function DetailPanel() {
           {full ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
         <div className="flex-1" />
-        {readable && (
-          <button className="btn btn-primary mr-1 h-8 px-2.5" onClick={() => openReader(item, readable)} data-tip={readable.name}>
-            <BookOpen size={15} />읽기
+        {primary && act && (
+          <button className="btn btn-primary mr-1 h-8 px-2.5" onClick={() => openReader(item, primary)} data-tip={primary.name}>
+            <act.icon size={15} />{act.label.split("·")[0]}
           </button>
         )}
-        {!readable && firstFile && (
-          <button className="btn-icon" onClick={() => void api.openFile(firstFile)} data-tip={`열기: ${firstFile.name}`}><Play size={16} /></button>
+        {primary && !act && (
+          <button className="btn-icon" onClick={() => void api.openFile(primary)} data-tip={`열기: ${primary.name}`}><Play size={16} /></button>
         )}
         {item.kind !== "doujin" && (
           <button className="btn-icon" onClick={() => setDialog({ type: "metadata", itemId: item.id })} data-tip="정보·이미지 자동 검색"><Wand2 size={16} /></button>
@@ -109,16 +112,15 @@ export function DetailPanel() {
         </div>
 
         <div className={cn("relative flex gap-4 px-7", banner && "-mt-16", full && "mx-auto w-full max-w-3xl")}>
-          <Cover item={item} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", cfg.aspect === "1/1" ? "aspect-square w-28" : cfg.aspect === "16/9" ? "aspect-video w-40" : "aspect-[2/3] w-28")} />
+          <CoverPicker item={item} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", cfg.aspect === "1/1" ? "aspect-square w-28" : cfg.aspect === "16/9" ? "aspect-video w-40" : "aspect-[2/3] w-28")} />
           <div className="flex min-w-0 flex-1 flex-col pt-1">
             <div className={cn(banner && "pt-10")}><TitleInput item={item} /></div>
-            <div className="mt-1 flex items-center gap-1.5 truncate text-[length:calc(12px*var(--ts))] text-muted">
-              <K.icon size={13} className="shrink-0" />
-              {people.map((t) => t.name).join(", ") || K.label}
-              {item.year && <span>· {item.year}</span>}
-            </div>
-            <div className="mt-auto pt-3">
-              <Stars value={item.rating} size={18} onChange={(rating) => void updateItem(item.id, { rating })} />
+            {/* rating right under the title, then the key facts as pills */}
+            <div className="mt-1.5"><Stars value={item.rating} size={18} onChange={(rating) => void updateItem(item.id, { rating })} /></div>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <Pill icon={K.icon}>{K.label}</Pill>
+              {people.map((t) => { const I = TAG_META[t.category].icon; return <Pill key={t.id} icon={I}>{t.name}</Pill>; })}
+              {item.year && <Pill icon={CalendarDays}>{item.year}</Pill>}
             </div>
           </div>
         </div>
@@ -177,6 +179,44 @@ function Summary({ text }: { text: string }) {
     <div className="mt-5">
       <p className={cn("whitespace-pre-line text-[length:calc(13px*var(--ts))] leading-relaxed text-fg/80", !open && "line-clamp-4")}>{text}</p>
       {text.length > 160 && <button className="mt-1 text-[length:calc(12px*var(--ts))] text-muted hover:text-fg" onClick={() => setOpen(!open)}>{open ? "접기" : "더보기"}</button>}
+    </div>
+  );
+}
+
+function Pill({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex h-7 max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-subtle/60 px-2.5 text-[length:calc(12px*var(--ts))] text-fg/80">
+      <Icon size={13} className="shrink-0 text-muted" /><span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+/** Cover with a hover button to replace it: desktop picks a file, browser uploads an image. */
+function CoverPicker({ item, className }: { item: Item; className: string }) {
+  const update = useApp((s) => s.updateItem);
+  const input = useRef<HTMLInputElement>(null);
+  const setFromFile = (f: File) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 900 / Math.max(img.width, img.height));
+      const c = Object.assign(document.createElement("canvas"), { width: img.width * k, height: img.height * k });
+      c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+      void update(item.id, { coverUri: c.toDataURL("image/jpeg", 0.88) });
+    };
+    img.src = URL.createObjectURL(f);
+  };
+  const pick = async () => {
+    if (!api.caps.localFiles) return input.current?.click();
+    const p = await api.pickPaths({ multiple: false });
+    if (p?.[0]) void update(item.id, { coverUri: p[0] });
+  };
+  return (
+    <div className={cn("group/cover relative overflow-hidden", className)}>
+      <Cover item={item} className="absolute inset-0" />
+      <button onClick={() => void pick()} className="touch-show absolute inset-x-0 bottom-0 flex h-8 items-center justify-center gap-1 bg-black/55 text-[length:calc(11px*var(--ts))] text-white opacity-0 transition-opacity group-hover/cover:opacity-100">
+        <ImagePlus size={13} />표지 바꾸기
+      </button>
+      <input ref={input} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setFromFile(f); e.target.value = ""; }} />
     </div>
   );
 }

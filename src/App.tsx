@@ -20,6 +20,7 @@ import { MetadataDialog } from "@/components/dialogs/MetadataDialog";
 import { LinkDialog } from "@/components/dialogs/LinkDialog";
 import { ImportDialog } from "@/components/dialogs/ImportDialog";
 import { Reader } from "@/components/reader/Reader";
+import { FileViewer } from "@/components/viewer/FileViewer";
 import { TooltipLayer } from "@/components/ui/TooltipLayer";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { useShortcuts } from "@/hooks/useShortcuts";
@@ -96,6 +97,7 @@ export default function App() {
       <LinkDialog />
       <ImportDialog />
       <Reader />
+      <FileViewer />
       <DragGhost />
       <TooltipLayer />
 

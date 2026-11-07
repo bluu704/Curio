@@ -124,6 +124,55 @@ pub fn from_youtube(input: &str) -> Result<Candidate> {
     Ok(c)
 }
 
+
+/// YouTube search without an API key: read video ids from the results page, then oEmbed each.
+pub fn search_youtube(q: &str, music: bool) -> Result<Vec<Candidate>> {
+    let html = agent()
+        .get("https://www.youtube.com/results")
+        .query("search_query", q)
+        .set("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8")
+        .call()
+        .map_err(net)?
+        .into_string()?;
+    let re = regex::Regex::new(r#""videoId":"([A-Za-z0-9_-]{11})""#).unwrap();
+    let mut ids: Vec<String> = vec![];
+    for c in re.captures_iter(&html) {
+        if !ids.contains(&c[1].to_string()) {
+            ids.push(c[1].to_string());
+        }
+        if ids.len() == 4 {
+            break;
+        }
+    }
+    Ok(std::thread::scope(|sc| {
+        let hs: Vec<_> = ids
+            .iter()
+            .map(|id| sc.spawn(move || if music { from_youtube(id) } else { video(id) }))
+            .collect();
+        hs.into_iter().filter_map(|h| h.join().ok()?.ok()).collect()
+    }))
+}
+
+/// Plain video (not a song): title, channel and the largest thumbnail.
+pub fn video(id_or_url: &str) -> Result<Candidate> {
+    let vid = youtube_id(id_or_url).or_else(|| (id_or_url.len() == 11).then(|| id_or_url.to_string())).ok_or_else(|| Error::Invalid("not a YouTube link".into()))?;
+    let watch = format!("https://www.youtube.com/watch?v={vid}");
+    let o: Value = agent().get("https://www.youtube.com/oembed").query("url", &watch).query("format", "json").call().map_err(net)?.into_json()?;
+    let thumb = first_ok(&[format!("https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"), format!("https://i.ytimg.com/vi/{vid}/sddefault.jpg")])
+        .unwrap_or_else(|| format!("https://i.ytimg.com/vi/{vid}/hqdefault.jpg"));
+    let channel = o["author_name"].as_str().unwrap_or("").to_string();
+    Ok(Candidate {
+        provider: "youtube-video".into(),
+        id: vid,
+        title: o["title"].as_str().unwrap_or("").to_string(),
+        cover_url: Some(thumb.clone()),
+        banner_url: Some(thumb),
+        url: Some(watch),
+        people: if channel.is_empty() { vec![] } else { vec![Person { name: channel, category: TagCategory::Author, role: Some("Channel".into()) }] },
+        ..Default::default()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

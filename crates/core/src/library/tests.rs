@@ -110,7 +110,7 @@ fn wishlist_categories_counts_fts() {
     l.save_category(root.clone()).unwrap();
     l.save_category(child).unwrap();
     assert!(l.save_category(Category { parent_id: Some("c2".into()), ..root }).is_err(), "cycle rejected");
-    l.add_to_category(&[a.id.clone()], "c2").unwrap();
+    l.add_to_category(std::slice::from_ref(&a.id), "c2").unwrap();
     let q = |v: serde_json::Value| l.list_items(&serde_json::from_value(v).unwrap()).unwrap();
     assert_eq!(q(serde_json::json!({ "categoryId": "c1" })).len(), 1, "parent includes descendants");
     assert_eq!(q(serde_json::json!({ "kinds": ["anime"], "list": "wishlist" })).len(), 1);
@@ -196,4 +196,25 @@ fn custom_statuses() {
     assert_eq!(l.list_items(&serde_json::from_value(serde_json::json!({ "statuses": ["rewatch"] })).unwrap()).unwrap().len(), 1);
     assert_eq!(l.delete_status("rewatch", "completed").unwrap(), 1);
     assert_eq!(l.get_item(&it.id).unwrap().status, "completed");
+}
+
+#[test]
+fn text_files_read_write_export() {
+    let (l, dir) = lib();
+    let md = dir.path().join("notes.md");
+    std::fs::write(&md, "# 제목\n본문").unwrap();
+    let mp3 = dir.path().join("song.mp3");
+    std::fs::write(&mp3, b"ID3").unwrap();
+    let items = l.import_paths(&[md.to_string_lossy().into_owned(), mp3.to_string_lossy().into_owned()]).unwrap();
+    assert_eq!(items[0].files[0].kind, FileKind::Text);
+    assert_eq!(items[1].files[0].kind, FileKind::Audio);
+    assert_eq!(items[1].kind, Kind::Music);
+    let fid = &items[0].files[0].id;
+    assert_eq!(l.read_text(fid).unwrap(), "# 제목\n본문");
+    l.write_text(fid, "# 바뀜").unwrap();
+    assert_eq!(std::fs::read_to_string(&md).unwrap(), "# 바뀜");
+    assert!(l.read_text(&items[1].files[0].id).is_err(), "audio is not text");
+    let out = dir.path().join("copy.md");
+    l.export_file(fid, &out.to_string_lossy()).unwrap();
+    assert_eq!(std::fs::read_to_string(out).unwrap(), "# 바뀜");
 }

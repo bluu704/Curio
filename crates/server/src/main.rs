@@ -99,6 +99,11 @@ async fn main() {
         .route("/metadata/search", post(|State(s): S, Json(b): Json<Search>| async move { json!(s, move |l| l.search_metadata(b.kind, &b.query)) }))
         .route("/files/:id", delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.detach_file(&id)) }))
         .route("/files/:id/raw", get(raw_file))
+        .route(
+            "/files/:id/text",
+            get(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.read_text(&id)) })
+                .put(|State(s): S, Path(id): Path<String>, Json(b): Json<TextBody>| async move { json!(s, move |l| l.write_text(&id, &b.content)) }),
+        )
         .route("/files/:id/pages", get(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.list_pages(&id)) }))
         .route("/files/:id/pages/:idx", get(page))
         .route("/tags", get(|State(s): S| async move { json!(s, |l| l.list_tags()) }).post(|State(s): S, Json(t): Json<NewTag>| async move {
@@ -151,6 +156,10 @@ struct Paths { paths: Vec<String> }
 #[derive(Deserialize)]
 struct Fallback { fallback: String }
 #[derive(Deserialize)]
+struct TextBody { content: String }
+#[derive(Deserialize, Default)]
+struct RawQ { download: Option<String> }
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Import { paths: Vec<String>, kind: Option<Kind>, list: Option<ListKind>, archive_id: Option<String> }
 #[derive(Deserialize)]
@@ -171,9 +180,16 @@ async fn stream_path(path: String) -> Result<Response, ApiError> {
     Ok(([(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, "private, max-age=3600")], body).into_response())
 }
 
-async fn raw_file(State(s): S, Path(id): Path<String>) -> Result<Response, ApiError> {
+/// `?download=1` → saved as a file by the browser (Content-Disposition: attachment).
+async fn raw_file(State(s): S, Path(id): Path<String>, Query(q): Query<RawQ>) -> Result<Response, ApiError> {
     let f = run(&s, move |l| l.get_file(&id)).await?;
-    stream_path(f.uri).await
+    let mut res = stream_path(f.uri.clone()).await?;
+    if q.download.is_some() {
+        let name: String = f.name.chars().map(|c| if c.is_ascii_alphanumeric() || ".-_".contains(c) { c } else { '_' }).collect();
+        let v = format!("attachment; filename=\"{name}\"; filename*=UTF-8''{}", f.name.bytes().map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>());
+        if let Ok(h) = v.parse() { res.headers_mut().insert(header::CONTENT_DISPOSITION, h); }
+    }
+    Ok(res)
 }
 
 async fn page(State(s): S, Path((id, idx)): Path<(String, usize)>) -> Result<Response, ApiError> {
