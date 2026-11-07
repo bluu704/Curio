@@ -208,8 +208,9 @@ function BlockRow({
   const pendingItems = useRef<Item[]>([]);
   const detectSlash = (text: string, caret: number) => {
     const before = text.slice(0, caret);
-    const m = before.match(/(^|\s)\/([^\s/]{0,14})$/);
-    if (m) { setSlash((s) => ({ start: caret - m[2].length - 1, query: m[2], mode: s?.mode ?? "commands" })); setSel(0); }
+    // "/토글 제목 2" — spaces allowed while something still matches (like Notion)
+    const m = before.match(/(^|\s)\/([^/\n]{0,24})$/);
+    if (m && (!m[2].includes(" ") || matchCommands(m[2]).length > 0)) { setSlash((s) => ({ start: caret - m[2].length - 1, query: m[2], mode: s?.mode ?? "commands" })); setSel(0); }
     else if (slash?.mode !== "items") setSlash(null);
   };
   const applyCommand = (c: SlashCommand) => {
@@ -220,7 +221,8 @@ function BlockRow({
     if (c.kind === "mention") { onText(rest); setSlash({ start, query: "", mode: "items" }); setSel(0); return; }
     setSlash(null);
     if (c.kind === "type") {
-      const extra = c.type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : c.type === "todo" ? { checked: false } : richDefaults(c.type);
+      const rich = richDefaults(c.type);
+      const extra = c.type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : c.type === "todo" ? { checked: false } : { ...rich, ...(c.data ? { data: { ...rich.data, ...c.data } } : {}) };
       if (!rest.trim()) onPatch({ type: c.type, text: "", ...extra });
       else { onPatch({ text: rest }); onInsert(c.type); }
       return;

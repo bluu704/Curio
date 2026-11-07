@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { Cover } from "@/components/ui/Cover";
 
 export type SlashCommand =
-  | { id: string; label: string; icon: LucideIcon; keys: string; kind: "type"; type: BlockType }
+  | { id: string; label: string; icon: LucideIcon; keys: string; kind: "type"; type: BlockType; data?: Record<string, unknown> }
   | { id: string; label: string; icon: LucideIcon; keys: string; kind: "link" | "mention" | "date" };
 
 /** Notion-style "/" commands. `keys` = extra search words (Korean + English). */
@@ -28,6 +28,9 @@ export const COMMANDS: SlashCommand[] = [
   { id: "math", label: "수식", icon: Sigma, keys: "math latex tex 수학 공식", kind: "type", type: "math" },
   { id: "divider", label: "구분선", icon: Minus, keys: "divider line hr 줄 선", kind: "type", type: "divider" },
   { id: "toggle", label: "토글", icon: ChevronsRightLeft, keys: "toggle 접기 펼치기 숨기기", kind: "type", type: "toggle" },
+  { id: "toggle1", label: "토글 제목 1", icon: Heading1, keys: "toggle heading 토글제목 접는 제목", kind: "type", type: "toggle", data: { level: 1 } },
+  { id: "toggle2", label: "토글 제목 2", icon: Heading2, keys: "toggle heading 토글제목 접는 제목", kind: "type", type: "toggle", data: { level: 2 } },
+  { id: "toggle3", label: "토글 제목 3", icon: Heading3, keys: "toggle heading 토글제목 접는 제목", kind: "type", type: "toggle", data: { level: 3 } },
   { id: "image", label: "이미지", icon: ImageIcon, keys: "image picture 사진 그림 이미지", kind: "type", type: "image" },
   { id: "video", label: "동영상", icon: Clapperboard, keys: "video youtube 유튜브 영상 동영상", kind: "type", type: "video" },
   { id: "bookmark", label: "북마크", icon: BookmarkIcon, keys: "bookmark 북마크 웹 사이트 카드", kind: "type", type: "bookmark" },

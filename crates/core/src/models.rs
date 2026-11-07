@@ -26,7 +26,7 @@ macro_rules! str_enum {
 str_enum!(Kind {
     Illust = "illust", Game = "game", Anime = "anime", Webtoon = "webtoon", LightNovel = "light_novel",
     WebNovel = "web_novel", Music = "music", Doujin = "doujin", Catalog = "catalog", Manga = "manga",
-    Movie = "movie", Other = "other",
+    Movie = "movie", Drama = "drama", Book = "book", Other = "other",
 });
 str_enum!(ListKind { Archive = "archive", Wishlist = "wishlist" });
 /// Status id (user-defined, see `StatusDef`). Built-ins: planned, in_progress, completed, on_hold, dropped.
@@ -324,4 +324,6 @@ pub struct Candidate {
     pub series: Option<String>,
     pub url: Option<String>,
     pub code: Option<String>,
+    /// One-line extra info shown in the picker (e.g. "TV · 2023 가을 · 28화", "극장판").
+    pub detail: Option<String>,
 }

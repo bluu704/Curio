@@ -102,7 +102,7 @@ async fn main() {
         )
         .route("/items/:id/files", post(|State(s): S, Path(id): Path<String>, Json(b): Json<Paths>| async move { json!(s, move |l| l.attach_paths(&id, &b.paths)) }))
         .route("/items/:id/metadata", post(|State(s): S, Path(id): Path<String>, Json(b): Json<Apply>| async move {
-            json!(s, move |l| l.apply_metadata(&id, &b.provider, &b.id, b.overwrite_title))
+            json!(s, move |l| l.apply_metadata(&id, b.candidate, b.overwrite_title))
         }))
         .route("/items/:id/autofill", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.autofill(&id)) }))
         .route("/metadata/search", post(|State(s): S, Json(b): Json<Search>| async move { json!(s, move |l| l.search_metadata(b.kind, &b.query)) }))
@@ -178,7 +178,7 @@ struct Ids { item_ids: Vec<String> }
 struct Search { kind: Kind, query: String }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Apply { provider: String, id: String, #[serde(default)] overwrite_title: bool }
+struct Apply { candidate: Candidate, #[serde(default)] overwrite_title: bool }
 #[derive(Deserialize)]
 struct Watch { path: String, kind: Kind, list: ListKind }
 

@@ -11,6 +11,7 @@ import { Modal } from "@/components/ui/Modal";
 
 export const PROVIDER_LABEL: Record<string, string> = {
   anilist: "AniList", steam: "Steam", googleplay: "Google Play", naver: "네이버", wikipedia: "위키백과", youtube: "YouTube", deezer: "Deezer",
+  "youtube-video": "YouTube", kitsu: "Kitsu", tvmaze: "TVmaze", openlibrary: "Open Library", googlebooks: "Google 도서", vndb: "VNDB", pixiv: "pixiv", web: "웹",
 };
 
 /** Search several sources at once and apply one hit (cover/banner downloaded, people → tags). */
@@ -81,6 +82,7 @@ export function MetadataDialog() {
                 {c.year && <span className="text-[length:calc(12px*var(--ts))] text-muted">{c.year}</span>}
                 <span className="ml-auto shrink-0 rounded-md bg-subtle px-1.5 py-0.5 text-[length:calc(10px*var(--ts))] font-semibold text-muted">{PROVIDER_LABEL[c.provider] ?? c.provider}</span>
               </div>
+              {c.detail && <div className="text-[length:calc(12px*var(--ts))] font-medium text-accent">{c.detail}</div>}
               {c.altTitles.length > 0 && <div className="truncate text-[length:calc(12px*var(--ts))] text-muted">{c.altTitles.slice(0, 3).join(" · ")}</div>}
               <div className="mt-1 flex flex-wrap gap-1">
                 {c.people.slice(0, 5).map((p) => {

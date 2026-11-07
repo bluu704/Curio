@@ -33,19 +33,23 @@ export function RichBlock({ block, onPatch, all }: { block: Block; onPatch: Patc
 
 const setData = (b: Block, onPatch: Patch, p: Record<string, unknown>) => onPatch({ data: { ...b.data, ...p } });
 
+/** Toggle (Obsidian-style: small arrow, body not indented). data.level 1–3 = toggle heading. */
 function ToggleBlock({ block, onPatch }: { block: Block; onPatch: Patch }) {
   const open = block.data?.open !== false;
+  const level = Number(block.data?.level ?? 0);
+  const size = level === 1 ? "text-[length:calc(20px*var(--ts))] font-bold" : level === 2 ? "text-[length:calc(16px*var(--ts))] font-semibold" : level === 3 ? "text-[length:calc(14px*var(--ts))] font-semibold" : "font-medium";
   return (
     <div className="py-0.5">
-      <div className="flex items-center gap-1">
-        <button className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted hover:bg-subtle" onClick={() => setData(block, onPatch, { open: !open })}>
-          <ChevronRight size={15} className={cn("transition-transform", open && "rotate-90")} />
+      <div className="relative flex items-center">
+        {/* small arrow in the left margin: title and body stay aligned (no indent) */}
+        <button className="absolute -left-4 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-muted/70 hover:bg-subtle hover:text-fg" onClick={() => setData(block, onPatch, { open: !open })} data-tip={open ? "접기" : "펼치기"}>
+          <ChevronRight size={12} strokeWidth={2.5} className={cn("transition-transform", open && "rotate-90")} />
         </button>
-        <input className="h-7 min-w-0 flex-1 bg-transparent font-medium outline-none placeholder:text-muted/40" placeholder="토글 제목" value={block.text} onChange={(e) => onPatch({ text: e.target.value })} />
+        <input className={cn("min-w-0 flex-1 bg-transparent py-1 outline-none placeholder:text-muted/40", size)} placeholder={level ? `토글 제목 ${level}` : "토글"} value={block.text} onChange={(e) => onPatch({ text: e.target.value })} />
       </div>
       {open && (
         <textarea
-          className="ml-7 block w-[calc(100%-1.75rem)] resize-none overflow-hidden bg-transparent py-1 leading-relaxed outline-none placeholder:text-muted/40"
+          className="block w-full resize-none overflow-hidden border-l-2 border-line/0 bg-transparent py-1 leading-relaxed outline-none placeholder:text-muted/40"
           placeholder="내용"
           rows={Math.max(1, str(block.data?.body).split("\n").length)}
           value={str(block.data?.body)}

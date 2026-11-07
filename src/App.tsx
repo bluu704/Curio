@@ -24,6 +24,7 @@ import { FileViewer } from "@/components/viewer/FileViewer";
 import { TooltipLayer } from "@/components/ui/TooltipLayer";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { TrashView } from "@/components/views/TrashView";
+import { CalendarPage } from "@/components/views/CalendarPage";
 import { useShortcuts } from "@/hooks/useShortcuts";
 
 export default function App() {
@@ -61,7 +62,7 @@ export default function App() {
         </div>
       )}
       <main className="flex min-w-0 flex-1 flex-col">
-        {s.activeViewId === "sys:trash" ? <TrashView /> : <>
+        {s.activeViewId === "sys:trash" ? <TrashView /> : s.activeViewId === "sys:calendar" ? <CalendarPage /> : <>
         <Toolbar />
         <div className="flex min-h-0 flex-1">
           {s.showCategories && <div className="hidden md:flex"><CategoryTree /></div>}

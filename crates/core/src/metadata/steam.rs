@@ -78,5 +78,6 @@ pub fn fetch(id: &str) -> Result<Candidate> {
         series: None,
         url: Some(format!("https://store.steampowered.com/app/{id}")),
         code: None,
+        detail: None,
     })
 }

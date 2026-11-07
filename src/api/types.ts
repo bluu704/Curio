@@ -4,7 +4,7 @@
 export type ID = string;
 
 export const KINDS = [
-  "illust", "game", "anime", "webtoon", "light_novel", "web_novel", "music", "doujin", "catalog", "manga", "movie", "other",
+  "illust", "game", "anime", "webtoon", "light_novel", "web_novel", "music", "doujin", "catalog", "manga", "movie", "drama", "book", "other",
 ] as const;
 export type Kind = (typeof KINDS)[number];
 
@@ -255,4 +255,6 @@ export interface Candidate {
   series: string | null;
   url: string | null;
   code: string | null;
+  /** one-line extra info, e.g. "TV · 2023 가을 · 28화", "극장판" */
+  detail?: string | null;
 }

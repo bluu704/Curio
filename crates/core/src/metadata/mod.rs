@@ -15,8 +15,9 @@
 //!
 //! Search returns candidates; `fetch(provider, id)` returns full details.
 
-mod anilist;
+pub(crate) mod anilist;
 mod googleplay;
+mod more;
 mod music;
 mod naver;
 mod steam;
@@ -63,15 +64,24 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
     if let Some(id) = regex::Regex::new(r"play\.google\.com/store/apps/details\?id=([A-Za-z0-9._]+)").unwrap().captures(q) {
         return googleplay::fetch(&id[1]).map(|c| vec![c]);
     }
+    if let Some(id) = more::pixiv_id(q) {
+        return more::pixiv(&id).map(|c| vec![c]);
+    }
+    // any other web page → OpenGraph preview (title, image, description)
+    if q.starts_with("http://") || q.starts_with("https://") {
+        return more::opengraph(q).map(|c| vec![c]);
+    }
 
     let wiki: Job = Box::new(|| wikipedia::search(q));
     let jobs: Vec<Job> = match kind {
-        Kind::Anime => vec![Box::new(|| anilist::search(q, anilist::Scope::Anime)), wiki],
+        Kind::Anime => vec![Box::new(|| anilist::search(q, anilist::Scope::Anime)), Box::new(|| more::kitsu(q, false)), wiki],
         Kind::Webtoon => vec![Box::new(|| naver::search(q, naver::Scope::Webtoon)), Box::new(|| anilist::search(q, anilist::Scope::Comic)), wiki],
-        Kind::WebNovel => vec![Box::new(|| naver::search(q, naver::Scope::Novel)), Box::new(|| anilist::search(q, anilist::Scope::Novel)), wiki],
-        Kind::LightNovel => vec![Box::new(|| anilist::search(q, anilist::Scope::Novel)), wiki],
-        Kind::Manga => vec![Box::new(|| anilist::search(q, anilist::Scope::Comic)), wiki],
-        Kind::Game => vec![Box::new(|| steam::search(q)), Box::new(|| googleplay::search(q)), wiki],
+        Kind::WebNovel => vec![Box::new(|| naver::search(q, naver::Scope::Novel)), Box::new(|| anilist::search(q, anilist::Scope::Novel)), Box::new(|| more::google_books(q)), wiki],
+        Kind::LightNovel => vec![Box::new(|| anilist::search(q, anilist::Scope::Novel)), Box::new(|| more::google_books(q)), Box::new(|| more::open_library(q)), wiki],
+        Kind::Manga => vec![Box::new(|| anilist::search(q, anilist::Scope::Comic)), Box::new(|| more::kitsu(q, true)), Box::new(|| more::open_library(q)), wiki],
+        Kind::Book => vec![Box::new(|| more::google_books(q)), Box::new(|| more::open_library(q)), wiki],
+        Kind::Drama => vec![Box::new(|| more::tvmaze(q)), wiki],
+        Kind::Game => vec![Box::new(|| steam::search(q)), Box::new(|| googleplay::search(q)), Box::new(|| more::vndb(q)), wiki],
         Kind::Music => vec![Box::new(|| music::search(q)), Box::new(|| music::search_youtube(q, true)), wiki],
         Kind::Movie => vec![wiki, Box::new(|| music::search_youtube(q, false))],
         Kind::Other => vec![Box::new(|| music::search_youtube(q, false)), wiki],
@@ -108,6 +118,10 @@ pub fn fetch(provider: &str, id: &str) -> Result<Candidate> {
         "wikipedia" => wikipedia::fetch(id),
         "youtube" => music::from_youtube(id),
         "youtube-video" => music::video(id),
+        "pixiv" => more::pixiv(id),
+        "web" => more::opengraph(id),
+        // these sources return full details in search already
+        "kitsu" | "tvmaze" | "openlibrary" | "googlebooks" | "vndb" => Err(Error::Unsupported("use the search result".into())),
         "deezer" => music::fetch_deezer(id),
         p => Err(Error::Invalid(format!("unknown provider {p}"))),
     }
@@ -228,6 +242,32 @@ mod live_links {
                 }
                 Ok(_) => println!("{k:<8?} {q} → NO RESULTS"),
                 Err(e) => println!("{k:<8?} {q} → ERROR {e}"),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod live_more {
+    //! `cargo test -p curio-core live_more -- --ignored --nocapture`
+    use super::*;
+    #[test]
+    #[ignore]
+    fn new_sources() {
+        let cases: &[(Kind, &str)] = &[
+            (Kind::Anime, "Attack on Titan"),
+            (Kind::Drama, "The Glory"),
+            (Kind::Book, "Spice and Wolf"),
+            (Kind::Game, "Steins;Gate"),
+            (Kind::Illust, "https://www.webtoons.com/en/fantasy/tower-of-god/list?title_no=95"),
+            (Kind::Other, "https://page.kakao.com/"),
+        ];
+        for (k, q) in cases {
+            match search(*k, q) {
+                Ok(h) => for c in h.iter().take(4) {
+                    println!("{k:?} {q:.30} → [{}] {} | {} | series {:?} | cover {}", c.provider, c.title, c.detail.clone().unwrap_or_default(), c.series, c.cover_url.is_some());
+                },
+                Err(e) => println!("{k:?} {q} → ERROR {e}"),
             }
         }
     }

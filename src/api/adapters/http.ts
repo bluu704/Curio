@@ -71,7 +71,7 @@ export function createHttpClient(baseUrl: string): ApiClient {
     importPaths: (paths, t) => req("POST", "/import", { paths, ...t }),
 
     searchMetadata: (kind, query) => req("POST", "/metadata/search", { kind, query }),
-    applyMetadata: (itemId, c, overwriteTitle) => req("POST", `/items/${itemId}/metadata`, { provider: c.provider, id: c.id, overwriteTitle }),
+    applyMetadata: (itemId, c, overwriteTitle) => req("POST", `/items/${itemId}/metadata`, { candidate: c, overwriteTitle }),
     autofill: (itemId) => req("POST", `/items/${itemId}/autofill`),
 
     listPages: (f) => req("GET", `/files/${f.id}/pages`),

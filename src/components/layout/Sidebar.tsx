@@ -1,4 +1,4 @@
-import { ChevronDown, GalleryVerticalEnd, Gift, Monitor, Moon, PanelLeft, Pin, Plus, Settings, Sun, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronDown, GalleryVerticalEnd, Gift, Monitor, Moon, PanelLeft, Pin, Plus, Settings, Sun, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useApp } from "@/store/app";
 import { longPress } from "@/store/drag";
@@ -114,6 +114,16 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2.5 py-2">
         <Row v={byId("sys:all")} n={total} trailing={null} />
         <Row v={byId("sys:fav")} trailing={null} />
+        <button
+          onClick={() => setView("sys:calendar")}
+          data-tip={wide ? undefined : "캘린더"}
+          data-tip-side="right"
+          className={cn("flex h-9 w-full shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 transition-colors",
+            activeViewId === "sys:calendar" ? "bg-accent/10 text-accent" : "text-muted hover:bg-subtle hover:text-fg", !wide && "justify-center px-0")}
+        >
+          <CalendarDays size={18} strokeWidth={activeViewId === "sys:calendar" ? 2.2 : 1.8} className="shrink-0" />
+          {wide && <span className="flex-1 text-left text-[length:calc(13px*var(--ts))] font-medium">캘린더</span>}
+        </button>
         <div className="mx-1 my-2 h-px shrink-0 bg-line" />
         {wide && (
           <div className="flex items-center pb-1 pl-2.5 pr-1">

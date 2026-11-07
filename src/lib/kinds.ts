@@ -1,5 +1,5 @@
 import {
-  BookMarked, BookOpen, Box, Clapperboard, Feather, Gamepad2, Image, Music, NotebookText, Smartphone, Tag, Tv, type LucideIcon,
+  BookMarked, BookOpen, BookText, Box, Clapperboard, Drama, Feather, Gamepad2, Image, Music, NotebookText, Smartphone, Tag, Tv, type LucideIcon,
 } from "lucide-react";
 import type { CardAspect, CardField, Kind, Layout, TagCategory } from "@/api/types";
 
@@ -80,6 +80,16 @@ export const KIND_CONFIG: Record<Kind, KindConfig> = {
     tagCats: [["director", "감독"], ["cast", "출연"], ["studio", "제작사"], ["genre", "장르"], ["tag", "태그"]],
     showUrl: true,
   },
+  drama: {
+    label: "드라마", short: "드라마", icon: Drama, layout: "gallery", aspect: "2/3", cardFields: ["status", "rating", "author"],
+    tagCats: [["director", "감독"], ["cast", "출연"], ["publisher", "방송·OTT"], ["series", "시리즈"], ["genre", "장르"], ["tag", "태그"]],
+    showUrl: true, searchHint: "드라마 제목 (영문 제목이 정확해요)",
+  },
+  book: {
+    label: "책", short: "책", icon: BookText, layout: "gallery", aspect: "2/3", cardFields: ["status", "rating", "author"],
+    tagCats: [["author", "저자"], ["publisher", "출판사"], ["series", "시리즈"], ["genre", "분야"], ["tag", "태그"]],
+    showUrl: true, showCode: true, searchHint: "책 제목 또는 저자", readable: true,
+  },
   other: {
     label: "기타", short: "기타", icon: Box, layout: "gallery", aspect: "2/3", cardFields: ["kind", "rating"],
     tagCats: [["author", "작가"], ["tag", "태그"]], showUrl: true,
@@ -87,7 +97,7 @@ export const KIND_CONFIG: Record<Kind, KindConfig> = {
 };
 
 /** Kinds that have their own archive section in the sidebar (in order). */
-export const ARCHIVE_KINDS: Kind[] = ["illust", "game", "anime", "webtoon", "light_novel", "web_novel", "music", "doujin", "catalog", "manga", "movie"];
+export const ARCHIVE_KINDS: Kind[] = ["illust", "game", "anime", "webtoon", "light_novel", "web_novel", "music", "doujin", "catalog", "manga", "movie", "drama", "book"];
 
 /** View ids of an archive (its own layout/card settings are stored in these views). */
 export const viewIdFor = (archiveId: string, list: "archive" | "wishlist") => (list === "archive" ? `arc:${archiveId}` : `arc:${archiveId}:wish`);

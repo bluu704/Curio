@@ -678,9 +678,10 @@ impl Library {
 
     /// Fetch full details, download hi-res cover/banner locally, link people/genres as tags.
     /// Network work happens *before* taking the DB lock.
-    pub fn apply_metadata(&self, item_id: &str, provider: &str, id: &str, overwrite_title: bool) -> Result<Item> {
-        let cand = metadata::fetch(provider, id)?;
-        self.apply_candidate(item_id, cand, overwrite_title)
+    pub fn apply_metadata(&self, item_id: &str, cand: Candidate, overwrite_title: bool) -> Result<Item> {
+        // richer details when the source has them; otherwise the hit as shown in the picker
+        let full = metadata::fetch(&cand.provider, &cand.id).unwrap_or(cand);
+        self.apply_candidate(item_id, full, overwrite_title)
     }
 
     pub fn apply_candidate(&self, item_id: &str, cand: Candidate, overwrite_title: bool) -> Result<Item> {

@@ -11,7 +11,7 @@ pub enum Scope {
 }
 
 const FIELDS: &str = r#"
-  id siteUrl type format countryOfOrigin
+  id siteUrl type format countryOfOrigin season seasonYear episodes chapters volumes
   title { romaji english native } synonyms
   coverImage { extraLarge large } bannerImage
   startDate { year } description(asHtml: false) genres
@@ -137,7 +137,19 @@ fn to_candidate(m: &Value) -> Candidate {
         }
     }
 
+    // "TV · 2023 가을 · 28화" / "극장판" — tells seasons, cours and movies apart
+    let fmt = match m["format"].as_str().unwrap_or("") {
+        "TV" => "TV", "TV_SHORT" => "TV 단편", "MOVIE" => "극장판", "SPECIAL" => "스페셜", "OVA" => "OVA", "ONA" => "ONA",
+        "MUSIC" => "뮤직비디오", "MANGA" => "만화", "NOVEL" => "소설", "ONE_SHOT" => "단편", _ => "",
+    };
+    let season = match m["season"].as_str().unwrap_or("") { "WINTER" => "겨울", "SPRING" => "봄", "SUMMER" => "여름", "FALL" => "가을", _ => "" };
+    let when = m["seasonYear"].as_i64().map(|y| if season.is_empty() { format!("{y}") } else { format!("{y} {season}") });
+    let count = m["episodes"].as_i64().map(|e| format!("{e}화")).or_else(|| m["volumes"].as_i64().map(|v| format!("{v}권")));
+    let detail = [Some(fmt.to_string()).filter(|x| !x.is_empty()), when, count].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+    let series = series_name(s(&t["english"]).or_else(|| s(&t["romaji"])).as_deref().unwrap_or(""));
+
     Candidate {
+        detail: Some(detail).filter(|d| !d.is_empty()),
         provider: "anilist".into(),
         id: m["id"].as_i64().unwrap_or(0).to_string(),
         title,
@@ -149,8 +161,34 @@ fn to_candidate(m: &Value) -> Candidate {
         summary: s(&m["description"]).map(|d| strip_html(&d)),
         people,
         genres: m["genres"].as_array().into_iter().flatten().filter_map(s).collect(),
-        series: None,
+        series,
         url: s(&m["siteUrl"]),
         code: None,
+    }
+}
+
+/// Franchise name shared by every season / cour / movie: strips "Season 2", "2nd Season", "Part 2", "Movie", ": subtitle"…
+/// e.g. "Attack on Titan Season 3 Part 2" → "Attack on Titan", "Frieren: Beyond Journey's End" → "Frieren".
+pub fn series_name(title: &str) -> Option<String> {
+    let re = regex::Regex::new(r"(?i)\s*(:|-|–)\s.*$|\s+(season|part|cour)\s*\d+.*$|\s+\d+(st|nd|rd|th)\s+season.*$|\s+(the\s+)?movie.*$|\s+(the\s+)?final(\s+season)?.*$|\s+(ii+|iv|v|\d+)$|\s*\(\d{4}\)$").unwrap();
+    let base = re.replace_all(title.trim(), "").trim().to_string();
+    (!base.is_empty()).then_some(base)
+}
+
+#[cfg(test)]
+mod series_tests {
+    use super::series_name;
+    #[test]
+    fn franchise_names() {
+        for (t, want) in [
+            ("Attack on Titan Season 3 Part 2", "Attack on Titan"),
+            ("Attack on Titan Final Season", "Attack on Titan"),
+            ("Frieren: Beyond Journey's End", "Frieren"),
+            ("Mushoku Tensei II", "Mushoku Tensei"),
+            ("Demon Slayer the Movie: Mugen Train", "Demon Slayer"),
+            ("Spy x Family Season 2", "Spy x Family"),
+        ] {
+            assert_eq!(series_name(t).as_deref(), Some(want), "{t}");
+        }
     }
 }

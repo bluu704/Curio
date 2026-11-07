@@ -51,7 +51,7 @@ export function createTauriClient(): ApiClient {
     importPaths: (paths, t) => invoke("import_paths", { paths, kind: t?.kind, list: t?.list, archiveId: t?.archiveId }),
 
     searchMetadata: (kind, query) => invoke("search_metadata", { kind, query }),
-    applyMetadata: (itemId, c, overwriteTitle) => invoke("apply_metadata", { itemId, provider: c.provider, id: c.id, overwriteTitle }),
+    applyMetadata: (itemId, candidate, overwriteTitle) => invoke("apply_metadata", { itemId, candidate, overwriteTitle }),
     autofill: (itemId) => invoke("autofill", { itemId }),
 
     listPages: (f) => invoke("list_pages", { fileId: f.id }),

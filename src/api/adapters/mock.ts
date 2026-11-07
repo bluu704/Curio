@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import { DEFAULT_VIEWS } from "@/lib/defaults";
 import { searchAniList } from "@/lib/anilist";
+import { kindFromLink } from "@/lib/links";
 import { ARCHIVE_KINDS, KIND_CONFIG } from "@/lib/kinds";
 import { DEFAULT_STATUSES } from "@/lib/statuses";
 
@@ -228,6 +229,7 @@ export function createMockClient(): ApiClient {
   db.categories ??= [];
   db.watch ??= [];
   db.archives ??= builtinArchives();
+  for (const a of builtinArchives()) if (!db.archives.some((x) => x.id === a.id)) db.archives.push(a); // archives added in later versions
   db.statuses ??= clone(DEFAULT_STATUSES);
   db.trash ??= [];
   db.settings ??= {};
@@ -432,6 +434,14 @@ export function createMockClient(): ApiClient {
 
     async searchMetadata(kind, query) {
       if (kind === "doujin") return [];
+      if (/^https?:\/\//i.test(query)) {
+        // preview: recognised links get a sample result, others are "unsupported" (the desktop app reads any page)
+        if (!kindFromLink(query)) return [];
+        let name = query;
+        try { name = decodeURIComponent(new URL(query).pathname.split("/").filter(Boolean).pop() ?? query).replace(/[-_]/g, " "); } catch { /* keep */ }
+        return [{ provider: "web", id: query, title: name, altTitles: [], kind, year: null, coverUrl: svgCover(7, name), bannerUrl: null,
+          summary: "미리보기 예시 결과예요. 데스크톱 앱에서는 실제 페이지에서 제목·이미지를 가져와요.", people: [], genres: [], series: null, url: query, code: null, detail: "미리보기" }];
+      }
       if (/youtu\.?be|music\.youtube|steampowered|play\.google/.test(query) || kind === "game" || kind === "music" || kind === "catalog" || kind === "movie" || kind === "illust" || kind === "other") {
         throw new Error("브라우저 미리보기에서는 AniList만 검색돼요. 데스크톱 앱에서는 Steam·Google Play·네이버·위키백과·YouTube도 함께 검색해요.");
       }

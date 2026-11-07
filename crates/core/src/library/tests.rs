@@ -169,7 +169,7 @@ fn reader_pages_and_watch_folder() {
 #[test]
 fn user_archives_and_pins() {
     let (l, _d) = lib();
-    assert_eq!(l.list_archives().unwrap().len(), 11, "built-in archives seeded");
+    assert_eq!(l.list_archives().unwrap().len(), 13, "built-in archives seeded");
     let a = Archive { id: "vocaloid".into(), name: "보컬로이드".into(), icon: "headphones".into(), kind: Kind::Music, format: Some("fmt1".into()), position: 20, pinned: true };
     l.save_archive(a).unwrap();
     assert_eq!(l.list_archives().unwrap()[0].id, "vocaloid", "pinned first");
@@ -183,7 +183,7 @@ fn user_archives_and_pins() {
     assert_eq!(l.list_items(&q).unwrap()[0].title, "Zzz", "pinned items come first");
     assert_eq!(l.delete_archive("vocaloid").unwrap(), 1);
     assert!(l.get_item(&x.id).is_err());
-    assert_eq!(l.list_archives().unwrap().len(), 11);
+    assert_eq!(l.list_archives().unwrap().len(), 13);
 }
 
 #[test]
