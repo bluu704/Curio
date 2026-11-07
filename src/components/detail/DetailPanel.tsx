@@ -1,5 +1,5 @@
 import {
-  type LucideIcon, Archive, CalendarDays, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
+  type LucideIcon, Archive, CalendarDays, CalendarOff, Cloud, CloudOff, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
@@ -8,6 +8,7 @@ import { useApp } from "@/store/app";
 import { KIND_META, TAG_META } from "@/lib/meta";
 import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
 import { cn } from "@/lib/cn";
+import { FLAG, isCalendarHidden, isCloudSynced, withFlag } from "@/lib/itemFlags";
 import { Cover } from "@/components/ui/Cover";
 import { Popover } from "@/components/ui/Popover";
 import { Stars } from "@/components/ui/Stars";
@@ -48,6 +49,8 @@ export function DetailPanel() {
   const wish = item.list === "wishlist";
   const people = item.tags.filter((t) => ["author", "studio", "circle", "director"].includes(t.category)).slice(0, 3);
 
+  const cloud = isCloudSynced(item);
+  const calHidden = isCalendarHidden(item);
   return (
     <aside key={item.id} data-drop-attach={item.id}
       onContextMenu={(e) => { if ((e.target as HTMLElement).closest("input,textarea")) return; e.preventDefault(); useApp.getState().openMenu({ x: e.clientX, y: e.clientY, target: { type: "item", id: item.id } }); }}
@@ -77,6 +80,10 @@ export function DetailPanel() {
         >
           {wish ? <Gift size={16} /> : <Archive size={16} />}
         </button>
+        <button className={cn("btn-icon", cloud && "text-sky-500 hover:text-sky-500")} onClick={() => void updateItem(item.id, { props: withFlag(item, FLAG.cloud, !cloud) })}
+          data-tip={cloud ? "클라우드 연동 켜짐 (누르면 끄기)" : "클라우드 연동 꺼짐 (누르면 켜기)"}>
+          {cloud ? <Cloud size={16} /> : <CloudOff size={16} />}
+        </button>
         <button className={cn("btn-icon", item.pinned && "text-accent hover:text-accent")} onClick={() => void updateItem(item.id, { pinned: !item.pinned })} data-tip={item.pinned ? "고정 해제 (P)" : "고정 (P)"}>
           <Pin size={16} fill={item.pinned ? "currentColor" : "none"} />
         </button>
@@ -86,6 +93,9 @@ export function DetailPanel() {
         <Popover align="end" width={200} trigger={({ toggle }) => <button className="btn-icon" onClick={toggle} data-tip="더보기"><Ellipsis size={16} /></button>}>
           {(close) => (
             <>
+              <MenuItem icon={calHidden ? CalendarDays : CalendarOff} onClick={() => { close(); void updateItem(item.id, { props: withFlag(item, FLAG.calendarHidden, !calHidden) }); }}>
+                {calHidden ? "캘린더에 다시 표시" : "캘린더에서 숨기기"}
+              </MenuItem>
               <MenuItem icon={ImagePlus} onClick={async () => { close(); const p = await api.pickPaths({ multiple: false }); if (p?.[0]) await updateItem(item.id, { coverUri: p[0] }); }}>표지 이미지 선택</MenuItem>
               {item.coverUri && <MenuItem icon={ImageMinus} onClick={() => { void updateItem(item.id, { coverUri: null }); close(); }}>표지 제거</MenuItem>}
               {item.bannerUri && <MenuItem icon={ImageMinus} onClick={() => { void updateItem(item.id, { bannerUri: null }); close(); }}>배너 제거</MenuItem>}

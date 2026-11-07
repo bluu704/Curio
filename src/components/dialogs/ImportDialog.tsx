@@ -53,7 +53,6 @@ export function ImportDialog() {
           <option value="wishlist">위시리스트</option>
         </select>
         <button className="btn ml-auto border border-line" onClick={() => void navigator.clipboard?.writeText(TEMPLATE)}><ClipboardCopy size={14} />템플릿 복사</button>
-        <button className="btn border border-line" onClick={() => setText(EXAMPLE)}>예시 넣기</button>
       </div>
 
       <div className="mt-3 rounded-xl bg-subtle p-3 text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">

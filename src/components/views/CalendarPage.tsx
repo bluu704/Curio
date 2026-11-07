@@ -1,9 +1,10 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Menu } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, Menu } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import type { Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { cn } from "@/lib/cn";
+import { FLAG, isCalendarHidden, withFlag } from "@/lib/itemFlags";
 import { renderInline } from "@/lib/markdown";
 import { Cover } from "@/components/ui/Cover";
 import { DetailPanel } from "@/components/detail/DetailPanel";
@@ -26,6 +27,18 @@ export function CalendarPage() {
       setItems([...a, ...w].filter((i) => !seen.has(i.id) && seen.add(i.id)));
     });
   }, [s.counts]);
+  // keep in sync with edits made in the detail panel (e.g. "캘린더에 다시 표시")
+  const detail = s.detail;
+  useEffect(() => { if (detail) setItems((xs) => xs.map((x) => (x.id === detail.id ? detail : x))); }, [detail]);
+  const setHidden = (it: Item, on: boolean) => {
+    const props = withFlag(it, FLAG.calendarHidden, on);
+    setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, props } : x)));
+    void s.updateItem(it.id, { props });
+  };
+  const hide = (it: Item) => {
+    setHidden(it, true);
+    s.notify("캘린더에서 숨겼어요 (항목 ⋯ 메뉴에서 다시 표시)", { label: "되돌리기", run: () => setHidden(it, false) });
+  };
   useEffect(() => { void api.getSettings<{ notes: Record<string, string> }>("calendar").then((c) => setNotes(c?.notes ?? {})); }, []);
   const saveNote = (k: string, v: string) => {
     const n = { ...notes };
@@ -36,7 +49,7 @@ export function CalendarPage() {
 
   const byDay = useMemo(() => {
     const m = new Map<string, Item[]>();
-    for (const it of items) { const k = keyOf(new Date(it.createdAt)); m.set(k, [...(m.get(k) ?? []), it]); }
+    for (const it of items) { if (isCalendarHidden(it)) continue; const k = keyOf(new Date(it.createdAt)); m.set(k, [...(m.get(k) ?? []), it]); }
     return m;
   }, [items]);
 
@@ -46,6 +59,7 @@ export function CalendarPage() {
   const cells = Array.from({ length: Math.ceil((first + days) / 7) * 7 }, (_, i) => (i < first || i >= first + days ? null : i - first + 1));
   const today = keyOf(new Date());
   const selItems = byDay.get(sel) ?? [];
+  const hiddenN = items.filter((it) => isCalendarHidden(it) && keyOf(new Date(it.createdAt)) === sel).length;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -97,13 +111,16 @@ export function CalendarPage() {
             rows={3}
             className="input h-auto resize-none py-2 leading-relaxed"
           />
-          <div className="label">이 날 추가한 항목 · {selItems.length}</div>
+          <div className="label">이 날 추가한 항목 · {selItems.length}{hiddenN > 0 && <span className="font-normal normal-case text-muted/70"> (숨김 {hiddenN})</span>}</div>
           <div className="space-y-1">
             {selItems.map((it) => (
-              <button key={it.id} onClick={() => void s.select(it.id)} className="flex w-full items-center gap-2 rounded-lg p-1.5 text-left hover:bg-subtle">
-                <Cover item={it} className="h-10 w-7 shrink-0 rounded" iconSize={12} />
-                <span className="min-w-0 flex-1 truncate">{it.title}</span>
-              </button>
+              <div key={it.id} className="group flex w-full items-center gap-2 rounded-lg p-1.5 hover:bg-subtle">
+                <button onClick={() => void s.select(it.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <Cover item={it} className="h-10 w-7 shrink-0 rounded" iconSize={12} />
+                  <span className="min-w-0 flex-1 truncate">{it.title}</span>
+                </button>
+                <button className="btn-icon h-7 w-7 shrink-0" onClick={() => hide(it)} data-tip="캘린더에서 숨기기"><Eye size={14} /></button>
+              </div>
             ))}
           </div>
         </aside>

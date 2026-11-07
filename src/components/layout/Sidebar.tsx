@@ -13,7 +13,7 @@ const THEME_LABEL = { light: "라이트", dark: "다크", system: "시스템" } 
 
 export function Sidebar({ drawer }: { drawer?: boolean }) {
   const s = useApp();
-  const { views, activeViewId, setView, sidebarExpanded, toggleSidebar, setSettingsOpen, createView, counts, archives, folded, toggleFold, openMenu, setDialog } = s;
+  const { views, activeViewId, setView, sidebarExpanded, toggleSidebar, setSettingsOpen, counts, archives, folded, toggleFold, openMenu, setDialog } = s;
   const wide = drawer || sidebarExpanded;
   const { mode, cycle } = useTheme();
   // ---- drag to reorder archives (pointer based; HTML5 DnD is unreliable in the Windows webview)
@@ -58,7 +58,6 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
   };
   const ThemeIcon = THEME_ICON[mode];
   const byId = (id: string) => views.find((v) => v.id === id);
-  const custom = views.filter((v) => !v.id.startsWith("sys:") && !v.id.startsWith("arc:"));
   const count = (archiveId: string, list: ListKind) => counts.find((c) => c.archiveId === archiveId && c.list === list)?.count ?? 0;
   const total = counts.filter((c) => c.list === "archive").reduce((a, c) => a + c.count, 0);
 
@@ -170,17 +169,6 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
             <Plus size={18} strokeWidth={1.8} />
           </button>
         )}
-        <div className="mx-1 my-2 h-px shrink-0 bg-line" />
-        {wide && (
-          <div className="flex items-center pb-1 pl-2.5 pr-1">
-            <span className="label flex-1">내 보기</span>
-            <button className="btn-icon h-6 w-6" onClick={() => void createView()} data-tip="현재 보기 복제"><Plus size={14} /></button>
-          </div>
-        )}
-        {custom.map((v) => (
-          <Row key={v.id} v={v} trailing={null}
-            onMenu={(e) => { e.preventDefault(); openMenu({ x: e.clientX, y: e.clientY, target: { type: "view", id: v.id } }); }} />
-        ))}
         <div className="mx-1 my-2 h-px shrink-0 bg-line" />
         <button
           onClick={() => setView("sys:trash")}

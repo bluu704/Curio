@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/Modal";
 export const PROVIDER_LABEL: Record<string, string> = {
   anilist: "AniList", steam: "Steam", googleplay: "Google Play", naver: "네이버", wikipedia: "위키백과", youtube: "YouTube", deezer: "Deezer",
   "youtube-video": "YouTube", kitsu: "Kitsu", tvmaze: "TVmaze", openlibrary: "Open Library", googlebooks: "Google 도서", vndb: "VNDB", pixiv: "pixiv", web: "웹",
+  x: "X", "youtube-post": "YouTube 게시물", spotify: "Spotify", soundcloud: "SoundCloud",
 };
 
 /** Search several sources at once and apply one hit (cover/banner downloaded, people → tags). */

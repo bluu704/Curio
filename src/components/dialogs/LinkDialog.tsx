@@ -1,10 +1,7 @@
 import { Link2, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/api";
-import type { Kind } from "@/api/types";
-import { KINDS } from "@/api/types";
 import { activeView, useApp, viewContext } from "@/store/app";
-import { KIND_CONFIG } from "@/lib/kinds";
 import { Modal } from "@/components/ui/Modal";
 import { kindFromLink } from "@/lib/links";
 export { kindFromLink };
@@ -14,17 +11,33 @@ export function LinkDialog() {
   const s = useApp();
   const ctx = viewContext(activeView(s));
   const [text, setText] = useState("");
-  const [kind, setKind] = useState<Kind>(ctx.kind ?? "music");
+  const archives = s.archives.filter((a) => a.kind !== "doujin");
+  const [arcId, setArcId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const open = s.dialog?.type === "link";
-  useEffect(() => { if (open) { setKind(ctx.kind && ctx.kind !== "doujin" ? ctx.kind : "anime"); setErr(null); } }, [open, ctx.kind]);
+  const [picked, setPicked] = useState(false); // user chose an archive by hand → stop auto-switching
+  useEffect(() => {
+    if (!open) return;
+    setArcId(archives.find((a) => a.id === ctx.archiveId)?.id ?? archives[0]?.id ?? "");
+    setPicked(false);
+    setErr(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ctx.archiveId]);
+  // A recognised link picks the matching archive (YouTube → 노래, X → 일러스트…) unless the
+  // current archive already accepts it (a YouTube link in 애니/영화 is a video).
+  const raw = kindFromLink(text);
+  const cur = archives.find((a) => a.id === arcId);
+  useEffect(() => {
+    if (!open || picked || !raw || !cur || cur.kind === raw) return;
+    if (raw === "music" && /youtu/i.test(text) && ["movie", "anime", "other", "drama"].includes(cur.kind)) return;
+    const m = archives.find((a) => a.kind === raw);
+    if (m) setArcId(m.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw, open, picked]);
   if (!open) return null;
 
-  // A YouTube link in a movie/anime/기타 archive is a video, not a song.
-  const raw = kindFromLink(text);
-  const detected = raw === "music" && ctx.kind && ["movie", "anime", "other", "drama"].includes(ctx.kind) ? ctx.kind : raw;
-  const k = detected ?? kind;
+  const k = cur?.kind ?? raw ?? "other";
   const v = text.trim();
   const isUrl = /^https?:\/\//i.test(v);
   const looksLikeLink = !isUrl && /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(v); // "example.com/…" without scheme
@@ -39,11 +52,11 @@ export function LinkDialog() {
         // links: only create the item when a source recognised it
         const hits = await api.searchMetadata(k, v).catch(() => []);
         if (!hits.length) { setErr("지원하지 않는 링크입니다"); return; }
-        const it = await s.createItem({ title: hits[0].title || "제목 없음", kind: k, list: ctx.list, url: v });
+        const it = await s.createItem({ title: hits[0].title || "제목 없음", kind: k, archiveId: cur?.id, list: ctx.list, url: v });
         await s.applyMetadata(it.id, hits[0], true);
         s.setDialog(null);
       } else {
-        const it = await s.createItem({ title: v, kind: k, list: ctx.list });
+        const it = await s.createItem({ title: v, kind: k, archiveId: cur?.id, list: ctx.list });
         const ok = await s.autofill([it.id]);
         s.setDialog(ok ? null : { type: "metadata", itemId: it.id });
       }
@@ -64,13 +77,9 @@ export function LinkDialog() {
         </div>
         <div className="flex items-center gap-2 text-[length:calc(12px*var(--ts))] text-muted">
           <span>종류</span>
-          {detected ? (
-            <span className="chip">{KIND_CONFIG[detected].label}</span>
-          ) : (
-            <select className="input h-7 w-36" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-              {KINDS.filter((x) => x !== "doujin").map((x) => <option key={x} value={x}>{KIND_CONFIG[x].label}</option>)}
-            </select>
-          )}
+          <select className="input h-7 w-40" value={arcId} onChange={(e) => { setArcId(e.target.value); setPicked(true); }}>
+            {archives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
           <span className="ml-auto">{ctx.list === "wishlist" ? "위시리스트에 추가" : "아카이브에 추가"}</span>
         </div>
         <div className="flex justify-end">

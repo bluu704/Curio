@@ -20,6 +20,7 @@ mod googleplay;
 mod more;
 mod music;
 mod naver;
+mod social;
 mod steam;
 mod wikipedia;
 pub mod codes;
@@ -66,6 +67,15 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
     }
     if let Some(id) = more::pixiv_id(q) {
         return more::pixiv(&id).map(|c| vec![c]);
+    }
+    if let Some((user, id)) = social::tweet_id(q) {
+        return social::tweet(&user, &id).map(|c| vec![c]);
+    }
+    if let Some(id) = social::yt_post_id(q) {
+        return social::yt_post(&id).map(|c| vec![c]);
+    }
+    if social::is_music_link(q) {
+        return social::music_link(q).map(|c| vec![c]);
     }
     // any other web page → OpenGraph preview (title, image, description)
     if q.starts_with("http://") || q.starts_with("https://") {
@@ -129,6 +139,9 @@ pub fn fetch(provider: &str, id: &str) -> Result<Candidate> {
         "youtube-video" => music::video(id),
         "pixiv" => more::pixiv(id),
         "web" => more::opengraph(id),
+        "x" => id.split_once('/').ok_or_else(|| Error::Invalid("bad id".into())).and_then(|(u, i)| social::tweet(u, i)),
+        "youtube-post" => social::yt_post(id),
+        "spotify" | "soundcloud" => social::music_link(id),
         // these sources return full details in search already
         "kitsu" | "tvmaze" | "openlibrary" | "googlebooks" | "vndb" => Err(Error::Unsupported("use the search result".into())),
         "deezer" => music::fetch_deezer(id),
