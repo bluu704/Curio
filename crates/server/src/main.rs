@@ -109,6 +109,7 @@ async fn main() {
             json!(s, move |l| l.cover_from_video(&id, b["fileId"].as_str().unwrap_or_default(), b["seconds"].as_f64().unwrap_or(0.0)))
         }))
         .route("/drive", get(|State(s): S| async move { json!(s, move |l| Ok(l.drive_status())) }))
+        .route("/drive/sync", post(|State(s): S| async move { json!(s, move |l| l.sync_drive()) }))
         .route("/drive/logout", post(|State(s): S| async move { json!(s, move |l| l.drive_logout()) }))
         .route("/drive/folder", post(|State(s): S, Json(b): Json<serde_json::Value>| async move { json!(s, move |l| l.drive_folder(b["link"].as_str().unwrap_or_default())) }))
         .route("/drive/import", post(|State(s): S, Json(b): Json<serde_json::Value>| async move {

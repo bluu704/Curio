@@ -1,0 +1,66 @@
+# Builds the desktop app on GitHub's computers — nothing to install on your PC.
+#
+# 1) Repository → Settings → Secrets and variables → Actions → New repository secret
+#      CURIO_GOOGLE_CLIENT_ID      = client_id from the Google OAuth JSON (desktop app)
+#      CURIO_GOOGLE_CLIENT_SECRET  = client_secret from the same file
+#    (kept encrypted by GitHub; never written into the repository)
+# 2) Actions → "Build Curio" → Run workflow   (or push a tag like v0.2.0)
+# 3) Download the installers from the run's "Artifacts" (or from Releases for a tag).
+name: Build Curio
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: macos-latest
+            name: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - run: npm ci
+
+      - name: Build installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURIO_GOOGLE_CLIENT_ID: ${{ secrets.CURIO_GOOGLE_CLIENT_ID }}
+          CURIO_GOOGLE_CLIENT_SECRET: ${{ secrets.CURIO_GOOGLE_CLIENT_SECRET }}
+        with:
+          # a tag push makes a draft release with the installers attached
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: "Curio ${{ github.ref_name }}"
+          releaseDraft: true
+
+      - name: Keep installers as a download
+        uses: actions/upload-artifact@v4
+        with:
+          name: curio-${{ matrix.name }}
+          path: |
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/dmg/*.dmg
+          if-no-files-found: ignore

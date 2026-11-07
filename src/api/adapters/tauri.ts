@@ -59,6 +59,7 @@ export function createTauriClient(): ApiClient {
     driveLogout: () => invoke("drive_logout"),
     driveFolder: (link) => invoke("drive_folder", { link }),
     driveImport: (link, t) => invoke("drive_import", { link, kind: t?.kind, list: t?.list, archiveId: t?.archiveId }),
+    driveSync: () => invoke("drive_sync"),
     coverFromVideo: (itemId, fileId, seconds) => invoke("cover_from_video", { itemId, fileId, seconds }),
 
     listPages: (f) => invoke("list_pages", { fileId: f.id }),

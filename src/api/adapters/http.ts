@@ -79,6 +79,7 @@ export function createHttpClient(baseUrl: string): ApiClient {
     driveLogout: () => req("POST", "/drive/logout"),
     driveFolder: (link) => req("POST", "/drive/folder", { link }),
     driveImport: (link, t) => req("POST", "/drive/import", { link, ...t }),
+    driveSync: () => req("POST", "/drive/sync"),
     coverFromVideo: (itemId, fileId, seconds) => req("POST", `/items/${itemId}/cover-from-video`, { fileId, seconds }),
 
     listPages: (f) => req("GET", `/files/${f.id}/pages`),

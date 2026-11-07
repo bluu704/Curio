@@ -1,7 +1,7 @@
 import { CircleAlert, CircleCheck, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { loadLibraryPalette } from "@/store/theme";
-import { autoImportDrive } from "@/components/settings/CloudTab";
+import { autoImportDrive, startAutoSync } from "@/components/settings/CloudTab";
 import { Upload } from "lucide-react";
 import { activeView, useApp } from "@/store/app";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -37,7 +37,7 @@ export default function App() {
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => { void useApp.getState().init(); }, []);
-  useEffect(() => { if (s.ready) { void loadLibraryPalette(); void autoImportDrive(); } }, [s.ready]);
+  useEffect(() => { if (s.ready) { void loadLibraryPalette(); void startAutoSync().then(() => autoImportDrive()); } }, [s.ready]);
   useShortcuts();
 
   // Ctrl+N and the other shortcuts live in useShortcuts (user-rebindable).

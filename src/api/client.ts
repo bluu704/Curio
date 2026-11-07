@@ -1,5 +1,5 @@
 import type {
-  Archive, ArchiveCount, Candidate, DriveImport, DriveStatus, Capabilities, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, ItemQuery, Kind,
+  Archive, ArchiveCount, Candidate, DriveImport, DriveStatus, SyncReport, Capabilities, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, ItemQuery, Kind,
   ListKind, NewItem, StatusDef, TrashedItem, Tag, TagCategory, View, WatchFolder,
 } from "./types";
 
@@ -78,6 +78,8 @@ export interface ApiClient {
   driveFolder(link: string): Promise<{ id: string; name: string }>;
   /** Download a Drive folder to this PC and add its files as items (new files only on repeat). */
   driveImport(link: string, target?: ImportTarget): Promise<DriveImport>;
+  /** Merge this library with its copy in Drive (other devices' changes in, this device's out). */
+  driveSync(): Promise<SyncReport>;
   /** Cover = frame of one of the item's videos (server side, ffmpeg). Absent where the browser can capture it. */
   coverFromVideo?(itemId: ID, fileId: ID, seconds: number): Promise<Item>;
 

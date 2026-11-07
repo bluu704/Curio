@@ -239,3 +239,53 @@ fn trash_restore_purge_and_settings() {
     l.save_category(Category { id: "x".into(), parent_id: None, kind: None, name: "폴더".into(), position: 0, color: Some("teal".into()) }).unwrap();
     assert_eq!(l.list_categories().unwrap()[0].color.as_deref(), Some("teal"));
 }
+
+/// Two devices share a library through a stand-in "cloud" (what Drive's app folder would hold).
+#[test]
+fn sync_between_two_devices() {
+    let (a, _da) = lib();
+    let (b, _db) = lib();
+    let mut cloud: Option<crate::sync::Snapshot> = None;
+    let sync = |l: &Library, cloud: &mut Option<crate::sync::Snapshot>| -> usize {
+        let (merged, pulled) = l.sync_merge(cloud.as_ref()).unwrap();
+        *cloud = Some(merged.clone());
+        l.sync_commit(&merged).unwrap();
+        pulled
+    };
+    let titles = |l: &Library| {
+        let mut t: Vec<String> = l.list_items(&Default::default()).unwrap().into_iter().map(|i| i.title).collect();
+        t.sort();
+        t
+    };
+
+    // A starts the cloud copy
+    let x = a.create_item(NewItem { title: "Frieren".into(), kind: Some(Kind::Anime), ..Default::default() }).unwrap();
+    let mut folder = a.save_category(Category { id: "c1".into(), parent_id: None, kind: None, name: "팬아트".into(), position: 0, color: Some("red".into()) }).unwrap();
+    sync(&a, &mut cloud);
+
+    // B joins: gets A's item and folder (and keeps its own item)
+    b.create_item(NewItem { title: "Only on B".into(), ..Default::default() }).unwrap();
+    assert!(sync(&b, &mut cloud) > 0);
+    assert_eq!(titles(&b), ["Frieren", "Only on B"]);
+    assert_eq!(b.list_categories().unwrap()[0].color.as_deref(), Some("red"));
+    assert_eq!(b.list_items(&serde_json::from_value(serde_json::json!({ "search": "frie" })).unwrap()).unwrap().len(), 1, "search index rebuilt");
+
+    // A: folder colour + rename ; B: delete its own item — then both sync twice
+    folder.color = Some("#0ea5e9".into());
+    folder = a.save_category(folder).unwrap();
+    a.update_item(&x.id, serde_json::from_value(serde_json::json!({ "title": "Frieren 2" })).unwrap()).unwrap();
+    let only_b = b.list_items(&Default::default()).unwrap().into_iter().find(|i| i.title == "Only on B").unwrap();
+    b.delete_item(&only_b.id).unwrap();
+    b.purge_item(&only_b.id).unwrap();
+    for _ in 0..2 {
+        sync(&a, &mut cloud);
+        sync(&b, &mut cloud);
+    }
+    assert_eq!(titles(&a), ["Frieren 2"]);
+    assert_eq!(titles(&b), ["Frieren 2"]);
+    assert_eq!(b.list_categories().unwrap()[0].color, folder.color);
+    // secrets never leave the device
+    a.set_setting("secret:drive", "{\"refresh\":\"x\"}").unwrap();
+    sync(&a, &mut cloud);
+    assert!(!serde_json::to_string(cloud.as_ref().unwrap()).unwrap().contains("secret:"));
+}

@@ -15,6 +15,7 @@ pub mod metadata;
 pub mod models;
 pub mod scan;
 pub mod storage;
+pub mod sync;
 
 pub use error::{Error, Result};
 pub use library::Library;

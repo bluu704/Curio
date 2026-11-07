@@ -2,7 +2,7 @@
 //! `async` = runs on Tauri's thread pool, never blocks the UI thread
 //! (import decodes images / opens archives, metadata hits the network).
 
-use curio_core::library::{DriveFolderInfo, DriveImport, DriveStatus};
+use curio_core::library::{DriveFolderInfo, DriveImport, DriveStatus, SyncReport};
 use curio_core::{models::*, Error, Library};
 use tauri::{Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -90,6 +90,11 @@ type R<T> = Result<T, Error>;
 }
 #[tauri::command] pub async fn drive_import(app: tauri::AppHandle, link: String, kind: Option<Kind>, list: Option<ListKind>, archive_id: Option<String>) -> R<DriveImport> {
     tauri::async_runtime::spawn_blocking(move || app.state::<Library>().drive_import(&link, kind, list, archive_id))
+        .await
+        .map_err(|e| Error::Invalid(e.to_string()))?
+}
+#[tauri::command] pub async fn drive_sync(app: tauri::AppHandle) -> R<SyncReport> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<Library>().sync_drive())
         .await
         .map_err(|e| Error::Invalid(e.to_string()))?
 }

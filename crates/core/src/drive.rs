@@ -38,7 +38,8 @@ pub fn builtin_client() -> Option<OAuthClient> {
 }
 
 /// Read-only access to Drive files + the account's e-mail address (shown as "연결됨: …").
-pub const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive.readonly";
+/// Read access to the user's Drive files, the app's own hidden folder (library sync) and the e-mail address.
+pub const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.appdata";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -261,7 +262,72 @@ fn get_json(access: &str, url: &str, params: &[(&str, &str)]) -> Result<Value> {
     match r.call() {
         Ok(r) => Ok(r.into_json()?),
         Err(ureq::Error::Status(404, _)) => Err(Error::NotFound("드라이브에서 찾을 수 없어요 (주소나 공유 권한을 확인해 주세요)".into())),
+        Err(e @ ureq::Error::Status(403, _)) => Err(scope_err(e)),
         Err(e) => Err(net(e)),
+    }
+}
+
+// ---------------------------------------------------------------- app folder (library sync)
+
+/// A file in the app's hidden Drive folder (invisible in the user's Drive, removed with the app's access).
+#[derive(Debug, Clone)]
+pub struct AppFile {
+    pub id: String,
+    pub name: String,
+}
+
+pub fn appdata_list(access: &str) -> Result<Vec<AppFile>> {
+    let mut out = vec![];
+    let mut page: Option<String> = None;
+    loop {
+        let mut params = vec![("spaces", "appDataFolder"), ("fields", "nextPageToken,files(id,name)"), ("pageSize", "1000")];
+        if let Some(p) = page.as_deref() {
+            params.push(("pageToken", p));
+        }
+        let v = get_json(access, API, &params)?;
+        for f in v["files"].as_array().into_iter().flatten() {
+            out.push(AppFile { id: f["id"].as_str().unwrap_or("").into(), name: f["name"].as_str().unwrap_or("").into() });
+        }
+        page = v["nextPageToken"].as_str().map(String::from);
+        if page.is_none() {
+            return Ok(out);
+        }
+    }
+}
+
+pub fn appdata_get(access: &str, id: &str) -> Result<Vec<u8>> {
+    let r = agent().get(&format!("{API}/{id}")).query("alt", "media").set("Authorization", &format!("Bearer {access}")).call().map_err(scope_err)?;
+    let mut b = vec![];
+    r.into_reader().read_to_end(&mut b)?;
+    Ok(b)
+}
+
+/// Create (or replace, when `existing` is given) a file in the app folder.
+pub fn appdata_put(access: &str, name: &str, bytes: &[u8], existing: Option<&str>) -> Result<String> {
+    let auth = format!("Bearer {access}");
+    let v: Value = if let Some(id) = existing {
+        agent().request("PATCH", &format!("https://www.googleapis.com/upload/drive/v3/files/{id}"))
+            .query("uploadType", "media").set("Authorization", &auth).set("Content-Type", "application/octet-stream")
+            .send_bytes(bytes).map_err(scope_err)?.into_json()?
+    } else {
+        let boundary = format!("curio{}", uuid::Uuid::new_v4().simple());
+        let meta = json!({ "name": name, "parents": ["appDataFolder"] }).to_string();
+        let mut body = format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n").into_bytes();
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(format!("\r\n--{boundary}--").as_bytes());
+        agent().post("https://www.googleapis.com/upload/drive/v3/files")
+            .query("uploadType", "multipart").set("Authorization", &auth)
+            .set("Content-Type", &format!("multipart/related; boundary={boundary}"))
+            .send_bytes(&body).map_err(scope_err)?.into_json()?
+    };
+    Ok(v["id"].as_str().unwrap_or_default().to_string())
+}
+
+/// 403 on the app folder = signed in before sync existed (permission missing).
+fn scope_err(e: ureq::Error) -> Error {
+    match e {
+        ureq::Error::Status(403, _) => Error::Invalid("드라이브 권한이 부족해요. 연결 해제 후 다시 연결해 주세요".into()),
+        e => net(e),
     }
 }
 

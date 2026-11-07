@@ -92,6 +92,14 @@ Windows 사전 준비: [Rust](https://rustup.rs), Node 20+, WebView2(윈10/11 �
 
 이 파일은 `.gitignore`에 들어 있어서 GitHub에 올라가지 않아요. 환경 변수 `CURIO_GOOGLE_CLIENT_ID` / `CURIO_GOOGLE_CLIENT_SECRET`로 넣어도 돼요.
 
+### GitHub에서 설치 파일 만들기 (내 PC에 아무것도 설치하지 않고)
+
+1. 저장소 → Settings → Secrets and variables → Actions → **New repository secret**
+   - `CURIO_GOOGLE_CLIENT_ID`, `CURIO_GOOGLE_CLIENT_SECRET` (OAuth JSON의 두 값, 암호화돼서 저장소에는 안 보여요)
+2. Actions → **Build Curio** → Run workflow
+3. 10~20분 뒤 실행 결과의 Artifacts에서 `curio-windows`(설치 파일 .msi / .exe), `curio-macos`(.dmg)를 받아요
+   - `v0.2.0` 같은 태그를 올리면 Releases에 초안으로도 올라가요
+
 ## 5. 구현 현황 / 로드맵
 
 - [x] 아카이브: 일러스트 · 게임 · 애니 · 웹툰 · 라이트노벨 · 웹소설 · 노래 · 동인지 · 품번 (+만화 · 영화), 각각 위시리스트 (비어 있으면 숨김)

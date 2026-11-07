@@ -1,7 +1,7 @@
-import { ChevronDown, Cloud, Download, FileKey2, FolderPlus, Loader2, LogOut, Trash2, Upload } from "lucide-react";
+import { ChevronDown, Cloud, Download, FileKey2, FolderPlus, Loader2, LogOut, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
-import type { DriveStatus } from "@/api/types";
+import type { DriveStatus, SyncReport } from "@/api/types";
 import { useApp } from "@/store/app";
 import { cn } from "@/lib/cn";
 
@@ -13,8 +13,41 @@ export interface CloudConfig {
   folders: DriveFolder[];
   /** bring in new files of these folders whenever the app starts */
   autoImport: boolean;
+  /** keep the library in sync with the Drive copy (on start, every few minutes, when the window is hidden) */
+  autoSync?: boolean;
 }
-const EMPTY: CloudConfig = { folders: [], autoImport: true };
+const EMPTY: CloudConfig = { folders: [], autoImport: true, autoSync: true };
+
+let syncing: Promise<SyncReport | null> | null = null;
+/** Sync the library with Drive once (calls made while one runs share it). */
+export function syncLibrary(quiet = false): Promise<SyncReport | null> {
+  syncing ??= (async () => {
+    const s = useApp.getState();
+    try {
+      const r = await api.driveSync();
+      if (r.pulled > 0) await s.reloadAll();
+      if (!quiet) s.notify(r.pulled || r.pushed ? `동기화했어요 · 받은 변경 ${r.pulled} · 보낸 변경 ${r.pushed}` : "이미 최신이에요");
+      return r;
+    } catch (e) {
+      if (!quiet) useApp.setState({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    } finally {
+      syncing = null;
+    }
+  })();
+  return syncing;
+}
+
+/** Background sync while the app is open: at start, every 3 minutes and when the window is hidden. */
+export async function startAutoSync() {
+  if (!api.caps.localFiles) return;
+  const st = await api.driveStatus().catch(() => null);
+  const cfg = await api.getSettings<CloudConfig>("cloud").catch(() => null);
+  if (!st?.connected || cfg?.autoSync === false) return;
+  await syncLibrary(true);
+  setInterval(() => void syncLibrary(true), 3 * 60_000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") void syncLibrary(true); });
+}
 
 /** Import one Drive folder into its archive (used by the tab and by the start-up auto import). */
 export async function importDriveFolder(f: DriveFolder, quiet = false) {
@@ -44,11 +77,14 @@ export function CloudTab() {
   const [link, setLink] = useState("");
   const [target, setTarget] = useState("");
   const [advanced, setAdvanced] = useState(false);
+  const [lastSync, setLastSync] = useState<number | null>(null);
   const file = useRef<HTMLInputElement>(null);
   useEffect(() => {
     void api.getSettings<CloudConfig>("cloud").then((c) => c && setCfg({ ...EMPTY, ...c }));
     void api.driveStatus().then(setSt).catch(() => setSt(null));
+    void api.getSettings<{ lastSync?: number }>("sync").then((x) => setLastSync(x?.lastSync ?? null)).catch(() => undefined);
   }, []);
+  const syncNow = () => run("sync", async () => { const r = await syncLibrary(); if (r) setLastSync(r.at); });
   const save = (next: CloudConfig) => { setCfg(next); void api.setSettings("cloud", next); };
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key); setErr(null);
@@ -105,6 +141,29 @@ export function CloudTab() {
           <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">이 버전에는 구글 연결 정보가 들어 있지 않아요. 아래 <b className="text-fg">고급</b>에서 직접 넣을 수 있어요.</p>
         )}
       </div>
+
+      {/* library sync */}
+      <section className={cn("space-y-2", !connected && "pointer-events-none opacity-50")}>
+        <div className="label">라이브러리 동기화</div>
+        <div className="flex items-center gap-3 rounded-xl border border-line p-3">
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">여러 기기에서 같은 라이브러리</div>
+            <div className="text-[length:calc(12px*var(--ts))] text-muted">
+              {lastSync ? `마지막 동기화 ${new Date(lastSync).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}` : "항목·폴더·색·메모·설정을 드라이브에 맞춰 둬요"}
+            </div>
+          </div>
+          <button className="btn btn-primary h-9" disabled={!!busy} onClick={() => void syncNow()}>
+            {busy === "sync" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}지금 동기화
+          </button>
+        </div>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={cfg.autoSync !== false} onChange={(e) => save({ ...cfg, autoSync: e.target.checked })} className="h-4 w-4 accent-[rgb(var(--accent))]" />
+          자동으로 동기화 (앱을 열 때 · 3분마다 · 창을 내릴 때)
+        </label>
+        <p className="text-[length:calc(11px*var(--ts))] text-muted">
+          드라이브의 숨은 앱 폴더에 저장돼서 내 드라이브 목록에는 보이지 않아요. 표지 이미지도 함께 옮겨지고, 연결해 둔 원본 파일(영상·PDF 등)은 각 기기에 그대로 있어요.
+        </p>
+      </section>
 
       {/* folders */}
       <section className={cn("space-y-2", !connected && "pointer-events-none opacity-50")}>

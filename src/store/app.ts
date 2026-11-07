@@ -64,6 +64,7 @@ interface AppState {
 
   init(): Promise<void>;
   refresh(): Promise<void>;
+  reloadAll(): Promise<void>;
   setSearch(s: string): void;
   setView(id: ID): void;
   patchView(patch: Partial<View>): void;
@@ -222,6 +223,18 @@ export const useApp = create<AppState>((set, get) => {
         fail(e);
         set({ ready: true });
       }
+    },
+
+    /** Re-read everything (after another device's changes arrived through sync). */
+    async reloadAll() {
+      const [views, archives, statuses, tags, fields, categories] = await Promise.all([
+        api.listViews(), api.listArchives(), api.listStatuses(), api.listTags(), api.listFields(), api.listCategories(), useFormats.getState().load(),
+      ]);
+      const activeViewId = views.some((v) => v.id === get().activeViewId) ? get().activeViewId : views[0]?.id ?? get().activeViewId;
+      set({ views, archives, statuses, tags, fields, categories, activeViewId });
+      await get().refresh();
+      const id = get().selectedId;
+      if (id) set({ detail: await api.getItem(id).catch(() => null) });
     },
 
     async refresh() {

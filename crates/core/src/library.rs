@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use crate::metadata::{self, codes};
 use crate::models::*;
 use crate::storage::{self, StorageProvider};
-use crate::{db, drive, media, scan, Error, Result};
+use crate::{db, drive, media, scan, sync, Error, Result};
 
 pub struct Library {
     conn: Mutex<Connection>,
@@ -34,6 +34,18 @@ pub struct DriveStatus {
     pub builtin: bool,
     pub connected: bool,
     pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncReport {
+    /// rows changed on this device by other devices' edits
+    pub pulled: usize,
+    /// rows sent to the cloud copy
+    pub pushed: usize,
+    pub images_up: usize,
+    pub images_down: usize,
+    pub at: i64,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -899,6 +911,80 @@ impl Library {
         let mut props = it.props.clone();
         props.insert("_lyrics".into(), serde_json::to_value(l)?);
         Ok(Some(self.update_item(item_id, ItemPatch { props: Some(props), ..Default::default() })?))
+    }
+
+    // ------------------------------------------------------------------ library sync
+
+    fn sync_base_path(&self) -> PathBuf {
+        self.data_dir.join("sync-base.json.gz")
+    }
+
+    /// Merge `remote` (None = nothing on Drive yet) into this library and return the merged snapshot
+    /// plus how many rows changed here. Call [`Self::sync_commit`] once the result is uploaded.
+    pub fn sync_merge(&self, remote: Option<&sync::Snapshot>) -> Result<(sync::Snapshot, usize)> {
+        let base = std::fs::read(self.sync_base_path()).ok().and_then(|b| sync::from_gz(&b).ok());
+        let mut c = self.conn();
+        let local = sync::export(&c, &self.cache_dir, &self.data_dir)?;
+        let merged = match remote {
+            Some(r) => sync::merge(&local, r, base.as_ref()),
+            None => local.clone(),
+        };
+        let pulled = sync::apply(&mut c, &local, &merged, &self.cache_dir, &self.data_dir)?;
+        Ok((merged, pulled))
+    }
+
+    /// Remember `merged` as what this device and the cloud agree on (after a successful upload).
+    pub fn sync_commit(&self, merged: &sync::Snapshot) -> Result<()> {
+        std::fs::create_dir_all(&self.data_dir)?;
+        let tmp = self.sync_base_path().with_extension("tmp");
+        std::fs::write(&tmp, sync::to_gz(merged)?)?;
+        std::fs::rename(tmp, self.sync_base_path())?;
+        Ok(())
+    }
+
+    /// Sync this library with the copy in the user's Drive (hidden app folder): pull other devices'
+    /// changes, push this device's, and share cover images.
+    pub fn sync_drive(&self) -> Result<SyncReport> {
+        const LIB: &str = "library.json.gz";
+        let token = self.drive_token()?;
+        let files = drive::appdata_list(&token)?;
+        let lib = files.iter().find(|f| f.name == LIB);
+        let remote = match lib {
+            Some(f) => Some(sync::from_gz(&drive::appdata_get(&token, &f.id)?)?),
+            None => None,
+        };
+        let (merged, pulled) = self.sync_merge(remote.as_ref())?;
+        let pushed = remote.as_ref().map(|r| sync::changes(r, &merged)).unwrap_or(1);
+        if pushed > 0 {
+            drive::appdata_put(&token, LIB, &sync::to_gz(&merged)?, lib.map(|f| f.id.as_str()))?;
+        }
+        self.sync_commit(&merged)?;
+
+        // covers / banners: upload ours that the cloud lacks, download the ones we lack
+        let name_of = |p: &str| format!("cache~{}", p.trim_start_matches("@cache/").replace('/', "~"));
+        let on_drive: std::collections::HashMap<&str, &str> = files.iter().map(|f| (f.name.as_str(), f.id.as_str())).collect();
+        let (mut up, mut down) = (0, 0);
+        for p in sync::cache_refs(&merged) {
+            let local = PathBuf::from(sync::local_path(&p, &self.cache_dir, &self.data_dir));
+            let name = name_of(&p);
+            match (local.exists(), on_drive.get(name.as_str())) {
+                (true, None) => {
+                    if let Ok(b) = std::fs::read(&local) {
+                        if drive::appdata_put(&token, &name, &b, None).is_ok() { up += 1; }
+                    }
+                }
+                (false, Some(id)) => {
+                    if let Ok(b) = drive::appdata_get(&token, id) {
+                        if let Some(d) = local.parent() { std::fs::create_dir_all(d)?; }
+                        if std::fs::write(&local, b).is_ok() { down += 1; }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let at = now();
+        self.set_settings("sync", &serde_json::json!({ "lastSync": at }))?;
+        Ok(SyncReport { pulled, pushed, images_up: up, images_down: down, at })
     }
 
     // ------------------------------------------------------------------ watched folders

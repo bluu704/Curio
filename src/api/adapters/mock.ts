@@ -521,6 +521,7 @@ export function createMockClient(): ApiClient {
     async driveLogout() { return { available: false, builtin: false, connected: false, email: null }; },
     async driveFolder() { throw new Error("미리보기에서는 드라이브를 열 수 없어요"); },
     async driveImport() { throw new Error("미리보기에서는 드라이브를 열 수 없어요"); },
+    async driveSync() { throw new Error("미리보기에서는 동기화할 수 없어요"); },
     async fetchLyrics(itemId) {
       // preview: LRCLIB straight from the browser (the desktop app also tries YouTube Music first)
       const it = find(itemId);

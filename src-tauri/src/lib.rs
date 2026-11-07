@@ -81,6 +81,7 @@ pub fn run() {
             commands::drive_logout,
             commands::drive_folder,
             commands::drive_import,
+            commands::drive_sync,
             commands::list_watch_folders,
             commands::add_watch_folder,
             commands::remove_watch_folder,
