@@ -11,6 +11,13 @@ export function createTauriClient(): ApiClient {
 
     listItems: (query) => invoke("list_items", { query }),
     counts: () => invoke("counts"),
+    listTrash: () => invoke("list_trash"),
+    trashCount: () => invoke("trash_count"),
+    restoreItem: (id) => invoke("restore_item", { id }),
+    purgeItem: (id) => invoke("purge_item", { id }),
+    emptyTrash: () => invoke("empty_trash", { olderThan: null }),
+    getSettings: (key) => invoke("get_settings", { key }),
+    setSettings: (key, value) => invoke("set_settings", { key, value }),
     listArchives: () => invoke("list_archives"),
     saveArchive: (archive) => invoke("save_archive", { archive }),
     deleteArchive: (id) => invoke("delete_archive", { id }),

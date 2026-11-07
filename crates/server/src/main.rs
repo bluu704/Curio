@@ -76,6 +76,15 @@ async fn main() {
 
     let api = Router::new()
         .route("/items/query", post(|State(s): S, Json(q): Json<ItemQuery>| async move { json!(s, move |l| l.list_items(&q)) }))
+        .route("/trash", get(|State(s): S| async move { json!(s, |l| l.list_trash()) }).delete(|State(s): S| async move { json!(s, |l| l.empty_trash(None)) }))
+        .route("/trash/count", get(|State(s): S| async move { json!(s, |l| l.trash_count()) }))
+        .route("/trash/:id", delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.purge_item(&id)) }))
+        .route("/trash/:id/restore", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.restore_item(&id)) }))
+        .route(
+            "/settings/:key",
+            get(|State(s): S, Path(k): Path<String>| async move { json!(s, move |l| l.get_settings(&k)) })
+                .put(|State(s): S, Path(k): Path<String>, Json(v): Json<serde_json::Value>| async move { empty!(s, move |l| l.set_settings(&k, &v)) }),
+        )
         .route("/counts", get(|State(s): S| async move { json!(s, |l| l.counts()) }))
         .route("/archives", get(|State(s): S| async move { json!(s, |l| l.list_archives()) }))
         .route(

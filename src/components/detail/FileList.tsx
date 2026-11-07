@@ -55,8 +55,8 @@ export function FileList({ item }: { item: Item }) {
         {desktop && <button className="btn-icon h-7 w-7" onClick={() => void addFolder()} data-tip="폴더 연결"><FolderPlus size={15} /></button>}
       </div>
       {item.files.length === 0 && (
-        <button onClick={() => void addFiles()} className="w-full rounded-lg border border-dashed border-line px-3 py-4 text-center text-[length:calc(12px*var(--ts))] text-muted hover:bg-subtle">
-          파일을 끌어다 놓거나 눌러서 추가하세요 · PDF·ZIP·이미지·영상·음악·텍스트
+        <button onClick={() => void addFiles()} className="w-full truncate whitespace-nowrap rounded-lg border border-dashed border-line px-3 py-4 text-center text-[length:calc(12px*var(--ts))] text-muted hover:bg-subtle">
+          파일을 끌어다 놓거나 눌러서 추가
         </button>
       )}
       <div className="space-y-0.5">

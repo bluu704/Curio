@@ -17,7 +17,7 @@ export const ACTIONS: { id: ActionId; label: string; keys: string[] }[] = [
   { id: "pin", label: "고정 · 고정 해제", keys: ["P"] },
   { id: "wishlist", label: "위시리스트 ↔ 아카이브", keys: ["W"] },
   { id: "read", label: "뷰어로 읽기", keys: ["R"] },
-  { id: "delete", label: "항목 삭제 (한 번 더 누르면 삭제)", keys: ["Delete"] },
+  { id: "delete", label: "휴지통으로 이동", keys: ["Delete"] },
   { id: "sidebar", label: "왼쪽 메뉴 접기 · 펼치기", keys: ["Ctrl+B"] },
   { id: "settings", label: "설정", keys: ["Ctrl+,"] },
 ];
@@ -69,7 +69,6 @@ const typing = (t: EventTarget | null) => {
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 };
 
-let pendingDelete: { id: string; at: number } | null = null;
 /** Set while the settings screen is recording a new key (shortcuts are paused). */
 export const recording = { on: false };
 
@@ -126,9 +125,7 @@ export function useShortcuts() {
         case "pin": s.notify(item.pinned ? "고정 해제" : "고정했어요"); return void s.updateItem(item.id, { pinned: !item.pinned });
         case "wishlist": return void s.updateItem(item.id, { list: item.list === "wishlist" ? "archive" : "wishlist" });
         case "read": { const f = item.files.find(isReadable); if (f) s.openReader(item, f); return; }
-        case "delete":
-          if (pendingDelete?.id === item.id && Date.now() - pendingDelete.at < 2500) { pendingDelete = null; void s.deleteItem(item.id); }
-          else { pendingDelete = { id: item.id, at: Date.now() }; s.notify(`${prettyCombo(combo)}를 한 번 더 누르면 삭제돼요`); }
+        case "delete": return void s.deleteItem(item.id);
       }
     };
     window.addEventListener("keydown", onKey);

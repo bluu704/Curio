@@ -1,4 +1,6 @@
-import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Palette, Pencil, Trash2 } from "lucide-react";
+import { Popover } from "@/components/ui/Popover";
+import { FOLDER_COLORS, FOLDER_NAMES, folderColor } from "@/lib/statuses";
 import { useMemo, useState } from "react";
 import type { Category, ID, Kind } from "@/api/types";
 import { useApp, activeView, viewContext } from "@/store/app";
@@ -67,7 +69,7 @@ export function CategoryTree() {
           >
             <ChevronRight size={13} className={cn("transition-transform", isOpen && "rotate-90")} />
           </button>
-          <Icon size={15} className={cn("shrink-0", active ? "text-accent" : "text-amber-500/90")} />
+          <Icon size={15} className="shrink-0" style={{ color: folderColor(c.color) }} fill={c.color ? folderColor(c.color) : "none"} fillOpacity={0.18} />
           {editing === c.id ? (
             <input
               autoFocus
@@ -83,6 +85,21 @@ export function CategoryTree() {
           )}
           <div className="hidden shrink-0 items-center group-hover/node:flex">
             <button className="btn-icon h-6 w-6" data-tip="하위 폴더" onClick={(e) => { e.stopPropagation(); void add(c.id); }}><FolderPlus size={13} /></button>
+            <Popover width={176} trigger={({ toggle }) => (
+              <button className="btn-icon h-6 w-6" data-tip="폴더 색" onClick={(e) => { e.stopPropagation(); toggle(); }}><Palette size={12} /></button>
+            )}>
+              {(close) => (
+                <div className="grid grid-cols-5 gap-1.5 p-2" onClick={(e) => e.stopPropagation()}>
+                  {[null, ...FOLDER_COLORS].map((t) => (
+                    <button key={t ?? "default"} onClick={() => { void s.saveCategory({ ...c, color: t }); close(); }} data-tip={t ? FOLDER_NAMES[t] : "기본"}
+                      className={cn("flex h-7 w-7 items-center justify-center rounded-full ring-offset-1 ring-offset-elevated", (c.color ?? null) === t && "ring-2 ring-fg/60")}
+                      style={{ background: folderColor(t) }}>
+                      <Folder size={13} className="text-white" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Popover>
             <button className="btn-icon h-6 w-6" data-tip="이름 바꾸기" onClick={(e) => { e.stopPropagation(); setEditing(c.id); }}><Pencil size={12} /></button>
             <button className="btn-icon h-6 w-6 hover:text-danger" data-tip="삭제" onClick={(e) => {
               e.stopPropagation();

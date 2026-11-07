@@ -1,5 +1,6 @@
 import type { Archive, CardConfig, ColumnKey, View } from "@/api/types";
 import { KIND_CONFIG, viewIdFor } from "./kinds";
+import { formatOfArchive } from "./formats";
 
 export const DEFAULT_CARD: CardConfig = {
   size: "m",
@@ -23,7 +24,8 @@ export const DEFAULT_VIEWS: View[] = [
 
 /** The archive + wishlist views of one archive (layout from its kind template). */
 export function archiveViews(a: Archive): View[] {
-  const c = KIND_CONFIG[a.kind];
+  const f = formatOfArchive(a);
+  const c = { layout: f.layout, aspect: f.aspect, cardFields: KIND_CONFIG[f.base].cardFields };
   const card: CardConfig = { ...DEFAULT_CARD, aspect: c.aspect, fields: c.cardFields };
   const columns: ColumnKey[] = a.kind === "catalog" ? ["title", "status", "rating", "author", "tag", "updatedAt"] : DEFAULT_COLUMNS.filter((x) => x !== "kind");
   return [

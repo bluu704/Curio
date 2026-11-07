@@ -6,7 +6,7 @@ import { api } from "@/api";
 import type { Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { KIND_META, TAG_META } from "@/lib/meta";
-import { KIND_CONFIG } from "@/lib/kinds";
+import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
 import { cn } from "@/lib/cn";
 import { Cover } from "@/components/ui/Cover";
 import { Popover } from "@/components/ui/Popover";
@@ -24,6 +24,7 @@ const ytId = (url: string | null) => url?.match(/(?:v=|youtu\.be\/|shorts\/|embe
 export function DetailPanel() {
   const { detail: item, select, updateItem, deleteItem, setDialog, openReader } = useApp();
   const [editProps, setEditProps] = useState(false);
+  useFormats((f) => f.stored);
   const full = useApp((st) => st.detailFull);
   const toggleFull = useApp((st) => st.toggleDetailFull);
 
@@ -38,7 +39,7 @@ export function DetailPanel() {
 
   if (!item) return null;
   const K = KIND_META[item.kind];
-  const cfg = KIND_CONFIG[item.kind];
+  const cfg = formatConfig(formatOfItem(item));
   // primary file action: read (pdf/zip/images) › play (video/audio) › view (text) › open with the OS
   const primary = item.files.find(isReadable) ?? item.files.find(isViewable) ?? item.files[0];
   const act = primary ? fileAction(primary) : null;
@@ -91,10 +92,7 @@ export function DetailPanel() {
               <MenuSep />
               <MenuItem icon={SlidersHorizontal} checked={editProps} onClick={() => { setEditProps(!editProps); close(); }}>속성 편집</MenuItem>
               <MenuSep />
-              <MenuItem icon={Trash2} danger onClick={() => {
-                close();
-                if (confirm(`"${item.title}" 항목을 삭제할까요?\n(연결된 원본 파일은 삭제되지 않아요)`)) void deleteItem(item.id);
-              }}>항목 삭제</MenuItem>
+              <MenuItem icon={Trash2} danger onClick={() => { close(); void deleteItem(item.id); }}>휴지통으로 이동</MenuItem>
             </>
           )}
         </Popover>

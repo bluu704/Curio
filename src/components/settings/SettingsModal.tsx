@@ -1,4 +1,4 @@
-import { CircleDot, Cloud, Database, FolderSearch, HardDrive, Info, Keyboard, Monitor, Moon, Palette, Plus, RefreshCw, Server, Shapes, Sun, Trash2, Type, type LucideIcon } from "lucide-react";
+import { CircleDot, LayoutTemplate, Cloud, Database, FolderSearch, HardDrive, Info, Keyboard, Monitor, Moon, Palette, Plus, RefreshCw, Server, Shapes, Sun, Trash2, Type, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/api";
 import type { FieldDef, FieldType, Kind, ListKind, WatchFolder } from "@/api/types";
@@ -8,18 +8,22 @@ import { date } from "@/lib/format";
 import { useApp } from "@/store/app";
 import { ACCENTS, FONTS, useTheme, type ThemeMode, type Weight } from "@/store/theme";
 import { STATUS_ICONS, TONES, TONE_HEX } from "@/lib/statuses";
+import { ICON_CHOICES, iconOf } from "@/lib/icons";
 import { Popover } from "@/components/ui/Popover";
+import { FormatsTab } from "./FormatsTab";
+import { IconGrid } from "@/components/ui/IconGrid";
 import { ACTIONS, FIXED, comboOf, prettyCombo, recording, useKeymap, type ActionId } from "@/hooks/useShortcuts";
 import { uid } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
 import { FIELD_ICONS, FIELD_LABELS } from "./fieldIcons";
 
-type Tab = "general" | "text" | "status" | "fields" | "watch" | "keys" | "storage" | "about";
+type Tab = "general" | "text" | "status" | "formats" | "fields" | "watch" | "keys" | "storage" | "about";
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "일반", icon: Palette },
   { id: "text", label: "글자", icon: Type },
   { id: "status", label: "상태", icon: CircleDot },
+  { id: "formats", label: "형식", icon: LayoutTemplate },
   { id: "fields", label: "속성", icon: Shapes },
   { id: "watch", label: "감시 폴더", icon: FolderSearch },
   { id: "keys", label: "단축키", icon: Keyboard },
@@ -45,6 +49,7 @@ export function SettingsModal() {
           {tab === "general" && <General />}
           {tab === "text" && <TextSettings />}
           {tab === "status" && <Statuses />}
+          {tab === "formats" && <FormatsTab />}
           {tab === "keys" && <Keys />}
           {tab === "fields" && <Fields />}
           {tab === "watch" && <Watch />}
@@ -157,21 +162,16 @@ function Statuses() {
       <p className="text-[length:calc(12px*var(--ts))] text-muted">모든 아카이브에서 함께 써요. 아이콘·색을 눌러 바꾸고, 지운 상태의 항목은 첫 번째 상태로 옮겨져요.</p>
       <div className="space-y-1">
         {statuses.map((d) => {
-          const I = STATUS_ICONS[d.icon] ?? CircleDot;
+          const I = STATUS_ICONS[d.icon] ?? iconOf(d.icon);
           const fallback = statuses.find((x) => x.id !== d.id)?.id ?? "";
           return (
             <div key={d.id} className={cn("flex items-center gap-2 rounded-lg border border-line p-1.5", `tone-${d.color}`)}>
-              <Popover width={232} trigger={({ toggle }) => (
+              <Popover width={252} trigger={({ toggle }) => (
                 <button onClick={toggle} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md tone-bg" data-tip="아이콘·색"><I size={16} /></button>
               )}>
                 <div className="p-1.5">
                   <div className="label mb-1">아이콘</div>
-                  <div className="grid grid-cols-6 gap-0.5">
-                    {Object.entries(STATUS_ICONS).map(([k, Ic]) => (
-                      <button key={k} onClick={() => void saveStatus({ ...d, icon: k })}
-                        className={cn("flex h-8 w-8 items-center justify-center rounded-md hover:bg-subtle", d.icon === k && "bg-accent/15 text-accent")}><Ic size={15} /></button>
-                    ))}
-                  </div>
+                  <IconGrid value={d.icon} onChange={(icon) => void saveStatus({ ...d, icon })} choices={[...Object.keys(STATUS_ICONS), ...ICON_CHOICES.filter((k) => !(k in STATUS_ICONS))]} cols={7} />
                   <div className="label mb-1 mt-2">색</div>
                   <div className="flex gap-1">
                     {TONES.map((t) => (

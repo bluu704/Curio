@@ -31,6 +31,13 @@ export function createHttpClient(baseUrl: string): ApiClient {
 
     listItems: (q) => req("POST", "/items/query", q),
     counts: () => req("GET", "/counts"),
+    listTrash: () => req("GET", "/trash"),
+    trashCount: () => req("GET", "/trash/count"),
+    restoreItem: (id) => req("POST", `/trash/${id}/restore`),
+    purgeItem: (id) => req("DELETE", `/trash/${id}`),
+    emptyTrash: () => req("DELETE", "/trash"),
+    getSettings: (key) => req("GET", `/settings/${key}`),
+    setSettings: (key, value) => req("PUT", `/settings/${key}`, value),
     listArchives: () => req("GET", "/archives"),
     saveArchive: (a) => req("PUT", `/archives/${a.id}`, a),
     deleteArchive: (id) => req("DELETE", `/archives/${id}`),

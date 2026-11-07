@@ -185,9 +185,9 @@ impl Library {
 
     pub fn list_archives(&self) -> Result<Vec<Archive>> {
         let c = self.conn();
-        let mut st = c.prepare("SELECT id, name, icon, kind, position, pinned FROM archives ORDER BY pinned DESC, position, name")?;
+        let mut st = c.prepare("SELECT id, name, icon, kind, position, pinned, format FROM archives ORDER BY pinned DESC, position, name")?;
         let rows = st.query_map([], |r| {
-            Ok(Archive { id: r.get(0)?, name: r.get(1)?, icon: r.get(2)?, kind: r.get(3)?, position: r.get(4)?, pinned: r.get::<_, i64>(5)? != 0 })
+            Ok(Archive { id: r.get(0)?, name: r.get(1)?, icon: r.get(2)?, kind: r.get(3)?, position: r.get(4)?, pinned: r.get::<_, i64>(5)? != 0, format: r.get(6)? })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
@@ -197,9 +197,10 @@ impl Library {
             return Err(Error::Invalid("archive name is empty".into()));
         }
         self.conn().execute(
-            "INSERT INTO archives (id, name, icon, kind, position, pinned, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(id) DO UPDATE SET name = excluded.name, icon = excluded.icon, kind = excluded.kind, position = excluded.position, pinned = excluded.pinned",
-            params![a.id, a.name.trim(), a.icon, a.kind, a.position, a.pinned as i64, now()],
+            "INSERT INTO archives (id, name, icon, kind, position, pinned, created_at, format) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, icon = excluded.icon, kind = excluded.kind, position = excluded.position,
+               pinned = excluded.pinned, format = excluded.format",
+            params![a.id, a.name.trim(), a.icon, a.kind, a.position, a.pinned as i64, now(), a.format],
         )?;
         Ok(a)
     }
@@ -297,6 +298,62 @@ impl Library {
         Ok(())
     }
 
+    // ------------------------------------------------------------------ trash
+
+    /// Items in the trash, most recently deleted first.
+    pub fn list_trash(&self) -> Result<Vec<TrashedItem>> {
+        let c = self.conn();
+        let mut st = c.prepare(&format!("SELECT {ITEM_COLS}, i.deleted_at FROM items i WHERE i.deleted_at IS NOT NULL ORDER BY i.deleted_at DESC"))?;
+        let rows: Vec<(Item, i64)> = st.query_map([], |r| Ok((row_to_item(r)?, r.get(19)?)))?.collect::<rusqlite::Result<_>>()?;
+        let mut items: Vec<Item> = rows.iter().map(|(i, _)| i.clone()).collect();
+        hydrate(&c, &mut items)?;
+        Ok(items.into_iter().zip(rows).map(|(item, (_, d))| TrashedItem { item, deleted_at: d }).collect())
+    }
+
+    pub fn trash_count(&self) -> Result<i64> {
+        Ok(self.conn().query_row("SELECT COUNT(*) FROM items WHERE deleted_at IS NOT NULL", [], |r| r.get(0))?)
+    }
+
+    /// Put an item back. If its archive was deleted meanwhile, it goes to the built-in archive of its kind.
+    pub fn restore_item(&self, id: &str) -> Result<Item> {
+        {
+            let c = self.conn();
+            let n = c.execute(
+                "UPDATE items SET deleted_at = NULL, updated_at = ?1,
+                   archive_id = COALESCE((SELECT a.id FROM archives a WHERE a.id = items.archive_id), (SELECT a.id FROM archives a WHERE a.id = items.kind))
+                 WHERE id = ?2 AND deleted_at IS NOT NULL",
+                params![now(), id],
+            )?;
+            if n == 0 {
+                return Err(Error::NotFound(format!("trashed item {id}")));
+            }
+            reindex(&c, id)?;
+        }
+        self.get_item(id)
+    }
+
+    /// Delete for good (tags/files/category links cascade). Linked files on disk are never touched.
+    pub fn purge_item(&self, id: &str) -> Result<()> {
+        self.conn().execute("DELETE FROM items WHERE id = ? AND deleted_at IS NOT NULL", [id])?;
+        Ok(())
+    }
+
+    /// Empty the trash. `older_than_ms` = only items deleted before that time (auto-clean), None = all.
+    pub fn empty_trash(&self, older_than_ms: Option<i64>) -> Result<usize> {
+        let before = older_than_ms.unwrap_or(i64::MAX);
+        Ok(self.conn().execute("DELETE FROM items WHERE deleted_at IS NOT NULL AND deleted_at < ?", [before])?)
+    }
+
+    // ------------------------------------------------------------------ settings (JSON blobs, e.g. formats)
+
+    pub fn get_settings(&self, key: &str) -> Result<Option<serde_json::Value>> {
+        Ok(self.get_setting(key)?.and_then(|s| serde_json::from_str(&s).ok()))
+    }
+
+    pub fn set_settings(&self, key: &str, value: &serde_json::Value) -> Result<()> {
+        self.set_setting(key, &value.to_string())
+    }
+
     // ------------------------------------------------------------------ tags
 
     pub fn list_tags(&self) -> Result<Vec<Tag>> {
@@ -314,8 +371,8 @@ impl Library {
 
     pub fn list_categories(&self) -> Result<Vec<Category>> {
         let c = self.conn();
-        let mut st = c.prepare("SELECT id, parent_id, kind, name, position FROM categories ORDER BY position, name COLLATE NOCASE")?;
-        let rows = st.query_map([], |r| Ok(Category { id: r.get(0)?, parent_id: r.get(1)?, kind: r.get(2)?, name: r.get(3)?, position: r.get(4)? }))?;
+        let mut st = c.prepare("SELECT id, parent_id, kind, name, position, color FROM categories ORDER BY position, name COLLATE NOCASE")?;
+        let rows = st.query_map([], |r| Ok(Category { id: r.get(0)?, parent_id: r.get(1)?, kind: r.get(2)?, name: r.get(3)?, position: r.get(4)?, color: r.get(5)? }))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
@@ -334,9 +391,10 @@ impl Library {
             }
         }
         c.execute(
-            "INSERT INTO categories (id, parent_id, kind, name, position, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, kind = excluded.kind, name = excluded.name, position = excluded.position",
-            params![cat.id, cat.parent_id, cat.kind, cat.name.trim(), cat.position, now()],
+            "INSERT INTO categories (id, parent_id, kind, name, position, created_at, color) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, kind = excluded.kind, name = excluded.name, position = excluded.position,
+               color = excluded.color",
+            params![cat.id, cat.parent_id, cat.kind, cat.name.trim(), cat.position, now(), cat.color],
         )?;
         Ok(cat)
     }

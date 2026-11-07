@@ -5,7 +5,7 @@ import type {
   TagCategory, View,
 } from "@/api/types";
 import { DEFAULT_VIEWS, archiveViews } from "@/lib/defaults";
-import { KIND_CONFIG } from "@/lib/kinds";
+import { useFormats } from "@/lib/formats";
 import { uid } from "@/lib/format";
 import { isViewable } from "@/components/viewer/files";
 import { isReadable } from "@/components/reader/source";
@@ -25,6 +25,9 @@ interface AppState {
   ready: boolean;
   error: string | null;
   toast: string | null;
+  /** Optional button on the toast (e.g. 되돌리기 after moving to the trash). */
+  toastAction: { label: string; run: () => void } | null;
+  trashCount: number;
   items: Item[];
   counts: ArchiveCount[];
   archives: Archive[];
@@ -71,7 +74,7 @@ interface AppState {
   importPaths(paths: string[]): Promise<void>;
   importBlobs(files: File[]): Promise<void>;
   saveArchive(a: Archive): Promise<void>;
-  createArchive(name: string, icon: string, kind: Kind): Promise<Archive>;
+  createArchive(name: string, icon: string, formatId: string): Promise<Archive>;
   deleteArchive(id: ID): Promise<void>;
   toggleFold(id: ID): void;
   reorderArchives(ids: ID[]): Promise<void>;
@@ -102,7 +105,10 @@ interface AppState {
   openReader(item: Item, file: FileRef): void;
   closeReader(): void;
   setDialog(d: Dialog): void;
-  notify(msg: string): void;
+  notify(msg: string, action?: { label: string; run: () => void }): void;
+  restoreItem(id: ID): Promise<void>;
+  purgeItem(id: ID): Promise<void>;
+  emptyTrash(): Promise<void>;
   toggleSidebar(): void;
   toggleDetailFull(): void;
   setDrawer(v: boolean): void;
@@ -155,6 +161,8 @@ export const useApp = create<AppState>((set, get) => {
     ready: false,
     error: null,
     toast: null,
+    toastAction: null,
+    trashCount: 0,
     items: [],
     counts: [],
     archives: [],
@@ -183,7 +191,7 @@ export const useApp = create<AppState>((set, get) => {
     async init() {
       try {
         let views = await api.listViews();
-        const [archives, statuses] = await Promise.all([api.listArchives(), api.listStatuses()]);
+        const [archives, statuses] = await Promise.all([api.listArchives(), api.listStatuses(), useFormats.getState().load()]);
         set({ archives, statuses });
         // Seed / repair built-in views and each archive's two views.
         const wanted = [...DEFAULT_VIEWS, ...archives.flatMap(archiveViews)];
@@ -208,11 +216,12 @@ export const useApp = create<AppState>((set, get) => {
       const seq = ++refreshSeq;
       const v = activeView(get());
       const search = get().search.trim();
-      const [items, counts] = await Promise.all([
+      const [items, counts, trashCount] = await Promise.all([
         api.listItems({ ...v.query, search: search || undefined, categoryId: get().categoryId ?? undefined }),
         api.counts(),
+        api.trashCount(),
       ]);
-      if (seq === refreshSeq) set({ items, counts }); // drop stale responses
+      if (seq === refreshSeq) set({ items, counts, trashCount }); // drop stale responses
     },
 
     setSearch(search) {
@@ -287,6 +296,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async deleteItem(id) {
+      const title = (get().items.find((i) => i.id === id) ?? get().detail)?.title;
       await api.deleteItem(id);
       set((s) => ({
         items: s.items.filter((i) => i.id !== id),
@@ -294,7 +304,14 @@ export const useApp = create<AppState>((set, get) => {
         detail: s.detail?.id === id ? null : s.detail,
       }));
       void get().refresh();
+      get().notify(title ? `"${title}"을(를) 휴지통으로 옮겼어요` : "휴지통으로 옮겼어요", { label: "되돌리기", run: () => void get().restoreItem(id) });
     },
+
+    async restoreItem(id) {
+      try { await api.restoreItem(id); await get().refresh(); get().notify("복원했어요"); } catch (e) { fail(e); }
+    },
+    async purgeItem(id) { await api.purgeItem(id); await get().refresh(); },
+    async emptyTrash() { const n = await api.emptyTrash(); await get().refresh(); get().notify(`${n}개를 영구 삭제했어요`); },
 
     async importPaths(paths) {
       if (!paths.length) return;
@@ -429,8 +446,9 @@ export const useApp = create<AppState>((set, get) => {
       views.filter((v) => v.id.startsWith(`arc:${a.id}`)).forEach((v) => void api.saveView(v));
       set({ archives, views });
     },
-    async createArchive(name, icon, kind) {
-      const a: Archive = { id: uid(), name: name.trim() || KIND_CONFIG[kind].label, icon, kind, position: get().archives.length + 20, pinned: false };
+    async createArchive(name, icon, formatId) {
+      const f = useFormats.getState().get(formatId);
+      const a: Archive = { id: uid(), name: name.trim() || f.name, icon, kind: f.base, format: f.custom ? f.id : null, position: get().archives.length + 20, pinned: false };
       await api.saveArchive(a);
       const vs = archiveViews(a);
       await Promise.all(vs.map((v) => api.saveView(v)));
@@ -485,10 +503,10 @@ export const useApp = create<AppState>((set, get) => {
     },
     closeReader() { set({ reader: null }); },
     setDialog(dialog) { set({ dialog }); },
-    notify(toast) {
+    notify(toast, action) {
       clearTimeout(toastTimer);
-      set({ toast });
-      toastTimer = setTimeout(() => set({ toast: null }), 2600);
+      set({ toast, toastAction: action ?? null });
+      toastTimer = setTimeout(() => set({ toast: null, toastAction: null }), action ? 6000 : 2600);
     },
     toggleDetailFull() {
       const v = !get().detailFull;

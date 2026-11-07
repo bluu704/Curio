@@ -23,6 +23,7 @@ import { Reader } from "@/components/reader/Reader";
 import { FileViewer } from "@/components/viewer/FileViewer";
 import { TooltipLayer } from "@/components/ui/TooltipLayer";
 import { useFileDrop } from "@/hooks/useFileDrop";
+import { TrashView } from "@/components/views/TrashView";
 import { useShortcuts } from "@/hooks/useShortcuts";
 
 export default function App() {
@@ -60,6 +61,7 @@ export default function App() {
         </div>
       )}
       <main className="flex min-w-0 flex-1 flex-col">
+        {s.activeViewId === "sys:trash" ? <TrashView /> : <>
         <Toolbar />
         <div className="flex min-h-0 flex-1">
           {s.showCategories && <div className="hidden md:flex"><CategoryTree /></div>}
@@ -89,6 +91,7 @@ export default function App() {
           <DetailPanel />
           </div>
         </div>
+        </>}
       </main>
       <ContextMenu />
       <ArchiveDialog />
@@ -114,6 +117,11 @@ export default function App() {
       {s.toast && (
         <div className="anim-pop fixed bottom-4 left-1/2 z-[95] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-fg px-3 py-2 text-[length:calc(12px*var(--ts))] font-medium text-bg shadow-pop">
           <CircleCheck size={15} className="text-green-400" />{s.toast}
+          {s.toastAction && (
+            <button className="ml-1 rounded-md px-2 py-0.5 font-semibold text-accent hover:bg-bg/10" onClick={() => { s.toastAction!.run(); useApp.setState({ toast: null, toastAction: null }); }}>
+              {s.toastAction.label}
+            </button>
+          )}
         </div>
       )}
       {s.error && (

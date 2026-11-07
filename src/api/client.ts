@@ -1,6 +1,6 @@
 import type {
   Archive, ArchiveCount, Candidate, Capabilities, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, ItemQuery, Kind,
-  ListKind, NewItem, StatusDef, Tag, TagCategory, View, WatchFolder,
+  ListKind, NewItem, StatusDef, TrashedItem, Tag, TagCategory, View, WatchFolder,
 } from "./types";
 
 /**
@@ -14,6 +14,16 @@ export interface ApiClient {
   listItems(q: ItemQuery): Promise<Item[]>;
   /** Per (kind, list) counts — sidebar hides empty wishlists. */
   counts(): Promise<ArchiveCount[]>;
+
+  /** Trash: deleteItem moves items here; kept 30 days. */
+  listTrash(): Promise<TrashedItem[]>;
+  trashCount(): Promise<number>;
+  restoreItem(id: ID): Promise<Item>;
+  purgeItem(id: ID): Promise<void>;
+  emptyTrash(): Promise<number>;
+  /** Small JSON settings stored in the library (e.g. user-defined formats). */
+  getSettings<T = unknown>(key: string): Promise<T | null>;
+  setSettings(key: string, value: unknown): Promise<void>;
 
   listArchives(): Promise<Archive[]>;
   saveArchive(a: Archive): Promise<Archive>;

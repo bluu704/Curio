@@ -1,5 +1,5 @@
 import {
-  AtSign, CalendarDays, Code2, Heading1, Heading2, Heading3, Lightbulb, Link, List, ListOrdered, Minus, Pilcrow, Sigma,
+  AtSign, Bookmark as BookmarkIcon, CalendarDays, CalendarRange, ChevronsRightLeft, Clapperboard, Code2, Image as ImageIcon, ListTree, Heading1, Heading2, Heading3, Lightbulb, Link, List, ListOrdered, Minus, Pilcrow, Sigma,
   SquareCheck, Table, TextQuote, type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -27,9 +27,15 @@ export const COMMANDS: SlashCommand[] = [
   { id: "code", label: "코드", icon: Code2, keys: "code 코드블록", kind: "type", type: "code" },
   { id: "math", label: "수식", icon: Sigma, keys: "math latex tex 수학 공식", kind: "type", type: "math" },
   { id: "divider", label: "구분선", icon: Minus, keys: "divider line hr 줄 선", kind: "type", type: "divider" },
+  { id: "toggle", label: "토글", icon: ChevronsRightLeft, keys: "toggle 접기 펼치기 숨기기", kind: "type", type: "toggle" },
+  { id: "image", label: "이미지", icon: ImageIcon, keys: "image picture 사진 그림 이미지", kind: "type", type: "image" },
+  { id: "video", label: "동영상", icon: Clapperboard, keys: "video youtube 유튜브 영상 동영상", kind: "type", type: "video" },
+  { id: "bookmark", label: "북마크", icon: BookmarkIcon, keys: "bookmark 북마크 웹 사이트 카드", kind: "type", type: "bookmark" },
+  { id: "calendar", label: "달력", icon: CalendarRange, keys: "calendar 달력 캘린더 일정 월간", kind: "type", type: "calendar" },
+  { id: "toc", label: "목차", icon: ListTree, keys: "toc contents 목차 차례", kind: "type", type: "toc" },
   { id: "link", label: "링크", icon: Link, keys: "link url 주소 하이퍼링크", kind: "link" },
   { id: "mention", label: "다른 항목 연결", icon: AtSign, keys: "mention item 항목 연결 멘션 페이지", kind: "mention" },
-  { id: "date", label: "오늘 날짜", icon: CalendarDays, keys: "date today 날짜 오늘", kind: "date" },
+  { id: "date", label: "날짜", icon: CalendarDays, keys: "date today 날짜 오늘 일자", kind: "date" },
 ];
 
 export const matchCommands = (q: string) => {

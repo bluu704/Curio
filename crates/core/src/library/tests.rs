@@ -105,8 +105,8 @@ fn wishlist_categories_counts_fts() {
     assert_eq!(get(Kind::Game, ListKind::Wishlist), 0);
 
     // folder tree: 팬아트 > 프리렌
-    let root = Category { id: "c1".into(), parent_id: None, kind: Some(Kind::Anime), name: "팬아트".into(), position: 0 };
-    let child = Category { id: "c2".into(), parent_id: Some("c1".into()), kind: Some(Kind::Anime), name: "프리렌".into(), position: 0 };
+    let root = Category { id: "c1".into(), parent_id: None, kind: Some(Kind::Anime), name: "팬아트".into(), position: 0, color: Some("pink".into()) };
+    let child = Category { id: "c2".into(), parent_id: Some("c1".into()), kind: Some(Kind::Anime), name: "프리렌".into(), position: 0, color: None };
     l.save_category(root.clone()).unwrap();
     l.save_category(child).unwrap();
     assert!(l.save_category(Category { parent_id: Some("c2".into()), ..root }).is_err(), "cycle rejected");
@@ -170,7 +170,7 @@ fn reader_pages_and_watch_folder() {
 fn user_archives_and_pins() {
     let (l, _d) = lib();
     assert_eq!(l.list_archives().unwrap().len(), 11, "built-in archives seeded");
-    let a = Archive { id: "vocaloid".into(), name: "보컬로이드".into(), icon: "headphones".into(), kind: Kind::Music, position: 20, pinned: true };
+    let a = Archive { id: "vocaloid".into(), name: "보컬로이드".into(), icon: "headphones".into(), kind: Kind::Music, format: Some("fmt1".into()), position: 20, pinned: true };
     l.save_archive(a).unwrap();
     assert_eq!(l.list_archives().unwrap()[0].id, "vocaloid", "pinned first");
     let x = l.create_item(NewItem { title: "千本桜".into(), kind: Some(Kind::Music), archive_id: Some("vocaloid".into()), ..Default::default() }).unwrap();
@@ -217,4 +217,25 @@ fn text_files_read_write_export() {
     let out = dir.path().join("copy.md");
     l.export_file(fid, &out.to_string_lossy()).unwrap();
     assert_eq!(std::fs::read_to_string(out).unwrap(), "# 바뀜");
+}
+
+#[test]
+fn trash_restore_purge_and_settings() {
+    let (l, _d) = lib();
+    let a = l.create_item(NewItem { title: "버릴 것".into(), kind: Some(Kind::Game), ..Default::default() }).unwrap();
+    let b = l.create_item(NewItem { title: "영구 삭제".into(), kind: Some(Kind::Game), ..Default::default() }).unwrap();
+    l.delete_item(&a.id).unwrap();
+    l.delete_item(&b.id).unwrap();
+    assert_eq!(l.trash_count().unwrap(), 2);
+    assert!(l.list_items(&ItemQuery::default()).unwrap().is_empty());
+    let back = l.restore_item(&a.id).unwrap();
+    assert_eq!(back.archive_id.as_deref(), Some("game"));
+    assert_eq!(l.list_items(&serde_json::from_value(serde_json::json!({ "search": "버릴" })).unwrap()).unwrap().len(), 1, "FTS restored");
+    l.purge_item(&b.id).unwrap();
+    assert_eq!(l.trash_count().unwrap(), 0);
+    l.set_settings("formats", &serde_json::json!([{ "id": "fmt1", "name": "굿즈" }])).unwrap();
+    assert_eq!(l.get_settings("formats").unwrap().unwrap()[0]["name"], "굿즈");
+    assert_eq!(l.list_categories().unwrap().len(), 0);
+    l.save_category(Category { id: "x".into(), parent_id: None, kind: None, name: "폴더".into(), position: 0, color: Some("teal".into()) }).unwrap();
+    assert_eq!(l.list_categories().unwrap()[0].color.as_deref(), Some("teal"));
 }

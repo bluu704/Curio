@@ -66,7 +66,7 @@ export function LinkDialog() {
           <span className="ml-auto">{ctx.list === "wishlist" ? "위시리스트에 추가" : "아카이브에 추가"}</span>
         </div>
         <p className="text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">
-          노래는 YouTube·YouTube Music 주소나 곡명, 영상은 YouTube 주소나 제목, 웹툰은 네이버 웹툰 주소, 게임은 Steam·Google Play 주소만 넣어도 표지·썸네일까지 가져와요. 결과가 확실하지 않으면 후보 목록을 보여드려요.
+          YouTube · YouTube Music · 네이버 웹툰 · Steam · Google Play 주소, 또는 제목
         </p>
         <div className="flex justify-end">
           <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void submit()}>

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { KINDS, TAG_CATEGORIES, type FieldType, type Item, type TagCategory } from "@/api/types";
 import { useApp } from "@/store/app";
 import { KIND_META, STATUS_META, TAG_META } from "@/lib/meta";
-import { KIND_CONFIG } from "@/lib/kinds";
+import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
 import { date, uid } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Popover } from "@/components/ui/Popover";
@@ -23,7 +23,8 @@ interface Row { key: string; icon: LucideIcon; label: string; node: React.ReactN
 export function PropertyList({ item, editing, onDone }: { item: Item; editing: boolean; onDone: () => void }) {
   const s = useApp();
   const { updateItem, fields } = s;
-  const cfg = KIND_CONFIG[item.kind];
+  useFormats((f) => f.stored); // re-render when formats are edited
+  const cfg = formatConfig(formatOfItem(item));
   const viewId = item.archiveId ? `arc:${item.archiveId}` : "sys:all";
   const layout = s.views.find((v) => v.id === viewId)?.card.props ?? {};
   const hidden = layout.hidden ?? [];

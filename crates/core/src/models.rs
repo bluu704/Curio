@@ -250,6 +250,18 @@ pub struct Category {
     pub kind: Option<Kind>,
     pub name: String,
     pub position: i64,
+    /// Folder color (tone key). None = default.
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+/// An item in the trash, with when it was deleted.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashedItem {
+    #[serde(flatten)]
+    pub item: Item,
+    pub deleted_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -268,6 +280,9 @@ pub struct Archive {
     pub name: String,
     pub icon: String,
     pub kind: Kind,
+    /// User-defined format id (Settings → 형식); None = the built-in format of `kind`.
+    #[serde(default)]
+    pub format: Option<String>,
     pub position: i64,
     pub pinned: bool,
 }

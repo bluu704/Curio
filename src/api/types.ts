@@ -63,7 +63,8 @@ export interface FieldDef {
 }
 
 /** "heading" = H2 (kept for older notes). */
-export type BlockType = "paragraph" | "h1" | "heading" | "h3" | "bullet" | "numbered" | "quote" | "todo" | "callout" | "code" | "math" | "table" | "divider";
+export type BlockType = "paragraph" | "h1" | "heading" | "h3" | "bullet" | "numbered" | "quote" | "todo" | "callout" | "code" | "math" | "table" | "divider"
+  | "toggle" | "image" | "video" | "bookmark" | "calendar" | "toc";
 
 export interface Block {
   id: ID;
@@ -72,6 +73,8 @@ export interface Block {
   checked?: boolean;
   /** table blocks: rows × cells (first row = header) */
   rows?: string[][];
+  /** extra data for rich blocks (toggle body, image src, video/bookmark url, calendar notes…) */
+  data?: Record<string, unknown>;
 }
 
 export interface Item {
@@ -209,7 +212,11 @@ export interface Category {
   kind: Kind | null;
   name: string;
   position: number;
+  /** Folder color (tone key). null = default */
+  color?: string | null;
 }
+
+export interface TrashedItem extends Item { deletedAt: number }
 
 export interface ArchiveCount { archiveId: ID | null; list: ListKind; count: number }
 
@@ -219,6 +226,8 @@ export interface Archive {
   name: string;
   icon: string;
   kind: Kind;
+  /** User-defined format id (Settings → 형식). null/undefined = built-in format of `kind`. */
+  format?: string | null;
   position: number;
   pinned: boolean;
 }

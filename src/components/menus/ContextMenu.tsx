@@ -81,7 +81,7 @@ function ArchiveMenu({ id, close }: { id: string; close: () => void }) {
         <MenuItem icon={Trash2} danger onClick={() => setConfirm(true)}>아카이브 삭제</MenuItem>
       ) : (
         <div className="m-1 rounded-lg bg-danger/10 p-2 text-[length:calc(12px*var(--ts))]">
-          <div className="text-danger">항목 {n}개도 함께 삭제돼요. 연결된 원본 파일은 남아 있어요.</div>
+          <div className="text-danger">항목 {n}개는 휴지통으로 옮겨져요 (30일 보관). 연결된 원본 파일은 남아 있어요.</div>
           <div className="mt-2 flex gap-1">
             <button className="btn h-7 flex-1 justify-center bg-danger text-white hover:bg-danger/90" onClick={() => { void deleteArchive(a.id); close(); }}>삭제</button>
             <button className="btn h-7 flex-1 justify-center border border-line" onClick={() => setConfirm(false)}>취소</button>
@@ -117,7 +117,6 @@ function ViewMenu({ id, close }: { id: string; close: () => void }) {
 function ItemMenu({ id, close }: { id: string; close: () => void }) {
   const s = useApp();
   const it = s.items.find((x) => x.id === id) ?? (s.detail?.id === id ? s.detail : undefined);
-  const [sure, setSure] = useState(false);
   const [moving, setMoving] = useState(false);
   if (!it) return null;
   const readable = it.files.find(isReadable);
@@ -155,11 +154,7 @@ function ItemMenu({ id, close }: { id: string; close: () => void }) {
       )}
       {it.kind !== "doujin" && <MenuItem icon={Wand2} onClick={() => run(() => s.setDialog({ type: "metadata", itemId: it.id }))}>정보 자동 검색</MenuItem>}
       <MenuSep />
-      {!sure ? (
-        <MenuItem icon={Trash2} danger onClick={() => setSure(true)}>삭제</MenuItem>
-      ) : (
-        <MenuItem icon={Trash2} danger className="bg-danger/10" onClick={() => run(() => s.deleteItem(it.id))}>한 번 더 누르면 삭제돼요</MenuItem>
-      )}
+      <MenuItem icon={Trash2} danger onClick={() => run(() => s.deleteItem(it.id))}>휴지통으로 이동</MenuItem>
     </div>
   );
 }

@@ -86,11 +86,11 @@ function TextPane() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); void save(); } }}
             spellCheck={false}
-            className="mx-auto block h-full min-h-[60vh] w-full max-w-3xl resize-none bg-transparent p-6 font-mono text-[length:calc(13px*var(--ts))] leading-relaxed outline-none"
+            className="mx-auto block h-full min-h-[60vh] w-full max-w-3xl resize-none bg-transparent p-6 font-sans text-[length:calc(14px*var(--ts))] leading-relaxed outline-none"
           />
         ) : (
           <div className="mx-auto max-w-3xl p-6">
-            {isMarkdown(file) ? <MarkdownView text={draft} /> : <pre className="whitespace-pre-wrap break-words font-mono text-[length:calc(13px*var(--ts))]">{draft}</pre>}
+            {isMarkdown(file) ? <MarkdownView text={draft} /> : <div className="whitespace-pre-wrap break-words font-sans text-[length:calc(14px*var(--ts))] leading-relaxed">{draft}</div>}
           </div>
         )}
       </div>

@@ -34,6 +34,9 @@ pub fn run() {
             let data = app.path().app_data_dir()?;
             let cache = app.path().app_cache_dir()?;
             let lib = Library::open(&data.join("curio.db"), &cache)?;
+            // trash keeps items for 30 days
+            let month = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0) - 30 * 86_400_000;
+            let _ = lib.empty_trash(Some(month));
             app.manage(lib);
             watcher::start(app.handle());
             Ok(())
@@ -78,6 +81,13 @@ pub fn run() {
             commands::read_text,
             commands::write_text,
             commands::export_file,
+            commands::list_trash,
+            commands::trash_count,
+            commands::restore_item,
+            commands::purge_item,
+            commands::empty_trash,
+            commands::get_settings,
+            commands::set_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Curio");

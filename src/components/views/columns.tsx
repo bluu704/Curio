@@ -4,9 +4,9 @@ import {
 import type { ColumnKey, FieldDef, Item, TagCategory } from "@/api/types";
 import { TAG_CATEGORIES } from "@/api/types";
 import { TAG_META, KIND_META } from "@/lib/meta";
-import { KIND_CONFIG } from "@/lib/kinds";
 import { date, relative } from "@/lib/format";
 import { useApp } from "@/store/app";
+import { folderColor } from "@/lib/statuses";
 import { Stars } from "@/components/ui/Stars";
 import { FIELD_ICONS } from "@/components/settings/fieldIcons";
 import { StatusPicker, tagsOf } from "./shared";
@@ -23,9 +23,9 @@ const chips = (it: Item, cat: TagCategory) => (
 );
 
 /** Every column the table can show (built-ins, each tag category, custom properties). */
-export function allColumns(fields: FieldDef[], kind?: keyof typeof KIND_CONFIG): ColumnDef[] {
+export function allColumns(fields: FieldDef[], labels?: [TagCategory, string][]): ColumnDef[] {
   const upd = useApp.getState().updateItem;
-  const catLabel = (c: TagCategory) => (kind && KIND_CONFIG[kind].tagCats.find(([x]) => x === c)?.[1]) || TAG_META[c].label;
+  const catLabel = (c: TagCategory) => labels?.find(([x]) => x === c)?.[1] || TAG_META[c].label;
   return [
     { key: "kind", label: "종류", icon: Shapes, width: "110px", render: (it) => { const K = KIND_META[it.kind]; return <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-fg/80"><K.icon size={14} className="text-muted" />{K.label}</span>; } },
     { key: "status", label: "상태", icon: CirclePlay, width: "120px", render: (it) => <StatusPicker item={it} /> },
@@ -33,7 +33,7 @@ export function allColumns(fields: FieldDef[], kind?: keyof typeof KIND_CONFIG):
     ...TAG_CATEGORIES.map((c): ColumnDef => ({ key: `tag:${c}`, label: catLabel(c), icon: TAG_META[c].icon, width: "minmax(120px, 1fr)", render: (it) => chips(it, c) })),
     { key: "category", label: "카테고리", icon: Folder, width: "minmax(110px, 1fr)", render: (it) => {
       const cats = useApp.getState().categories;
-      return <div className="flex min-w-0 gap-1 overflow-hidden">{it.categoryIds.map((id) => cats.find((c) => c.id === id)).filter(Boolean).map((c) => <span key={c!.id} className="chip shrink-0"><Folder size={11} className="text-amber-500/90" />{c!.name}</span>)}</div>;
+      return <div className="flex min-w-0 gap-1 overflow-hidden">{it.categoryIds.map((id) => cats.find((c) => c.id === id)).filter(Boolean).map((c) => <span key={c!.id} className="chip shrink-0"><Folder size={11} style={{ color: folderColor(c!.color) }} />{c!.name}</span>)}</div>;
     } },
     { key: "year", label: "연도", icon: CalendarDays, width: "70px", render: (it) => <span className="tabular-nums text-muted">{it.year ?? ""}</span> },
     { key: "code", label: "품번", icon: Hash, width: "110px", render: (it) => <span className="font-mono text-[length:calc(12px*var(--ts))] text-muted">{it.code ?? ""}</span> },

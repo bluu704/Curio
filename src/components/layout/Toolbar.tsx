@@ -5,8 +5,9 @@ import {
 import { useRef, useState } from "react";
 import { api } from "@/api";
 import { KINDS, type CardAspect, type CardField, type CardSize, type Layout, type SortField } from "@/api/types";
-import { activeView, useApp, viewContext } from "@/store/app";
+import { activeView, useApp } from "@/store/app";
 import { allColumns, normalizeColumn } from "@/components/views/columns";
+import { formatOfArchive } from "@/lib/formats";
 import { KIND_META, STATUS_META, TAG_META } from "@/lib/meta";
 import { iconOf } from "@/lib/icons";
 import { useNarrow } from "@/hooks/useNarrow";
@@ -265,7 +266,8 @@ function DisplayPanel() {
   const setCard = (patch: Partial<typeof c>) => s.patchView({ card: { ...c, ...patch } });
 
   if (view.layout === "table") {
-    const all = allColumns(s.fields, viewContext(view).kind);
+    const arc = s.archives.find((a) => a.id === view.query.archiveId);
+    const all = allColumns(s.fields, arc ? formatOfArchive(arc).tagCats : undefined);
     const cur = [...new Set(view.columns.map(normalizeColumn))];
     const toggleCol = (k: string) => s.patchView({ columns: cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k] });
     return (

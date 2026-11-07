@@ -1,6 +1,7 @@
 import {
   ArrowDown, ArrowUp, Code2, GripVertical, Heading1, Heading2, Heading3, Lightbulb, List, ListOrdered, Minus, Pilcrow, Plus,
-  Sigma, SquareCheck, Table, TextQuote, Trash2, type LucideIcon,
+  Sigma, SquareCheck, Table, TextQuote, Trash2, type LucideIcon, ChevronsRightLeft, Image as ImageIcon, Clapperboard, Bookmark as BookmarkIcon,
+  CalendarRange, ListTree,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Block, BlockType } from "@/api/types";
@@ -10,6 +11,7 @@ import { PREFIXES, parseMarkdown, renderInline, tex } from "@/lib/markdown";
 import { Popover } from "@/components/ui/Popover";
 import { SlashMenu, matchCommands, type SlashCommand } from "./SlashMenu";
 import { TableBlock } from "./TableBlock";
+import { RICH_TYPES, RichBlock, pickDate, richDefaults } from "./RichBlocks";
 import type { Item } from "@/api/types";
 import { MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
 
@@ -25,7 +27,13 @@ const TYPES: { type: BlockType; label: string; icon: LucideIcon }[] = [
   { type: "callout", label: "콜아웃  (!)", icon: Lightbulb },
   { type: "code", label: "코드  (```)", icon: Code2 },
   { type: "math", label: "수식 LaTeX  ($$)", icon: Sigma },
-  { type: "table", label: "표  (/표)", icon: Table },
+  { type: "table", label: "표", icon: Table },
+  { type: "toggle", label: "토글", icon: ChevronsRightLeft },
+  { type: "image", label: "이미지", icon: ImageIcon },
+  { type: "video", label: "동영상", icon: Clapperboard },
+  { type: "bookmark", label: "북마크", icon: BookmarkIcon },
+  { type: "calendar", label: "달력", icon: CalendarRange },
+  { type: "toc", label: "목차", icon: ListTree },
   { type: "divider", label: "구분선  (---)", icon: Minus },
 ];
 /** Types that continue on Enter (like lists in any editor). */
@@ -96,7 +104,7 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
 
   const patch = (id: string, p: Partial<Block>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...p } : b)));
   const insertAfter = (id: string | null, type: BlockType = "paragraph", more: Block[] = []) => {
-    const nb: Block = { id: uid(), type, text: "", ...(type === "todo" ? { checked: false } : {}), ...(type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : {}) };
+    const nb: Block = { id: uid(), type, text: "", ...(type === "todo" ? { checked: false } : {}), ...(type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : {}), ...richDefaults(type) };
     const add = more.length ? more : [nb];
     setBlocks((bs) => {
       const i = id ? bs.findIndex((b) => b.id === id) : bs.length - 1;
@@ -138,6 +146,7 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
           <div className={cn("pointer-events-none absolute left-7 right-0 z-10 h-0.5 rounded-full bg-accent", drag.after ? "-bottom-px" : "-top-px")} />
         )}
         <BlockRow
+          all={blocks}
           onGripDown={(e) => startDrag(e, b.id)}
           gripClickAllowed={() => !suppressClick.current}
           block={b}
@@ -182,15 +191,17 @@ export function BlockEditor({ initial, onChange }: { initial: Block[]; onChange:
 }
 
 function BlockRow({
-  onGripDown, gripClickAllowed, block, number, editing, onEdit, onText, onPasteMarkdown, onPatch, onEnter, onBackspaceEmpty, onInsert, onRemove, onMove,
+  all, onGripDown, gripClickAllowed, block, number, editing, onEdit, onText, onPasteMarkdown, onPatch, onEnter, onBackspaceEmpty, onInsert, onRemove, onMove,
 }: {
-  onGripDown: (e: React.PointerEvent) => void; gripClickAllowed: () => boolean;
+  all: Block[]; onGripDown: (e: React.PointerEvent) => void; gripClickAllowed: () => boolean;
   block: Block; number: number; editing: boolean; onEdit: (v: boolean) => void;
   onText: (t: string) => void; onPasteMarkdown: (md: string) => void; onPatch: (p: Partial<Block>) => void;
   onEnter: () => void; onBackspaceEmpty: () => void; onInsert: (t: BlockType) => void; onRemove: () => void; onMove: (d: -1 | 1) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const showEditor = editing || !block.text;
+  const useBlockText = useRef(block.text);
+  useBlockText.current = block.text;
   // ---- "/" command menu
   const [slash, setSlash] = useState<{ start: number; query: string; mode: "commands" | "items" } | null>(null);
   const [sel, setSel] = useState(0);
@@ -209,12 +220,22 @@ function BlockRow({
     if (c.kind === "mention") { onText(rest); setSlash({ start, query: "", mode: "items" }); setSel(0); return; }
     setSlash(null);
     if (c.kind === "type") {
-      const extra = c.type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : c.type === "todo" ? { checked: false } : {};
+      const extra = c.type === "table" ? { rows: [["", ""], ["", ""], ["", ""]] } : c.type === "todo" ? { checked: false } : richDefaults(c.type);
       if (!rest.trim()) onPatch({ type: c.type, text: "", ...extra });
       else { onPatch({ text: rest }); onInsert(c.type); }
       return;
     }
-    const insert = c.kind === "link" ? "[링크 텍스트](https://)" : new Date().toISOString().slice(0, 10);
+    if (c.kind === "date") {
+      // date picker → insert the chosen date
+      onPatch({ text: rest });
+      void pickDate().then((d) => {
+        if (!d) return;
+        const cur = useBlockText.current;
+        onPatch({ text: cur.slice(0, start) + d + cur.slice(start) });
+      });
+      return;
+    }
+    const insert = "[링크 텍스트](https://)";
     onPatch({ text: rest.slice(0, start) + insert + rest.slice(start) });
     requestAnimationFrame(() => {
       const t = ref.current;
@@ -269,10 +290,10 @@ function BlockRow({
           <>
             <MenuLabel>아래에 추가</MenuLabel>
             {iconRow(TYPES, (t) => { onInsert(t); close(); })}
-            {block.type !== "divider" && (
+            {!["divider", "table", ...RICH_TYPES].includes(block.type) && (
               <>
                 <MenuLabel>전환</MenuLabel>
-                {iconRow(TYPES.filter((t) => t.type !== "divider"), (t) => { onPatch({ type: t }); close(); }, block.type)}
+                {iconRow(TYPES.filter((t) => !["divider", "table", ...RICH_TYPES].includes(t.type)), (t) => { onPatch({ type: t }); close(); }, block.type)}
               </>
             )}
             <MenuSep />
@@ -350,6 +371,15 @@ function BlockRow({
       </div>
     )
   );
+
+  if ((RICH_TYPES as readonly string[]).includes(block.type)) {
+    return (
+      <div className="group/block flex items-start">
+        {gutter}
+        <div className="min-w-0 flex-1"><RichBlock block={block} onPatch={onPatch} all={all} /></div>
+      </div>
+    );
+  }
 
   if (block.type === "table") {
     return (

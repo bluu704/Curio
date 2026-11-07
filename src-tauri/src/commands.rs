@@ -62,3 +62,11 @@ type R<T> = Result<T, Error>;
 #[tauri::command] pub async fn read_text(lib: State<'_, Library>, file_id: String) -> R<String> { lib.read_text(&file_id) }
 #[tauri::command] pub async fn write_text(lib: State<'_, Library>, file_id: String, content: String) -> R<FileRef> { lib.write_text(&file_id, &content) }
 #[tauri::command] pub async fn export_file(lib: State<'_, Library>, file_id: String, dest: String) -> R<()> { lib.export_file(&file_id, &dest) }
+
+#[tauri::command] pub async fn list_trash(lib: State<'_, Library>) -> R<Vec<TrashedItem>> { lib.list_trash() }
+#[tauri::command] pub async fn trash_count(lib: State<'_, Library>) -> R<i64> { lib.trash_count() }
+#[tauri::command] pub async fn restore_item(lib: State<'_, Library>, id: String) -> R<Item> { lib.restore_item(&id) }
+#[tauri::command] pub async fn purge_item(lib: State<'_, Library>, id: String) -> R<()> { lib.purge_item(&id) }
+#[tauri::command] pub async fn empty_trash(lib: State<'_, Library>, older_than: Option<i64>) -> R<usize> { lib.empty_trash(older_than) }
+#[tauri::command] pub async fn get_settings(lib: State<'_, Library>, key: String) -> R<Option<serde_json::Value>> { lib.get_settings(&key) }
+#[tauri::command] pub async fn set_settings(lib: State<'_, Library>, key: String, value: serde_json::Value) -> R<()> { lib.set_settings(&key, &value) }

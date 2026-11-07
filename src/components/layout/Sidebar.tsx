@@ -1,4 +1,4 @@
-import { ChevronDown, GalleryVerticalEnd, Gift, Monitor, Moon, PanelLeft, Pin, Plus, Settings, Sun } from "lucide-react";
+import { ChevronDown, GalleryVerticalEnd, Gift, Monitor, Moon, PanelLeft, Pin, Plus, Settings, Sun, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useApp } from "@/store/app";
 import { longPress } from "@/store/drag";
@@ -171,6 +171,18 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
           <Row key={v.id} v={v} trailing={null}
             onMenu={(e) => { e.preventDefault(); openMenu({ x: e.clientX, y: e.clientY, target: { type: "view", id: v.id } }); }} />
         ))}
+        <div className="mx-1 my-2 h-px shrink-0 bg-line" />
+        <button
+          onClick={() => setView("sys:trash")}
+          data-tip={wide ? undefined : `휴지통 · ${s.trashCount}`}
+          data-tip-side="right"
+          className={cn("flex h-9 w-full shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 transition-colors",
+            activeViewId === "sys:trash" ? "bg-accent/10 text-accent" : "text-muted hover:bg-subtle hover:text-fg", !wide && "justify-center px-0")}
+        >
+          <Trash2 size={18} strokeWidth={1.8} className="shrink-0" />
+          {wide && <span className="flex-1 text-left text-[length:calc(13px*var(--ts))] font-medium">휴지통</span>}
+          {wide && s.trashCount > 0 && <span className="mr-5 text-[length:calc(11px*var(--ts))] tabular-nums text-muted/70">{s.trashCount}</span>}
+        </button>
       </nav>
 
       <div className={cn("flex gap-1 border-t border-line p-2.5", wide ? "flex-row" : "flex-col items-center")}>

@@ -3,6 +3,7 @@ import type { Category, Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { Popover } from "@/components/ui/Popover";
 import { cn } from "@/lib/cn";
+import { folderColor } from "@/lib/statuses";
 
 /** Chips of the item's folders + a tree popover to toggle membership. */
 export function CategoryPicker({ item }: { item: Item }) {
@@ -18,7 +19,7 @@ export function CategoryPicker({ item }: { item: Item }) {
     pool.filter((c) => c.parentId === pid).sort((a, b) => a.position - b.position).map((c) => (
       <div key={c.id}>
         <button className="menu-item h-7" style={{ paddingLeft: 8 + depth * 14 }} onClick={() => toggle(c.id)}>
-          <Folder size={13} className="text-amber-500/90" />
+          <Folder size={13} style={{ color: folderColor(c.color) }} />
           <span className="flex-1 truncate">{c.name}</span>
           {item.categoryIds.includes(c.id) && <Check size={13} className="text-accent" />}
         </button>
@@ -29,7 +30,7 @@ export function CategoryPicker({ item }: { item: Item }) {
   return (
     <div className="flex min-h-8 flex-wrap items-center gap-1 py-1">
       {item.categoryIds.map((id) => categories.find((c) => c.id === id)).filter(Boolean).map((c) => (
-        <span key={c!.id} className="chip group/chip"><Folder size={11} className="text-amber-500/90" />{path(c!)}
+        <span key={c!.id} className="chip group/chip"><Folder size={11} style={{ color: folderColor(c!.color) }} />{path(c!)}
           <button className="text-muted opacity-0 hover:text-fg group-hover/chip:opacity-100" onClick={() => toggle(c!.id)}><X size={11} /></button>
         </span>
       ))}

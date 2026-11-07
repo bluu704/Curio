@@ -32,6 +32,8 @@ interface DB {
   watch: WatchFolder[];
   archives: Archive[];
   statuses: StatusDef[];
+  trash: (Item & { deletedAt: number })[];
+  settings: Record<string, unknown>;
 }
 
 const uid = () =>
@@ -151,7 +153,7 @@ function seed(): DB {
     { id: uid(), name: "보관 위치", type: "select", options: ["NAS", "외장 SSD", "책장"], position: 0 },
   ];
   items.forEach((it) => { it.archiveId = ARCHIVE_KINDS.includes(it.kind) ? it.kind : null; it.pinned = false; });
-  return { items, tags, fields, views: clone(DEFAULT_VIEWS), categories, watch: [], archives: builtinArchives(), statuses: clone(DEFAULT_STATUSES) };
+  return { items, tags, fields, views: clone(DEFAULT_VIEWS), categories, watch: [], archives: builtinArchives(), statuses: clone(DEFAULT_STATUSES), trash: [], settings: {} };
 }
 
 function load(): DB {
@@ -227,6 +229,8 @@ export function createMockClient(): ApiClient {
   db.watch ??= [];
   db.archives ??= builtinArchives();
   db.statuses ??= clone(DEFAULT_STATUSES);
+  db.trash ??= [];
+  db.settings ??= {};
   const commit = () => save(db);
   const find = (id: ID) => {
     const it = db.items.find((x) => x.id === id);
@@ -272,7 +276,9 @@ export function createMockClient(): ApiClient {
       commit(); return delay(a);
     },
     async deleteArchive(id) {
-      const n = db.items.filter((it) => it.archiveId === id).length;
+      const gone = db.items.filter((it) => it.archiveId === id);
+      const n = gone.length;
+      db.trash.unshift(...gone.map((it) => ({ ...it, archiveId: null, deletedAt: now() })));
       db.items = db.items.filter((it) => it.archiveId !== id);
       db.archives = db.archives.filter((a) => a.id !== id);
       db.views = db.views.filter((v) => v.id !== `arc:${id}` && v.id !== `arc:${id}:wish`);
@@ -293,7 +299,25 @@ export function createMockClient(): ApiClient {
       it.updatedAt = now(); commit();
       return delay(it);
     },
-    async deleteItem(id) { db.items = db.items.filter((x) => x.id !== id); commit(); },
+    async deleteItem(id) {
+      const it = db.items.find((x) => x.id === id);
+      if (it) db.trash.unshift({ ...it, deletedAt: now() });
+      db.items = db.items.filter((x) => x.id !== id); commit();
+    },
+    async listTrash() { return delay(db.trash); },
+    async trashCount() { return db.trash.length; },
+    async restoreItem(id) {
+      const t = db.trash.find((x) => x.id === id);
+      if (!t) throw new Error("휴지통에 없는 항목이에요");
+      const { deletedAt: _d, ...item } = t;
+      if (item.archiveId && !db.archives.some((a) => a.id === item.archiveId)) item.archiveId = db.archives.some((a) => a.id === item.kind) ? item.kind : null;
+      db.trash = db.trash.filter((x) => x.id !== id); db.items.unshift(item); commit();
+      return delay(item);
+    },
+    async purgeItem(id) { db.trash = db.trash.filter((x) => x.id !== id); commit(); },
+    async emptyTrash() { const n = db.trash.length; db.trash = []; commit(); return n; },
+    async getSettings(key) { return delay((db.settings[key] ?? null) as never); },
+    async setSettings(key, value) { db.settings[key] = value; commit(); },
 
     async listTags() { return delay(db.tags); },
     async upsertTag(name, category) { const t = upsertTag(name, category); commit(); return delay(t); },
