@@ -105,6 +105,9 @@ async fn main() {
             json!(s, move |l| l.apply_metadata(&id, b.candidate, b.overwrite_title))
         }))
         .route("/items/:id/autofill", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.autofill(&id)) }))
+        .route("/items/:id/cover-from-video", post(|State(s): S, Path(id): Path<String>, Json(b): Json<serde_json::Value>| async move {
+            json!(s, move |l| l.cover_from_video(&id, b["fileId"].as_str().unwrap_or_default(), b["seconds"].as_f64().unwrap_or(0.0)))
+        }))
         .route("/items/:id/lyrics", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.fetch_lyrics(&id)) }))
         .route("/metadata/search", post(|State(s): S, Json(b): Json<Search>| async move { json!(s, move |l| l.search_metadata(b.kind, &b.query)) }))
         .route("/files/:id", delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.detach_file(&id)) }))

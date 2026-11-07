@@ -300,15 +300,15 @@ function DisplayPanel() {
             <Segmented value={c.fit} onChange={(fit) => setCard({ fit })}
               options={[{ value: "cover", label: "채우기" }, { value: "contain", label: "맞추기" }]} />
           </Row>}
-          <Row label="제목">
+          <Row label={view.layout === "masonry" ? "그림 아래 제목" : "제목"}>
             <Segmented value={c.showTitle ? "on" : "off"} onChange={(v) => setCard({ showTitle: v === "on" })}
               options={[{ value: "on", label: "표시" }, { value: "off", label: "숨김" }]} />
           </Row>
         </>
       )}
       <div>
-        <div className="label mb-1">카드에 표시</div>
-        {fields.map(([k, l]) => (
+        <div className="label mb-1">{view.layout === "masonry" ? "마우스를 올리면 표시" : "카드에 표시"}</div>
+        {fields.filter(([k]) => view.layout !== "masonry" || k === "rating" || k === "author").map(([k, l]) => (
           <MenuItem key={k} checked={c.fields.includes(k)}
             onClick={() => setCard({ fields: c.fields.includes(k) ? c.fields.filter((x) => x !== k) : [...c.fields, k] })}>
             {l}

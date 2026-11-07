@@ -1,6 +1,7 @@
 import type { Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { longPress, startItemDrag } from "@/store/drag";
+import { usePick } from "@/store/pick";
 
 /** Start dragging a card; dropping on a category folder files it there. */
 export const dragItem = (e: React.PointerEvent, it: Item) => {
@@ -8,7 +9,10 @@ export const dragItem = (e: React.PointerEvent, it: Item) => {
     longPress(e, (x, y) => useApp.getState().openMenu({ x, y, target: { type: "item", id: it.id } }));
     return;
   }
-  startItemDrag(e, [it.id], it.title, (ids, target) => {
+  // dragging one of several picked cards moves all of them
+  const picked = usePick.getState().ids;
+  const ids = picked.has(it.id) ? [...picked] : [it.id];
+  startItemDrag(e, ids, ids.length > 1 ? `${it.title} 외 ${ids.length - 1}개` : it.title, (ids, target) => {
     if (target !== "root" && !target.startsWith("cat:")) void useApp.getState().addToCategory(ids, target);
   });
 };

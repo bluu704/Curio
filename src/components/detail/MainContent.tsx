@@ -1,11 +1,12 @@
-import { Expand, Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Camera, Expand, Loader2, Pencil } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import type { FileRef, Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { isMarkdown } from "@/components/viewer/files";
 import { MarkdownView } from "@/components/viewer/MarkdownView";
 import { cn } from "@/lib/cn";
+import { coverFromVideo } from "@/lib/videoCover";
 import { disposeAni, isAniName, parseAni, type AniAnim } from "@/lib/ani";
 import { AniImage } from "@/components/ui/AniImage";
 
@@ -24,13 +25,34 @@ export function MainContent({ item, file }: { item: Item; file: FileRef }) {
   }
   if (file.kind === "video") {
     const src = api.fileUrl(file);
-    return src ? (
-      <video key={file.id} src={src} controls playsInline className="mt-4 block max-h-[60vh] w-full rounded-xl bg-black" />
-    ) : (
+    return src ? <VideoContent item={item} file={file} src={src} /> : (
       <div className="mt-4 rounded-xl bg-subtle p-4 text-center text-[length:calc(12px*var(--ts))] text-muted">이 영상을 여기서 재생할 수 없어요</div>
     );
   }
   return <TextContent item={item} file={file} />;
+}
+
+/** The item's video, with "현재 장면을 표지로" for the frame it is paused on. */
+function VideoContent({ item, file, src }: { item: Item; file: FileRef; src: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [busy, setBusy] = useState(false);
+  const grab = async () => {
+    if (!ref.current) return;
+    setBusy(true);
+    try { await coverFromVideo(ref.current, item.id, file.id); }
+    catch (e) { useApp.setState({ error: e instanceof Error ? e.message : String(e) }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-4">
+      <video ref={ref} key={file.id} src={src} controls playsInline preload="metadata" className="block max-h-[60vh] w-full rounded-xl bg-black" />
+      <div className="mt-1.5 flex justify-end">
+        <button className="btn h-7 px-2 text-[length:calc(12px*var(--ts))] text-muted hover:text-fg" disabled={busy} onClick={() => void grab()}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}현재 장면을 표지로
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Animated cursor: parsed and played in place. */

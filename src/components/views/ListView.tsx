@@ -3,6 +3,8 @@ import { useState } from "react";
 import { consumeDragClick } from "@/store/drag";
 import { useRows } from "./virtual";
 import { dragItem } from "./dragDrop";
+import { PickBox } from "./PickBox";
+import { pickClick, usePick } from "@/store/pick";
 import type { CardConfig, Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { KIND_META } from "@/lib/meta";
@@ -14,6 +16,7 @@ import { StatusBadge, tagsOf } from "./shared";
 
 export function ListView({ items, card }: { items: Item[]; card: CardConfig }) {
   const { select, selectedId } = useApp();
+  const picks = usePick((p) => p.ids);
   const has = (f: CardConfig["fields"][number]) => card.fields.includes(f);
   const [wrap, setWrap] = useState<HTMLDivElement | null>(null);
   const v = useRows(items.length, 76, wrap);
@@ -29,13 +32,14 @@ export function ListView({ items, card }: { items: Item[]; card: CardConfig }) {
             data-item-id={it.id}
             onPointerDown={(e) => dragItem(e, it)}
             onContextMenu={(e) => { e.preventDefault(); useApp.getState().openMenu({ x: e.clientX, y: e.clientY, target: { type: "item", id: it.id } }); }}
-            onClick={() => !consumeDragClick() && void select(it.id)}
+            onClick={(e) => { if (consumeDragClick() || pickClick(e, it.id)) return; void select(it.id); }}
             className={cn(
-              "absolute inset-x-4 top-4 flex h-[72px] cursor-pointer items-center gap-3 rounded-xl p-2 transition-colors",
-              selectedId === it.id ? "bg-accent/10" : "hover:bg-subtle",
+              "group absolute inset-x-4 top-4 flex h-[72px] cursor-pointer items-center gap-3 rounded-xl p-2 transition-colors",
+              selectedId === it.id || picks.has(it.id) ? "bg-accent/10" : "hover:bg-subtle",
             )}
             style={{ transform: `translateY(${row.start - v.options.scrollMargin}px)` }}
           >
+            <PickBox id={it.id} className="shrink-0 border-line bg-surface hover:bg-subtle" />
             <Cover item={it} className="h-14 w-10 shrink-0 rounded-md" iconSize={16} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">

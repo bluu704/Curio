@@ -17,7 +17,8 @@ export type Dialog =
   | { type: "import" }
   | { type: "link" }
   | { type: "archive"; archiveId: ID | null }
-  | { type: "deleteArchive"; archiveId: ID };
+  | { type: "deleteArchive"; archiveId: ID }
+  | { type: "videoCover"; itemId: ID; fileId: ID };
 
 /** Right-click menu target. */
 export type ContextMenu = null | { x: number; y: number; target: { type: "archive"; id: ID } | { type: "view"; id: ID } | { type: "item"; id: ID } };

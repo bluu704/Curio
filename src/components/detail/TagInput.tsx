@@ -28,8 +28,8 @@ export function TagInput({ item, category, label }: { item: Item; category: TagC
   return (
     <div className="flex min-h-8 flex-wrap items-center gap-1 py-1">
       {mine.map((t) => (
-        <span key={t.id} className="chip group/chip">
-          {t.name}
+        <span key={t.id} className="chip group/chip min-w-0 max-w-full">
+          <span className="truncate">{t.name}</span>
           <button className="text-muted opacity-0 hover:text-fg group-hover/chip:opacity-100" onClick={() => setIds(ids.filter((x) => x !== t.id))}>
             <X size={11} />
           </button>

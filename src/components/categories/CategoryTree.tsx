@@ -1,7 +1,8 @@
-import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Palette, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Palette, Pencil, Pipette, Trash2 } from "lucide-react";
 import { Popover } from "@/components/ui/Popover";
+import { ColorPicker } from "@/components/ui/ColorPicker";
 import { FOLDER_COLORS, FOLDER_NAMES, folderColor } from "@/lib/statuses";
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Category, ID, Kind } from "@/api/types";
 import { useApp, activeView, viewContext } from "@/store/app";
 import { useDrag, startItemDrag, consumeDragClick } from "@/store/drag";
@@ -17,6 +18,7 @@ export function CategoryTree() {
   const cats = useMemo(() => s.categories.filter((c) => !kind || c.kind === kind || c.kind === null), [s.categories, kind]);
   const [open, setOpen] = useState<Set<string>>(loadOpen);
   const [editing, setEditing] = useState<ID | null>(null);
+  const [menu, setMenu] = useState<{ id: ID; x: number; y: number; confirm?: boolean } | null>(null);
   const overId = useDrag((d) => d.overId);
   const dragging = useDrag((d) => d.ids.length > 0);
 
@@ -56,6 +58,7 @@ export function CategoryTree() {
           onPointerDown={(e) => editing !== c.id && startItemDrag(e, [`cat:${c.id}`], c.name, onDrop)}
           onClick={() => { if (!consumeDragClick()) s.setCategory(active ? null : c.id); }}
           onDoubleClick={() => setEditing(c.id)}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMenu({ id: c.id, x: e.clientX, y: e.clientY }); }}
           className={cn(
             "group/node flex h-8 cursor-pointer items-center gap-1 rounded-lg pr-1 text-[length:calc(13px*var(--ts))] transition-colors",
             // a coloured folder tints its own selection / hover background
@@ -91,25 +94,15 @@ export function CategoryTree() {
           )}
           <div className="hidden shrink-0 items-center group-hover/node:flex">
             <button className="btn-icon h-6 w-6" data-tip="하위 폴더" onClick={(e) => { e.stopPropagation(); void add(c.id); }}><FolderPlus size={13} /></button>
-            <Popover width={176} trigger={({ toggle }) => (
+            <Popover trigger={({ toggle }) => (
               <button className="btn-icon h-6 w-6" data-tip="폴더 색" onClick={(e) => { e.stopPropagation(); toggle(); }}><Palette size={12} /></button>
             )}>
-              {(close) => (
-                <div className="grid grid-cols-5 gap-1.5 p-2" onClick={(e) => e.stopPropagation()}>
-                  {[null, ...FOLDER_COLORS].map((t) => (
-                    <button key={t ?? "default"} onClick={() => { void s.saveCategory({ ...c, color: t }); close(); }} data-tip={t ? FOLDER_NAMES[t] : "기본"}
-                      className={cn("flex h-7 w-7 items-center justify-center rounded-full ring-offset-1 ring-offset-elevated", (c.color ?? null) === t && "ring-2 ring-fg/60")}
-                      style={{ background: folderColor(t) }}>
-                      <Folder size={13} className="text-white" />
-                    </button>
-                  ))}
-                </div>
-              )}
+              {(close) => <FolderColorPanel c={c} onDone={close} />}
             </Popover>
             <button className="btn-icon h-6 w-6" data-tip="이름 바꾸기" onClick={(e) => { e.stopPropagation(); setEditing(c.id); }}><Pencil size={12} /></button>
             <button className="btn-icon h-6 w-6 hover:text-danger" data-tip="삭제" onClick={(e) => {
               e.stopPropagation();
-              if (confirm(`"${c.name}" 폴더와 하위 폴더를 삭제할까요?\n(항목은 삭제되지 않아요)`)) void s.deleteCategory(c.id);
+              setMenu({ id: c.id, x: e.clientX, y: e.clientY, confirm: true });
             }}><Trash2 size={12} /></button>
           </div>
         </div>
@@ -137,6 +130,10 @@ export function CategoryTree() {
           <Layers size={15} />전체
         </div>
         {children(null).map((c) => <Node key={c.id} c={c} depth={0} />)}
+        {menu && (() => {
+          const c = cats.find((x) => x.id === menu.id);
+          return c ? <FolderMenu c={c} at={menu} onClose={() => setMenu(null)} onRename={() => setEditing(c.id)} onAdd={() => void add(c.id)} /> : null;
+        })()}
         {!cats.length && (
           <div className="mt-3 rounded-lg border border-dashed border-line p-3 text-center text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">
             폴더를 만들고<br />카드를 끌어다 넣어 보세요
@@ -153,4 +150,81 @@ function tint(color: string, alpha: number) {
   if (!m) return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
   const n = parseInt(m[1], 16);
   return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/** Preset folder colours + "직접 고르기" with the app's colour picker. */
+function FolderColorPanel({ c, onDone }: { c: Category; onDone: () => void }) {
+  const s = useApp();
+  const [custom, setCustom] = useState(false);
+  const isCustom = !!c.color && !(FOLDER_COLORS as readonly string[]).includes(c.color);
+  const [draft, setDraft] = useState(isCustom ? c.color! : "#f59e0b");
+  const pick = (color: string | null) => { void s.saveCategory({ ...c, color }); onDone(); };
+  if (custom) {
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <ColorPicker value={draft} onChange={setDraft} onDone={() => pick(draft)} />
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-6 gap-1.5 p-2.5" onClick={(e) => e.stopPropagation()}>
+      {[null, ...FOLDER_COLORS].map((t) => (
+        <button key={t ?? "default"} onClick={() => pick(t)} data-tip={t ? FOLDER_NAMES[t] : "기본"}
+          className={cn("flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-elevated transition-transform hover:scale-110", (c.color ?? null) === t && "ring-2 ring-fg/60")}
+          style={{ background: folderColor(t) }}>
+          <Folder size={13} className="text-white" />
+        </button>
+      ))}
+      <button onClick={() => setCustom(true)} data-tip="직접 고르기"
+        className={cn("flex h-7 w-7 items-center justify-center rounded-full text-white ring-offset-2 ring-offset-elevated transition-transform hover:scale-110", isCustom && "ring-2 ring-fg/60")}
+        style={{ background: isCustom ? c.color! : "conic-gradient(#f43f5e, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #f43f5e)" }}>
+        <Pipette size={12} />
+      </button>
+    </div>
+  );
+}
+
+/** Right-click menu of a folder: new sub-folder, rename, colour, delete (asks once more in place). */
+function FolderMenu({ c, at, onClose, onRename, onAdd }: {
+  c: Category; at: { x: number; y: number; confirm?: boolean }; onClose: () => void; onRename: () => void; onAdd: () => void;
+}) {
+  const s = useApp();
+  const ref = useRef<HTMLDivElement>(null);
+  const [sure, setSure] = useState(!!at.confirm);
+  const [pos, setPos] = useState({ left: at.x, top: at.y });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setPos({ left: Math.max(8, Math.min(at.x, innerWidth - el.offsetWidth - 8)), top: Math.max(8, Math.min(at.y, innerHeight - el.offsetHeight - 8)) });
+  }, [at.x, at.y, sure]);
+  useEffect(() => {
+    const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
+  }, [onClose]);
+  const row = "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[length:calc(13px*var(--ts))] hover:bg-subtle";
+  return (
+    <div ref={ref} className="popover anim-pop fixed z-[60] w-[232px] p-1" style={pos} onClick={(e) => e.stopPropagation()}>
+      <div className="truncate px-2 pb-1 pt-1.5 text-[length:calc(11px*var(--ts))] font-medium text-muted">{c.name}</div>
+      <button className={row} onClick={() => { onAdd(); onClose(); }}><FolderPlus size={14} className="text-muted" />하위 폴더 만들기</button>
+      <button className={row} onClick={() => { onRename(); onClose(); }}><Pencil size={14} className="text-muted" />이름 바꾸기</button>
+      <div className="mx-1 my-1 h-px bg-line" />
+      <div className="px-2 pt-1 text-[length:calc(11px*var(--ts))] text-muted">색</div>
+      <FolderColorPanel c={c} onDone={onClose} />
+      <div className="mx-1 my-1 h-px bg-line" />
+      {sure ? (
+        <div className="space-y-1.5 p-1.5">
+          <div className="text-[length:calc(12px*var(--ts))] leading-snug text-muted">하위 폴더까지 삭제돼요. 항목은 그대로 남아요.</div>
+          <div className="flex gap-1.5">
+            <button className="btn h-8 flex-1 justify-center border border-line" onClick={() => setSure(false)}>취소</button>
+            <button className="btn h-8 flex-1 justify-center bg-danger text-white hover:bg-danger/90" onClick={() => { void s.deleteCategory(c.id); onClose(); }}>삭제</button>
+          </div>
+        </div>
+      ) : (
+        <button className={cn(row, "text-danger")} onClick={() => setSure(true)}><Trash2 size={14} />폴더 삭제</button>
+      )}
+    </div>
+  );
 }

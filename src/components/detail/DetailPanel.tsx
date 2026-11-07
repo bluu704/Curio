@@ -1,5 +1,5 @@
 import {
-  type LucideIcon, Archive, CalendarDays, CalendarOff, Cloud, CloudOff, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
+  type LucideIcon, Film, Archive, CalendarDays, CalendarOff, Cloud, CloudOff, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
@@ -210,6 +210,7 @@ function Pill({ icon: Icon, children }: { icon: LucideIcon; children: React.Reac
 /** Cover with a hover button to replace it: desktop picks a file, browser uploads an image. */
 function CoverPicker({ item, className }: { item: Item; className: string }) {
   const update = useApp((s) => s.updateItem);
+  const setDialog = useApp((s) => s.setDialog);
   const input = useRef<HTMLInputElement>(null);
   const setFromFile = (f: File) => {
     const img = new Image();
@@ -226,12 +227,26 @@ function CoverPicker({ item, className }: { item: Item; className: string }) {
     const p = await api.pickPaths({ multiple: false });
     if (p?.[0]) void update(item.id, { coverUri: p[0] });
   };
+  const video = item.files.find((f) => f.kind === "video");
+  const bar = "touch-show absolute inset-x-0 bottom-0 flex h-8 items-center justify-center gap-1 bg-black/55 text-[length:calc(11px*var(--ts))] text-white opacity-0 transition-opacity group-hover/cover:opacity-100";
   return (
     <div className={cn("group/cover relative overflow-hidden", className)}>
       <Cover item={item} className="absolute inset-0" />
-      <button onClick={() => void pick()} className="touch-show absolute inset-x-0 bottom-0 flex h-8 items-center justify-center gap-1 bg-black/55 text-[length:calc(11px*var(--ts))] text-white opacity-0 transition-opacity group-hover/cover:opacity-100">
-        <ImagePlus size={13} />표지 바꾸기
-      </button>
+      {video ? (
+        // videos: choose a moment of the video, or upload a picture
+        <Popover width={200} trigger={({ toggle }) => (
+          <button onClick={toggle} className={bar}><ImagePlus size={13} />표지 바꾸기</button>
+        )}>
+          {(close) => (
+            <>
+              <MenuItem icon={Film} onClick={() => { close(); setDialog({ type: "videoCover", itemId: item.id, fileId: video.id }); }}>영상에서 장면 고르기</MenuItem>
+              <MenuItem icon={ImagePlus} onClick={() => { close(); void pick(); }}>이미지 올리기</MenuItem>
+            </>
+          )}
+        </Popover>
+      ) : (
+        <button onClick={() => void pick()} className={bar}><ImagePlus size={13} />표지 바꾸기</button>
+      )}
       <input ref={input} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setFromFile(f); e.target.value = ""; }} />
     </div>
   );

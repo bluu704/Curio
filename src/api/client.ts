@@ -69,6 +69,8 @@ export interface ApiClient {
   autofill(itemId: ID): Promise<boolean>;
   /** Find lyrics (YouTube Music → LRCLIB) and store them in props._lyrics. null = none found. */
   fetchLyrics(itemId: ID): Promise<Item | null>;
+  /** Cover = frame of one of the item's videos (server side, ffmpeg). Absent where the browser can capture it. */
+  coverFromVideo?(itemId: ID, fileId: ID, seconds: number): Promise<Item>;
 
   /** Reader: page names of a zip/cbz/image folder; PDFs use `fileUrl`. */
   listPages(file: FileRef): Promise<string[]>;

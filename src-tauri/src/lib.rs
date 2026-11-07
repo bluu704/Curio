@@ -75,6 +75,7 @@ pub fn run() {
             commands::apply_metadata,
             commands::autofill,
             commands::fetch_lyrics,
+            commands::cover_from_video,
             commands::list_watch_folders,
             commands::add_watch_folder,
             commands::remove_watch_folder,

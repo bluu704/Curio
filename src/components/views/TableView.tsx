@@ -3,6 +3,8 @@ import { useState } from "react";
 import { consumeDragClick } from "@/store/drag";
 import { useRows } from "./virtual";
 import { dragItem } from "./dragDrop";
+import { PickBox, usePicked } from "./PickBox";
+import { pickClick } from "@/store/pick";
 import type { ColumnKey, Item } from "@/api/types";
 import { activeView, useApp } from "@/store/app";
 import { allColumns, normalizeColumn, TITLE_COL, type ColumnDef } from "./columns";
@@ -40,8 +42,10 @@ export function TableView({ items, columns }: { items: Item[]; columns: ColumnKe
 
 function Row({ item, cols, template }: { item: Item; cols: ColumnDef[]; template: string }) {
   const { select, selectedId } = useApp();
+  const picked = usePicked(item.id);
   const title = (
     <div className="flex min-w-0 items-center gap-2.5">
+      <PickBox id={item.id} className="h-5 w-5 shrink-0 border-line bg-surface hover:bg-subtle" />
       <Cover item={item} className="h-9 w-7 shrink-0 rounded" iconSize={13} />
       {item.code && <span className="shrink-0 rounded bg-subtle px-1.5 font-mono text-[length:calc(11px*var(--ts))] text-muted">{item.code}</span>}
       <span className="truncate font-medium">{item.title}</span>
@@ -54,10 +58,10 @@ function Row({ item, cols, template }: { item: Item; cols: ColumnDef[]; template
       data-item-id={item.id}
       onPointerDown={(e) => dragItem(e, item)}
       onContextMenu={(e) => { e.preventDefault(); useApp.getState().openMenu({ x: e.clientX, y: e.clientY, target: { type: "item", id: item.id } }); }}
-      onClick={() => !consumeDragClick() && void select(item.id)}
+      onClick={(e) => { if (consumeDragClick() || pickClick(e, item.id)) return; void select(item.id); }}
       className={cn(
-        "grid h-12 cursor-pointer border-b border-line/60 transition-colors",
-        selectedId === item.id ? "bg-accent/10" : "hover:bg-subtle/70",
+        "group grid h-12 cursor-pointer border-b border-line/60 transition-colors",
+        selectedId === item.id || picked ? "bg-accent/10" : "hover:bg-subtle/70",
       )}
       style={{ gridTemplateColumns: template }}
     >

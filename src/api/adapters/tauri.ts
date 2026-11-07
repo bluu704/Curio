@@ -54,6 +54,7 @@ export function createTauriClient(): ApiClient {
     applyMetadata: (itemId, candidate, overwriteTitle) => invoke("apply_metadata", { itemId, candidate, overwriteTitle }),
     autofill: (itemId) => invoke("autofill", { itemId }),
     fetchLyrics: (itemId) => invoke("fetch_lyrics", { itemId }),
+    coverFromVideo: (itemId, fileId, seconds) => invoke("cover_from_video", { itemId, fileId, seconds }),
 
     listPages: (f) => invoke("list_pages", { fileId: f.id }),
     // Custom protocol registered in src-tauri/src/lib.rs (streams one zip entry per request).

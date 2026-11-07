@@ -156,9 +156,14 @@ fn first_video_in_dir(dir: &Path) -> Option<PathBuf> {
 
 /// Grab one frame with ffmpeg (if installed). Seeks to 10% (max 90 s) to skip black intros.
 pub fn video_frame(src: &Path, out: &Path) -> Option<PathBuf> {
+    video_frame_at(src, out, None)
+}
+
+/// Frame at `at` seconds (None = 10% in, max 90 s), written as a JPEG to `out`.
+pub fn video_frame_at(src: &Path, out: &Path, at: Option<f64>) -> Option<PathBuf> {
     use std::process::{Command, Stdio};
     let ffmpeg = which("ffmpeg")?;
-    let dur = which("ffprobe")
+    let dur = if at.is_some() { 0.0 } else { which("ffprobe")
         .and_then(|p| {
             Command::new(p)
                 .args(["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1"])
@@ -167,8 +172,8 @@ pub fn video_frame(src: &Path, out: &Path) -> Option<PathBuf> {
                 .ok()
         })
         .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<f64>().ok())
-        .unwrap_or(0.0);
-    let at = (dur * 0.1).clamp(0.0, 90.0);
+        .unwrap_or(0.0) };
+    let at = at.unwrap_or((dur * 0.1).clamp(0.0, 90.0)).max(0.0);
     std::fs::create_dir_all(out.parent()?).ok()?;
     let ok = Command::new(ffmpeg)
         .args(["-y", "-v", "error", "-ss", &format!("{at:.2}"), "-i"])

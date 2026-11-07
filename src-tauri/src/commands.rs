@@ -45,6 +45,7 @@ type R<T> = Result<T, Error>;
 #[tauri::command] pub async fn search_metadata(lib: State<'_, Library>, kind: Kind, query: String) -> R<Vec<Candidate>> { lib.search_metadata(kind, &query) }
 #[tauri::command] pub async fn apply_metadata(lib: State<'_, Library>, item_id: String, candidate: Candidate, overwrite_title: bool) -> R<Item> { lib.apply_metadata(&item_id, candidate, overwrite_title) }
 #[tauri::command] pub async fn autofill(lib: State<'_, Library>, item_id: String) -> R<bool> { lib.autofill(&item_id) }
+#[tauri::command] pub async fn cover_from_video(lib: State<'_, Library>, item_id: String, file_id: String, seconds: f64) -> R<Item> { lib.cover_from_video(&item_id, &file_id, seconds) }
 #[tauri::command] pub async fn fetch_lyrics(lib: State<'_, Library>, item_id: String) -> R<Option<Item>> { lib.fetch_lyrics(&item_id) }
 
 #[tauri::command] pub async fn list_watch_folders(lib: State<'_, Library>) -> R<Vec<WatchFolder>> { lib.list_watch_folders() }

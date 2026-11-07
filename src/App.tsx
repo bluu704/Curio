@@ -17,6 +17,8 @@ import { ContextMenu } from "@/components/menus/ContextMenu";
 import { ArchiveDialog } from "@/components/dialogs/ArchiveDialog";
 import { SettingsModal } from "@/components/settings/SettingsModal";
 import { MetadataDialog } from "@/components/dialogs/MetadataDialog";
+import { BulkBar } from "@/components/views/BulkBar";
+import { VideoCoverDialog } from "@/components/dialogs/VideoCoverDialog";
 import { LinkDialog } from "@/components/dialogs/LinkDialog";
 import { ImportDialog } from "@/components/dialogs/ImportDialog";
 import { Reader } from "@/components/reader/Reader";
@@ -104,6 +106,8 @@ export default function App() {
       <SettingsModal />
       <MetadataDialog />
       <LinkDialog />
+      <VideoCoverDialog />
+      <BulkBar />
       <ImportDialog />
       <Reader />
       <FileViewer />

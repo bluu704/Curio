@@ -2,6 +2,7 @@ import { CalendarDays, CalendarPlus, ExternalLink, Eye, EyeOff, Folder, Hash, Li
 import { useState } from "react";
 import { KINDS, TAG_CATEGORIES, type FieldType, type Item, type TagCategory } from "@/api/types";
 import { useApp } from "@/store/app";
+import { useNarrow } from "@/hooks/useNarrow";
 import { KIND_META, STATUS_META, TAG_META } from "@/lib/meta";
 import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
 import { date, uid } from "@/lib/format";
@@ -93,6 +94,7 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
   const toggle = (key: string) =>
     s.setPropLayout(item.archiveId, { hidden: hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key] });
   const visible = editing ? rows : rows.filter((r) => !hidden.includes(r.key));
+  const stack = useNarrow();
   // two per line: a short row left alone before a wide one stretches instead of leaving a hole
   const spans = visible.map((r) => !!r.wide);
   for (let i = 0, col = 0; i < visible.length; i++) {
@@ -120,8 +122,10 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
         {visible.map((r, i) => {
           const off = hidden.includes(r.key);
           return (
-            <div key={r.key} className={cn("group/prop flex min-h-8 min-w-0 items-start gap-2", spans[i] && "col-span-2", editing && off && "opacity-40")}>
-              <div className={cn("flex h-8 shrink-0 items-center gap-2 text-[length:calc(12px*var(--ts))] text-muted", "w-[84px]")}>
+            <div key={r.key} className={cn("group/prop flex min-h-8 min-w-0 gap-2", spans[i] && "col-span-2", editing && off && "opacity-40",
+              // phones: name above the value so the value gets the whole half-width cell
+              stack && !spans[i] ? "flex-col gap-0 pb-1" : "items-start")}>
+              <div className={cn("flex shrink-0 items-center gap-2 text-[length:calc(12px*var(--ts))] text-muted", stack && !spans[i] ? "h-6" : "h-8 w-[84px]")}>
                 {editing ? (
                   <button className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-subtle hover:text-fg" onClick={() => toggle(r.key)} data-tip={off ? "보이기" : "숨기기"}>
                     {off ? <EyeOff size={14} /> : <Eye size={14} />}

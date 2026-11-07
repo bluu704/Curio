@@ -456,7 +456,7 @@ export function createMockClient(): ApiClient {
         const it = insert({ title: f.name.replace(/\.[^.]+$/, ""), kind: kind ?? guess, archiveId: t?.archiveId, list });
         const [ref] = await api.attachBlobs!(it.id, [f]);
         const fresh = find(it.id);
-        fresh.coverUri = (await firstPageDataUrl(ref.id)) ?? svgCover(db.items.length, f.name);
+        fresh.coverUri = (ref.kind === "video" ? await videoPoster(f) : await firstPageDataUrl(ref.id)) ?? svgCover(db.items.length, f.name);
         commit();
         created.push(fresh);
       }
@@ -613,6 +613,29 @@ export function createMockClient(): ApiClient {
     },
     mediaUrl: (uri) => uri ?? null,
   };
+
+  /** A frame 10% into an uploaded video (same thing the desktop app does with ffmpeg). */
+  function videoPoster(f: File): Promise<string | null> {
+    return new Promise((res) => {
+      const v = document.createElement("video");
+      const url = URL.createObjectURL(f);
+      const done = (r: string | null) => { URL.revokeObjectURL(url); res(r); };
+      const timer = setTimeout(() => done(null), 8000);
+      v.muted = true; v.preload = "auto";
+      v.onloadedmetadata = () => { v.currentTime = Math.min(90, (v.duration || 0) * 0.1); };
+      v.onseeked = () => {
+        clearTimeout(timer);
+        try {
+          const k = Math.min(1, 720 / (v.videoWidth || 720));
+          const c = Object.assign(document.createElement("canvas"), { width: Math.round(v.videoWidth * k), height: Math.round(v.videoHeight * k) });
+          c.getContext("2d")!.drawImage(v, 0, 0, c.width, c.height);
+          done(c.width ? c.toDataURL("image/jpeg", 0.85) : null);
+        } catch { done(null); }
+      };
+      v.onerror = () => { clearTimeout(timer); done(null); };
+      v.src = url;
+    });
+  }
 
   async function firstPageDataUrl(fileId: ID): Promise<string | null> {
     const f = db.items.flatMap((i) => i.files).find((x) => x.id === fileId);

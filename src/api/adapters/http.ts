@@ -74,6 +74,7 @@ export function createHttpClient(baseUrl: string): ApiClient {
     applyMetadata: (itemId, c, overwriteTitle) => req("POST", `/items/${itemId}/metadata`, { candidate: c, overwriteTitle }),
     autofill: (itemId) => req("POST", `/items/${itemId}/autofill`),
     fetchLyrics: (itemId) => req("POST", `/items/${itemId}/lyrics`),
+    coverFromVideo: (itemId, fileId, seconds) => req("POST", `/items/${itemId}/cover-from-video`, { fileId, seconds }),
 
     listPages: (f) => req("GET", `/files/${f.id}/pages`),
     pageUrl: (f, i) => withToken(`${base}/api/files/${f.id}/pages/${i}`),

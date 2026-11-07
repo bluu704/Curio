@@ -745,6 +745,16 @@ impl Library {
         }
     }
 
+    /// Use the frame at `seconds` of one of the item's videos as its cover (needs ffmpeg).
+    pub fn cover_from_video(&self, item_id: &str, file_id: &str, seconds: f64) -> Result<Item> {
+        let it = self.get_item(item_id)?;
+        let f = it.files.iter().find(|f| f.id == file_id).ok_or_else(|| Error::NotFound(format!("file {file_id}")))?;
+        let out = self.cache_dir.join("thumbs").join(format!("{item_id}-{}.jpg", now()));
+        let path = crate::media::video_frame_at(Path::new(&f.uri), &out, Some(seconds))
+            .ok_or_else(|| Error::Unsupported("영상에서 장면을 뽑으려면 ffmpeg가 필요해요".into()))?;
+        self.update_item(item_id, ItemPatch { cover_uri: Some(Some(path.to_string_lossy().into_owned())), ..Default::default() })
+    }
+
     /// Find lyrics for a song item (YouTube Music → LRCLIB) and keep them in `props._lyrics`.
     /// Returns the updated item, or None when no lyrics were found.
     pub fn fetch_lyrics(&self, item_id: &str) -> Result<Option<Item>> {

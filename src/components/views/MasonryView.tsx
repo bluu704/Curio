@@ -8,6 +8,8 @@ import { cn } from "@/lib/cn";
 import { Stars } from "@/components/ui/Stars";
 import { dragItem } from "./dragDrop";
 import { ScrollCtx, useWidth } from "./virtual";
+import { PickBox, usePicked } from "./PickBox";
+import { pickClick } from "@/store/pick";
 
 const COL_W = { s: 170, m: 230, l: 320 } as const;
 const GAP = 12;
@@ -102,15 +104,16 @@ function Tile({ item, card, ratio, onAspect }: { item: Item; card: CardConfig; r
   const [broken, setBroken] = useState(false);
   const src = api.mediaUrl(item.coverUri);
   const author = item.tags.find((t) => t.category === "author")?.name;
+  const picked = usePicked(item.id);
   return (
     <div
       data-item-id={item.id}
       className="no-callout group relative cursor-pointer"
       onContextMenu={(e) => { e.preventDefault(); useApp.getState().openMenu({ x: e.clientX, y: e.clientY, target: { type: "item", id: item.id } }); }}
       onPointerDown={(e) => dragItem(e, item)}
-      onClick={() => !consumeDragClick() && void select(item.id)}
+      onClick={(e) => { if (consumeDragClick() || pickClick(e, item.id)) return; void select(item.id); }}
     >
-      <div className={cn("relative overflow-hidden rounded-xl bg-subtle ring-1 transition-shadow", selectedId === item.id ? "ring-2 ring-accent" : "ring-line/50 group-hover:shadow-pop")}>
+      <div className={cn("relative overflow-hidden rounded-xl bg-subtle ring-1 transition-shadow", selectedId === item.id || picked ? "ring-2 ring-accent" : "ring-line/50 group-hover:shadow-pop")}>
         <div style={{ aspectRatio: `1 / ${ratio}` }}>
           {src && !broken ? (
             <img src={src} alt="" loading="lazy" decoding="async" draggable={false} onError={() => { setBroken(true); onAspect(4 / 3); }}
@@ -123,11 +126,13 @@ function Tile({ item, card, ratio, onAspect }: { item: Item; card: CardConfig; r
         <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2.5 text-white opacity-0 transition-opacity group-hover:opacity-100">
           <div className="truncate text-[length:calc(13px*var(--ts))] font-medium">{item.title}</div>
           <div className="flex items-center justify-between text-[length:calc(11px*var(--ts))] text-white/80">
-            <span className="truncate">{author}</span>
+            <span className="truncate">{card.fields.includes("author") ? author : ""}</span>
             {card.fields.includes("rating") && item.rating != null && <Stars value={item.rating} readOnly size={10} />}
           </div>
         </div>
-        {item.pinned && <span className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-accent text-accent-fg"><Pin size={12} /></span>}
+        {picked && <div className="pointer-events-none absolute inset-0 bg-accent/15" />}
+        <PickBox id={item.id} className="absolute left-1.5 top-1.5" />
+        {item.pinned && <span className="absolute right-10 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-accent text-accent-fg"><Pin size={12} /></span>}
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); void updateItem(item.id, { favorite: !item.favorite }); }}

@@ -10,6 +10,8 @@ import { Stars } from "@/components/ui/Stars";
 import { tagsOf } from "./shared";
 import { useRows, useWidth } from "./virtual";
 import { dragItem } from "./dragDrop";
+import { PickBox, usePicked } from "./PickBox";
+import { pickClick } from "@/store/pick";
 
 const MIN_W = { s: 132, m: 176, l: 236 } as const;
 const GAP_X = 16, GAP_Y = 20, PAD = 20;
@@ -60,18 +62,21 @@ function Card({ item, card }: { item: Item; card: CardConfig }) {
   const S = STATUS_META[item.status];
   const authors = tagsOf(item, "author").concat(tagsOf(item, "studio"), tagsOf(item, "circle"));
   const tags = item.tags.filter((t) => t.category === "genre" || t.category === "tag");
+  const picked = usePicked(item.id);
 
   return (
-    <div data-item-id={item.id} className="no-callout group min-w-0 cursor-pointer" onContextMenu={(e) => { e.preventDefault(); useApp.getState().openMenu({ x: e.clientX, y: e.clientY, target: { type: "item", id: item.id } }); }} onPointerDown={(e) => dragItem(e, item)} onClick={() => !consumeDragClick() && void select(item.id)}>
+    <div data-item-id={item.id} className="no-callout group min-w-0 cursor-pointer" onContextMenu={(e) => { e.preventDefault(); useApp.getState().openMenu({ x: e.clientX, y: e.clientY, target: { type: "item", id: item.id } }); }} onPointerDown={(e) => dragItem(e, item)} onClick={(e) => { if (consumeDragClick() || pickClick(e, item.id)) return; void select(item.id); }}>
       <div
         className={cn(
           "relative overflow-hidden rounded-xl bg-subtle shadow-card ring-1 transition-all duration-150",
-          selected ? "ring-2 ring-accent" : "ring-line/60 group-hover:-translate-y-0.5 group-hover:shadow-pop",
+          selected || picked ? "ring-2 ring-accent" : "ring-line/60 group-hover:-translate-y-0.5 group-hover:shadow-pop",
         )}
         style={{ aspectRatio: card.aspect }}
       >
         <Cover item={item} fit={card.fit} className="absolute inset-0" iconSize={card.size === "s" ? 24 : 32} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+        {picked && <div className="pointer-events-none absolute inset-0 bg-accent/15" />}
+        <PickBox id={item.id} className="absolute left-1.5 top-1.5" />
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); void updateItem(item.id, { favorite: !item.favorite }); }}
