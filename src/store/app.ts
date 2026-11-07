@@ -1,4 +1,5 @@
 import { FLAG, isMainKind } from "@/lib/itemFlags";
+import { particle } from "@/lib/josa";
 import { create } from "zustand";
 import { api } from "@/api";
 import type {
@@ -315,7 +316,7 @@ export const useApp = create<AppState>((set, get) => {
         detail: s.detail?.id === id ? null : s.detail,
       }));
       void get().refresh();
-      get().notify(title ? `"${title}"을(를) 휴지통으로 옮겼어요` : "휴지통으로 옮겼어요", { label: "되돌리기", run: () => void get().restoreItem(id) });
+      get().notify(title ? `"${title}"${particle(title, "을/를")} 휴지통으로 옮겼어요` : "휴지통으로 옮겼어요", { label: "되돌리기", run: () => void get().restoreItem(id) });
     },
 
     async restoreItem(id) {

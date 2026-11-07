@@ -7,6 +7,7 @@
 //! Keep this crate free of Tauri/axum types so both hosts stay thin.
 
 pub mod db;
+pub mod drive;
 pub mod error;
 pub mod library;
 pub mod media;

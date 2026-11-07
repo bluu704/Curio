@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { LyricsSection } from "./LyricsSection";
 import { FLAG, isCalendarHidden, isCloudSynced, mainFile, withFlag } from "@/lib/itemFlags";
 import { MainContent } from "./MainContent";
+import { AudioPlayer, YouTubePlayer } from "./Players";
 import { Cover } from "@/components/ui/Cover";
 import { Popover } from "@/components/ui/Popover";
 import { Stars } from "@/components/ui/Stars";
@@ -46,13 +47,16 @@ export function DetailPanel() {
   // primary file action: read (pdf/zip/images) › play (video/audio) › view (text) › open with the OS
   const primary = item.files.find(isReadable) ?? item.files.find(isViewable) ?? item.files[0];
   const act = primary ? fileAction(primary) : null;
-  const showOpen = !!primary && primary.id !== mainFile(item)?.id; // the item's own file is already shown inline
+  // the item's own file / its song already play inline → no extra open button for them
+  const inlineSong = item.kind === "music" ? item.files.find((f) => f.kind === "audio") : undefined;
+  const showOpen = !!primary && primary.id !== mainFile(item)?.id && primary.id !== inlineSong?.id;
   const banner = api.mediaUrl(item.bannerUri);
   const yt = item.kind === "music" ? ytId(item.url) : null;
   const wish = item.list === "wishlist";
   const people = item.tags.filter((t) => ["author", "studio", "circle", "director"].includes(t.category)).slice(0, 3);
 
   const main = mainFile(item);
+  const song = item.files.find((f) => f.kind === "audio");
   const cloud = isCloudSynced(item);
   const calHidden = isCalendarHidden(item);
   return (
@@ -147,17 +151,9 @@ export function DetailPanel() {
               <div className="absolute bottom-2 left-3 text-[length:calc(11px*var(--ts))] text-white/80">YouTube에서 재생 · 데스크톱 앱에서는 이 자리에서 바로 재생돼요</div>
             </a>
           )}
-          {yt && api.caps.platform !== "mock" && (
-            <div className="mt-5 overflow-hidden rounded-xl bg-black shadow-card">
-              <iframe
-                className="aspect-video w-full"
-                src={`https://www.youtube-nocookie.com/embed/${yt}`}
-                title={item.title}
-                allow="autoplay; encrypted-media; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-          )}
+          {yt && api.caps.platform !== "mock" && <YouTubePlayer itemId={item.id} videoId={yt} title={item.title} />}
+          {/* a song file of the item plays here too (drives synced lyrics) */}
+          {item.kind === "music" && song && <AudioPlayer key={song.id} itemId={item.id} file={song} />}
 
           {main && <MainContent item={item} file={main} />}
 

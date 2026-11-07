@@ -75,7 +75,7 @@
   .chip {
     @apply inline-flex h-6 max-w-full items-center gap-1 whitespace-nowrap rounded-md bg-subtle px-1.5 text-[length:calc(12px*var(--ts))] text-fg/80;
   }
-  .label { @apply whitespace-nowrap text-[length:calc(11px*var(--ts))] font-medium uppercase tracking-wide text-muted; }
+  .label { @apply whitespace-nowrap text-[length:calc(11px*var(--ts))] font-medium tracking-wide text-muted; }
 
   /* status tones */
   .tone-slate { --tone: 120 113 108; }

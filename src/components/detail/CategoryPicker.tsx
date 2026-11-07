@@ -35,10 +35,10 @@ export function CategoryPicker({ item }: { item: Item }) {
         </span>
       ))}
       <Popover width={240} trigger={({ toggle: t }) => (
-        <button className={cn("flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-subtle hover:text-fg")} onClick={t} data-tip="카테고리 지정"><Plus size={14} /></button>
+        <button className={cn("flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-subtle hover:text-fg")} onClick={t} data-tip="폴더에 넣기"><Plus size={14} /></button>
       )}>
         <div className="max-h-64 overflow-y-auto p-1">
-          {pool.length ? tree(null, 0) : <div className="px-2 py-1.5 text-[length:calc(12px*var(--ts))] text-muted">왼쪽 카테고리 패널에서 폴더를 먼저 만들어 주세요</div>}
+          {pool.length ? tree(null, 0) : <div className="px-2 py-1.5 text-[length:calc(12px*var(--ts))] text-muted">왼쪽 폴더 패널에서 폴더를 먼저 만들어 주세요</div>}
         </div>
       </Popover>
     </div>

@@ -368,7 +368,7 @@ export function createMockClient(): ApiClient {
 
     async listCategories() { return delay([...db.categories].sort((a, b) => a.position - b.position)); },
     async saveCategory(c) {
-      if (c.parentId && descendants(db.categories, c.id).has(c.parentId)) throw new Error("카테고리를 자기 자신 안으로 옮길 수 없어요");
+      if (c.parentId && descendants(db.categories, c.id).has(c.parentId)) throw new Error("폴더를 자기 안으로 옮길 수 없어요");
       const i = db.categories.findIndex((x) => x.id === c.id);
       if (i >= 0) db.categories[i] = c; else db.categories.push(c);
       commit(); return delay(c);
@@ -581,7 +581,7 @@ export function createMockClient(): ApiClient {
     },
     async writeText(f, content) {
       const b = blobs.get(f.id);
-      if (!b) throw new Error("미리보기: 이 세션에서 올린 파일만 수정할 수 있어요");
+      if (!b) throw new Error("미리보기 예시 파일은 수정할 수 없어요. 직접 올린 파일은 돼요.");
       const nf = new File([content], f.name, { type: b.type || "text/plain" });
       blobs.set(f.id, nf);
       const it = find(f.itemId);
@@ -591,7 +591,7 @@ export function createMockClient(): ApiClient {
     },
     async downloadFile(f) {
       const b = blobs.get(f.id);
-      if (!b) throw new Error("미리보기: 이 세션에서 올린 파일만 내려받을 수 있어요");
+      if (!b) throw new Error("미리보기 예시 파일은 내려받을 수 없어요. 직접 올린 파일은 돼요.");
       const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(b), download: f.name });
       document.body.appendChild(a); a.click(); a.remove();
     },

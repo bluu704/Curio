@@ -113,6 +113,7 @@ export function CalendarPage() {
           />
           <div className="label">이 날 추가한 항목 · {selItems.length}{hiddenN > 0 && <span className="font-normal normal-case text-muted/70"> (숨김 {hiddenN})</span>}</div>
           <div className="space-y-1">
+            {selItems.length === 0 && <div className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-[length:calc(12px*var(--ts))] text-muted">이 날 추가한 항목이 없어요</div>}
             {selItems.map((it) => (
               <div key={it.id} className="group flex w-full items-center gap-2 rounded-lg p-1.5 hover:bg-subtle">
                 <button onClick={() => void s.select(it.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">

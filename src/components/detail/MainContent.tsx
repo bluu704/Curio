@@ -1,5 +1,5 @@
 import { Camera, Expand, Loader2, Pencil } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
 import type { FileRef, Item } from "@/api/types";
 import { useApp } from "@/store/app";
@@ -13,9 +13,11 @@ import { AniImage } from "@/components/ui/AniImage";
 /** The item's own content when it was made from one picture / text / video file. */
 export function MainContent({ item, file }: { item: Item; file: FileRef }) {
   const openReader = useApp((s) => s.openReader);
+  // one URL per file: the preview makes a fresh blob: URL on every call (would reload / restart the video)
+  const url = useMemo(() => api.fileUrl(file), [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (file.kind === "image" && isAniName(file.name)) return <AniContent item={item} file={file} />;
   if (file.kind === "image") {
-    const src = api.fileUrl(file) ?? api.mediaUrl(item.coverUri);
+    const src = url ?? api.mediaUrl(item.coverUri);
     return (
       <button className="group relative mt-4 block w-full overflow-hidden rounded-xl bg-subtle ring-1 ring-line/60" onClick={() => openReader(item, file)} data-tip="크게 보기">
         {src ? <img src={src} alt="" className="mx-auto block max-h-[70vh] w-auto max-w-full object-contain" /> : <div className="aspect-[4/3]" />}
@@ -24,7 +26,7 @@ export function MainContent({ item, file }: { item: Item; file: FileRef }) {
     );
   }
   if (file.kind === "video") {
-    const src = api.fileUrl(file);
+    const src = url;
     return src ? <VideoContent item={item} file={file} src={src} /> : (
       <div className="mt-4 rounded-xl bg-subtle p-4 text-center text-[length:calc(12px*var(--ts))] text-muted">이 영상을 여기서 재생할 수 없어요</div>
     );

@@ -84,7 +84,7 @@ export function Toolbar() {
           )}
         </label>
 
-        <button className={cn("btn-icon", (narrow ? s.catDrawer : s.showCategories) && "active")} onClick={() => (narrow ? s.setCatDrawer(!s.catDrawer) : s.toggleCategories())} data-tip="카테고리 패널"><FolderTree size={17} /></button>
+        <button className={cn("btn-icon", (narrow ? s.catDrawer : s.showCategories) && "active")} onClick={() => (narrow ? s.setCatDrawer(!s.catDrawer) : s.toggleCategories())} data-tip="폴더 패널"><FolderTree size={17} /></button>
 
         {/* Filter */}
         <Popover

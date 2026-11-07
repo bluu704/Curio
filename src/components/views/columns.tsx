@@ -31,7 +31,7 @@ export function allColumns(fields: FieldDef[], labels?: [TagCategory, string][])
     { key: "status", label: "상태", icon: CirclePlay, width: "120px", render: (it) => <StatusPicker item={it} /> },
     { key: "rating", label: "평점", icon: Star, width: "110px", render: (it) => <Stars value={it.rating} size={13} onChange={(rating) => void upd(it.id, { rating })} /> },
     ...TAG_CATEGORIES.map((c): ColumnDef => ({ key: `tag:${c}`, label: catLabel(c), icon: TAG_META[c].icon, width: "minmax(120px, 1fr)", render: (it) => chips(it, c) })),
-    { key: "category", label: "카테고리", icon: Folder, width: "minmax(110px, 1fr)", render: (it) => {
+    { key: "category", label: "폴더", icon: Folder, width: "minmax(110px, 1fr)", render: (it) => {
       const cats = useApp.getState().categories;
       return <div className="flex min-w-0 gap-1 overflow-hidden">{it.categoryIds.map((id) => cats.find((c) => c.id === id)).filter(Boolean).map((c) => <span key={c!.id} className="chip shrink-0"><Folder size={11} style={{ color: folderColor(c!.color) }} />{c!.name}</span>)}</div>;
     } },

@@ -1,5 +1,4 @@
-import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Palette, Pencil, Trash2 } from "lucide-react";
-import { Popover } from "@/components/ui/Popover";
+import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Pencil, Trash2 } from "lucide-react";
 import { CustomSwatches } from "@/components/ui/CustomSwatches";
 import { FOLDER_COLORS, FOLDER_NAMES, folderColor } from "@/lib/statuses";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -93,17 +92,8 @@ export function CategoryTree() {
             <span className="min-w-0 flex-1 truncate pl-0.5">{c.name}</span>
           )}
           <div className="hidden shrink-0 items-center group-hover/node:flex">
-            <button className="btn-icon h-6 w-6" data-tip="하위 폴더" onClick={(e) => { e.stopPropagation(); void add(c.id); }}><FolderPlus size={13} /></button>
-            <Popover trigger={({ toggle }) => (
-              <button className="btn-icon h-6 w-6" data-tip="폴더 색" onClick={(e) => { e.stopPropagation(); toggle(); }}><Palette size={12} /></button>
-            )}>
-              {(close) => <FolderColorPanel c={c} onDone={close} />}
-            </Popover>
-            <button className="btn-icon h-6 w-6" data-tip="이름 바꾸기" onClick={(e) => { e.stopPropagation(); setEditing(c.id); }}><Pencil size={12} /></button>
-            <button className="btn-icon h-6 w-6 hover:text-danger" data-tip="삭제" onClick={(e) => {
-              e.stopPropagation();
-              setMenu({ id: c.id, x: e.clientX, y: e.clientY, confirm: true });
-            }}><Trash2 size={12} /></button>
+            <button className="btn-icon h-6 w-6" data-tip="하위 폴더 만들기" onClick={(e) => { e.stopPropagation(); void add(c.id); }}><FolderPlus size={13} /></button>
+            {/* colour, rename and delete live in the right-click menu */}
           </div>
         </div>
         {isOpen && kids.map((k) => <Node key={k.id} c={k} depth={depth + 1} />)}
@@ -114,7 +104,7 @@ export function CategoryTree() {
   return (
     <div className="flex h-full w-56 shrink-0 flex-col border-r border-line bg-bg">
       <div className="flex h-10 shrink-0 items-center px-3">
-        <span className="label flex-1">카테고리</span>
+        <span className="label flex-1">폴더</span>
         <button className="btn-icon h-7 w-7" data-tip="새 폴더" onClick={() => void add(null)}><FolderPlus size={15} /></button>
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-4">

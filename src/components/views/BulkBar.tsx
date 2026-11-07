@@ -6,6 +6,7 @@ import { STATUS_META } from "@/lib/meta";
 import { folderColor } from "@/lib/statuses";
 import { iconOf } from "@/lib/icons";
 import { cn } from "@/lib/cn";
+import { particle } from "@/lib/josa";
 import { Popover } from "@/components/ui/Popover";
 import { MenuItem } from "@/components/ui/Menu";
 
@@ -62,7 +63,7 @@ export function BulkBar() {
           {(close) => (
             <div className="max-h-72 overflow-y-auto p-1">
               {s.archives.map((a) => (
-                <MenuItem key={a.id} icon={iconOf(a.icon)} onClick={() => { close(); void bulkPatch({ archiveId: a.id, kind: a.kind }, `"${a.name}"(으)로 옮겼어요`); }}>{a.name}</MenuItem>
+                <MenuItem key={a.id} icon={iconOf(a.icon)} onClick={() => { close(); void bulkPatch({ archiveId: a.id, kind: a.kind }, `"${a.name}"${particle(a.name, "으로/로")} 옮겼어요`); }}>{a.name}</MenuItem>
               ))}
             </div>
           )}
@@ -72,7 +73,7 @@ export function BulkBar() {
           {(close) => s.statuses.map((d) => {
             const M = STATUS_META[d.id];
             return (
-              <MenuItem key={d.id} onClick={() => { close(); void bulkPatch({ status: d.id }, `상태를 "${M.label}"(으)로 바꿨어요`); }}>
+              <MenuItem key={d.id} onClick={() => { close(); void bulkPatch({ status: d.id }, `상태를 "${M.label}"${particle(M.label, "으로/로")} 바꿨어요`); }}>
                 <span className={cn("inline-flex items-center gap-2", M.tone)}><M.icon size={14} className="tone-text" />{M.label}</span>
               </MenuItem>
             );

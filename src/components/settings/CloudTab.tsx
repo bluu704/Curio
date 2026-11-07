@@ -12,6 +12,8 @@ interface CloudConfig {
   folders: DriveFolder[];
   mode: "stream" | "download";
   autoImport: boolean;
+  /** Curio folder colour ↔ Drive folder colour (default on) */
+  syncFolderColors?: boolean;
 }
 const EMPTY: CloudConfig = { folders: [], mode: "stream", autoImport: true };
 
@@ -38,7 +40,7 @@ export function CloudTab() {
   };
   const addFolder = () => {
     const id = folderId(link);
-    if (!id) return setErr("Google Drive 폴더 주소를 넣어 주세요 (drive.google.com/drive/folders/…)");
+    if (!id) return setErr("구글 드라이브 폴더 주소를 넣어 주세요 (drive.google.com/drive/folders/…)");
     setErr(null);
     save({ ...cfg, folders: [...cfg.folders.filter((x) => x.id !== id), { id, label: `폴더 ${cfg.folders.length + 1}`, archiveId: null }] });
     setLink("");
@@ -52,7 +54,7 @@ export function CloudTab() {
         <div className="flex items-center gap-3 rounded-xl border border-line p-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-subtle"><Cloud size={18} className="text-muted" /></span>
           <div className="min-w-0 flex-1">
-            <div className="font-medium">Google Drive</div>
+            <div className="font-medium">구글 드라이브</div>
             <div className="truncate text-[length:calc(12px*var(--ts))] text-muted">{g?.account ? g.account : g ? "클라이언트 등록됨 · 계정 연결 대기" : "OAuth 클라이언트 파일이 필요해요"}</div>
           </div>
           <span className={cn("rounded-md px-2 py-0.5 text-[length:calc(11px*var(--ts))] font-medium", g?.account ? "bg-green-500/15 text-green-600 dark:text-green-400" : "bg-subtle text-muted")}>
@@ -88,7 +90,7 @@ export function CloudTab() {
       {/* step 2: account */}
       <section className="space-y-2">
         <div className="label">2 · 계정 연결</div>
-        <button className="btn w-full justify-center border border-line" disabled title="Google Drive 연동 기능이 추가되면 사용할 수 있어요">
+        <button className="btn w-full justify-center border border-line" disabled title="구글 드라이브 연결 기능이 추가되면 쓸 수 있어요">
           <Link2 size={14} />Google 계정으로 로그인 (연동 기능 추가 후 사용)
         </button>
       </section>
@@ -110,7 +112,7 @@ export function CloudTab() {
           );
         })}
         <div className="flex gap-2">
-          <input className="input flex-1" placeholder="Drive 폴더 주소" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addFolder()} />
+          <input className="input flex-1" placeholder="드라이브 폴더 주소" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addFolder()} />
           <button className="btn btn-primary" onClick={addFolder}><FolderPlus size={14} />추가</button>
         </div>
       </section>
@@ -118,7 +120,7 @@ export function CloudTab() {
       {/* step 4: options */}
       <section className="space-y-2">
         <div className="label">4 · 가져오는 방식</div>
-        {([["stream", "Drive에 두고 필요할 때 열기", "PC 용량을 쓰지 않아요", Cloud], ["download", "내 PC로 내려받기", "인터넷 없이도 열 수 있어요", HardDriveDownload]] as const).map(([v, t, d, I]) => (
+        {([["stream", "드라이브에 두고 필요할 때 열기", "PC 용량을 쓰지 않아요", Cloud], ["download", "내 PC로 내려받기", "인터넷 없이도 열 수 있어요", HardDriveDownload]] as const).map(([v, t, d, I]) => (
           <button key={v} onClick={() => save({ ...cfg, mode: v })}
             className={cn("flex w-full items-center gap-3 rounded-lg border p-2.5 text-left", cfg.mode === v ? "border-accent bg-accent/10" : "border-line hover:bg-subtle")}>
             <I size={16} className={cfg.mode === v ? "text-accent" : "text-muted"} />
@@ -128,6 +130,13 @@ export function CloudTab() {
         <label className="flex items-center gap-2 pt-1">
           <input type="checkbox" checked={cfg.autoImport} onChange={(e) => save({ ...cfg, autoImport: e.target.checked })} className="h-4 w-4 accent-[rgb(var(--accent))]" />
           폴더에 새 파일이 생기면 자동으로 가져오기
+        </label>
+        <label className="flex items-start gap-2">
+          <input type="checkbox" checked={cfg.syncFolderColors !== false} onChange={(e) => save({ ...cfg, syncFolderColors: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[rgb(var(--accent))]" />
+          <span>
+            폴더 색도 드라이브와 맞추기
+            <span className="block text-[length:calc(11px*var(--ts))] text-muted">드라이브는 24가지 색만 쓸 수 있어서 직접 고른 색은 가장 가까운 색으로 보여요</span>
+          </span>
         </label>
       </section>
       {err && <div className="text-[length:calc(12px*var(--ts))] text-danger">{err}</div>}

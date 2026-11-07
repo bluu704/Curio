@@ -72,7 +72,7 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
         </Popover>
       ),
     },
-    { key: "category", icon: Folder, label: "카테고리", node: <CategoryPicker item={item} /> },
+    { key: "category", icon: Folder, label: "폴더", node: <CategoryPicker item={item} /> },
     ...tagCats.map(([c, label]): Row => ({ key: `tag:${c}`, icon: TAG_META[c].icon, label, node: <TagInput item={item} category={c} label={label} />,
       wide: item.tags.filter((t) => t.category === c).length > 2 })),
     ...(showCode ? [{ key: "code", icon: Hash, label: "품번", node: <TextProp value={item.code} mono placeholder="ABC-123" onSave={(code) => void updateItem(item.id, { code })} /> }] : []),
