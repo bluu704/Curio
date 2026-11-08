@@ -3,11 +3,12 @@ import base from "./vite.config";
 
 /**
  * Browser-only Curio for a static host (GitHub Pages): library in the browser, synced with Google Drive.
- * VITE_BASE = path the site is served from (GitHub Pages: "/<repository>/").
+ * VITE_BASE = path the site is served from (default "/"; GitHub Pages: "/<repository>/").
  * VITE_GOOGLE_CLIENT_ID = Google OAuth "Web application" client id (public; no secret).
  */
 export default mergeConfig(base, defineConfig({
-  base: process.env.VITE_BASE ?? "/Curio/",
+  // site at the root of its address (Cloudflare Pages, own domain); GitHub Pages sets "/<repository>/"
+  base: process.env.VITE_BASE || "/",
   define: { "import.meta.env.VITE_API_URL": "undefined", "import.meta.env.VITE_CURIO_WEB": JSON.stringify("1") },
   build: { outDir: "dist-web", chunkSizeWarningLimit: 4000 },
 }));

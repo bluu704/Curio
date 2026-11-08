@@ -126,7 +126,13 @@ GitHub Pages로 올리기 (`.github/workflows/web.yml`, main에 올릴 때마다
 - Variables에 `CURIO_WEB_BASE` = `/` 추가 (사이트가 주소 맨 앞에서 열리도록)
 - Google Cloud 웹 클라이언트의 승인된 자바스크립트 원본에 `https://curio.내도메인.com` 추가
 
-무료 주소를 원하면 Cloudflare Pages(`이름.pages.dev`)·Netlify·Vercel에 `dist-web` 폴더(`build-web.bat`이 만듦)를 올려도 돼요.
+#### Cloudflare Pages (무료, `원하는이름.pages.dev`, main에 올릴 때마다 자동 갱신)
+1. Cloudflare 가입 → **Workers & Pages → 만들기 → Pages → Git에 연결** → GitHub 로그인 → `Curio` 저장소 선택
+2. 프로젝트 이름 = 주소 (예: `my-curio` → `https://my-curio.pages.dev`)
+3. 빌드 설정: 프레임워크 사전 설정 **없음** · 빌드 명령 `npm run build:web` · 빌드 출력 디렉터리 `dist-web`
+4. 환경 변수: `VITE_GOOGLE_CLIENT_ID` = 웹 애플리케이션 클라이언트 ID
+5. **저장 후 배포** → 몇 분 뒤 주소가 열려요
+6. Google Cloud 웹 클라이언트의 승인된 자바스크립트 원본에 `https://my-curio.pages.dev` 추가
 
 웹 버전에서 안 되는 것: PC 파일 연결·폴더 감시·드라이브 폴더 가져오기, 메타데이터는 AniList 등 브라우저에서 바로 부를 수 있는 곳만 검색돼요.
 
