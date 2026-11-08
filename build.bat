@@ -1,68 +1,80 @@
 @echo off
 setlocal
-cd /d "%~dp0"
-title Curio 빌드
-
+title Curio - build desktop app
 echo.
 echo  ==============================
-echo    Curio 데스크톱 앱 만들기
+echo    Curio desktop app build
 echo  ==============================
 echo.
 
-rem ---- 1. 필요한 프로그램 확인
+rem ---- Source code: when this file sits alone, download the latest Curio next to it
+if exist "%~dp0package.json" (
+  if exist "%~dp0.git" where git >nul 2>nul && (echo  Updating source with git... & git -C "%~dp0." pull --ff-only)
+  cd /d "%~dp0"
+  goto :have_src
+)
+echo  [..] Downloading the latest Curio source...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest 'https://github.com/bluu704/Curio/archive/refs/heads/main.zip' -OutFile '%~dp0curio-src.zip' -UseBasicParsing; Expand-Archive -Force '%~dp0curio-src.zip' '%~dp0.'; Remove-Item '%~dp0curio-src.zip'"
+if errorlevel 1 (
+  echo  [X] Download failed. Check the internet connection and try again.
+  goto :fail
+)
+for %%f in ("%~dp0client_secret*.json" "%~dp0google-oauth.json") do if exist "%%~f" copy /y "%%~f" "%~dp0Curio-main\" >nul
+cd /d "%~dp0Curio-main"
+echo  [OK] Source ready: %CD%
+:have_src
+
+rem ---- Tools
 where node >nul 2>nul
 if errorlevel 1 (
-  echo  [X] Node.js가 없어요.
-  echo      https://nodejs.org 에서 LTS 버전을 설치한 뒤 이 파일을 다시 실행해 주세요.
+  echo  [X] Node.js not found. Install the LTS version from https://nodejs.org and run this again.
   goto :fail
 )
 where cargo >nul 2>nul
 if errorlevel 1 (
-  echo  [X] Rust가 없어요.
-  echo      https://rustup.rs 에서 rustup-init.exe 를 받아 설치한 뒤 다시 실행해 주세요.
-  echo      설치 중 "Visual Studio C++ Build Tools" 설치를 물어보면 같이 설치해 주세요.
+  echo  [X] Rust not found. Install it from https://rustup.rs and run this again.
+  echo      When asked, also install "Visual Studio C++ Build Tools".
   goto :fail
 )
 if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" (
-  echo  [!] Visual Studio C++ 빌드 도구가 안 보여요. 빌드가 실패하면 아래에서 설치해 주세요.
-  echo      https://visualstudio.microsoft.com/visual-cpp-build-tools/  ^("C++를 사용한 데스크톱 개발" 선택^)
+  echo  [!] Visual Studio C++ Build Tools not found. If the build fails, install them from
+  echo      https://visualstudio.microsoft.com/visual-cpp-build-tools/  ^(choose "Desktop development with C++"^)
   echo.
 )
-echo  [O] Node.js / Rust 확인
+echo  [OK] Node.js / Rust
 
-rem ---- 2. 구글 연결 정보 (client_secret_....json 을 이 폴더에 두면 앱에 들어가요)
+rem ---- Google sign-in (put client_secret_....json next to this file; it is never uploaded to GitHub)
 set FOUND=
 for %%f in (client_secret*.json) do set FOUND=%%f
 if exist google-oauth.json set FOUND=google-oauth.json
 if defined FOUND (
-  echo  [O] 구글 연결 정보 %FOUND% 를 앱에 넣어요 ^(GitHub에는 올라가지 않아요^)
+  echo  [OK] Google sign-in: %FOUND%
 ) else (
-  echo  [i] client_secret_....json 이 없어서 구글 드라이브 연결 없이 만들어요.
-  echo      필요하면 그 파일을 이 폴더에 넣고 다시 실행해 주세요.
+  echo  [i] No client_secret_....json - building without Google Drive sign-in.
 )
 echo.
 
-rem ---- 3. 빌드
-echo  [1/2] 필요한 파일 내려받는 중... ^(처음엔 몇 분 걸려요^)
+rem ---- Build
+echo  [1/2] npm install ^(first time: a few minutes^)
 call npm install
 if errorlevel 1 goto :fail
 echo.
-echo  [2/2] 앱 만드는 중... ^(처음엔 10~20분 걸려요^)
+echo  [2/2] Building the app ^(first time: 10-20 minutes^)
 call npm run tauri build
 if errorlevel 1 goto :fail
 
 echo.
 echo  ==============================
-echo    완료! 설치 파일 폴더를 열어요
+echo    Done! Opening the installer folder
 echo  ==============================
-echo   msi  : target\release\bundle\msi
-echo   exe  : target\release\bundle\nsis
-if exist "target\release\bundle" explorer "target\release\bundle"
+echo   msi : %CD%\target\release\bundle\msi
+echo   exe : %CD%\target\release\bundle\nsis
+if exist "target\release\bundle" start "" explorer "target\release\bundle"
 pause
 exit /b 0
 
 :fail
 echo.
-echo  [X] 빌드하지 못했어요. 위에 나온 메시지를 확인해 주세요.
+echo  [X] Build failed. Check the messages above.
 pause
 exit /b 1

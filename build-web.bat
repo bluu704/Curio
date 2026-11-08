@@ -1,23 +1,37 @@
 @echo off
 setlocal
-cd /d "%~dp0"
-title Curio 웹 버전
+title Curio - web version
+echo.
+echo  ==============================
+echo    Curio web version
+echo  ==============================
+echo.
 
-echo.
-echo  ==============================
-echo    Curio 웹 버전 만들기 / 켜기
-echo  ==============================
-echo.
+rem ---- Source code: when this file sits alone, download the latest Curio next to it
+if exist "%~dp0package.json" (
+  if exist "%~dp0.git" where git >nul 2>nul && (echo  Updating source with git... & git -C "%~dp0." pull --ff-only)
+  cd /d "%~dp0"
+  goto :have_src
+)
+echo  [..] Downloading the latest Curio source...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest 'https://github.com/bluu704/Curio/archive/refs/heads/main.zip' -OutFile '%~dp0curio-src.zip' -UseBasicParsing; Expand-Archive -Force '%~dp0curio-src.zip' '%~dp0.'; Remove-Item '%~dp0curio-src.zip'"
+if errorlevel 1 (
+  echo  [X] Download failed. Check the internet connection and try again.
+  goto :fail
+)
+for %%f in ("%~dp0client_secret*.json" "%~dp0google-oauth.json") do if exist "%%~f" copy /y "%%~f" "%~dp0Curio-main\" >nul
+cd /d "%~dp0Curio-main"
+echo  [OK] Source ready: %CD%
+:have_src
+
 where node >nul 2>nul
 if errorlevel 1 (
-  echo  [X] Node.js가 없어요. https://nodejs.org 에서 LTS 버전을 설치해 주세요.
-  pause
-  exit /b 1
+  echo  [X] Node.js not found. Install the LTS version from https://nodejs.org
+  goto :fail
 )
 
-rem 구글 로그인을 쓰려면 아래 줄의 = 뒤에 "웹 애플리케이션" 클라이언트 ID를 붙여 넣으세요.
-rem (Google Cloud에서 승인된 자바스크립트 원본에 http://localhost:4173 추가)
-rem 비워 두면 웹 화면의 설정 - 클라우드에서 한 번 입력해도 돼요.
+rem Google sign-in: put the "Web application" client ID after the = below
+rem (and add http://localhost:4173 to its authorised JavaScript origins), or enter it once in Settings - Cloud.
 if not defined VITE_GOOGLE_CLIENT_ID set VITE_GOOGLE_CLIENT_ID=
 set VITE_BASE=/
 
@@ -27,15 +41,15 @@ call npm run build:web
 if errorlevel 1 goto :fail
 
 echo.
-echo  [O] dist-web 폴더에 웹사이트 파일이 만들어졌어요.
-echo      다른 호스팅에 올릴 땐 그 폴더 안의 파일을 그대로 올리면 돼요.
+echo  [OK] Website files are in %CD%\dist-web
 echo.
-echo  지금 이 PC에서 열어요: http://localhost:4173  ^(끄려면 이 창을 닫으세요^)
+echo  Opening http://localhost:4173  ^(close this window to stop^)
 start "" http://localhost:4173
 call npx vite preview -c vite.web.config.ts --port 4173 --strictPort
 exit /b 0
 
 :fail
-echo  [X] 만들지 못했어요. 위 메시지를 확인해 주세요.
+echo.
+echo  [X] Failed. Check the messages above.
 pause
 exit /b 1

@@ -84,8 +84,9 @@ Windows 사전 준비: [Rust](https://rustup.rs), Node 20+, WebView2(윈10/11 �
 ### Windows에서 바로 빌드하기 (build.bat)
 
 1. 처음 한 번 설치: [Node.js LTS](https://nodejs.org), [Rust](https://rustup.rs) (설치 중 Visual Studio C++ 빌드 도구도 함께)
-2. 받아 둔 `client_secret_….json`을 이 폴더에 넣기 (구글 드라이브 연결용, 없으면 연결 없이 만들어져요)
-3. `build.bat` 더블클릭 → 끝나면 설치 파일 폴더(`target\release\bundle`)가 열려요
+2. `build.bat` 파일만 받아서 빈 폴더에 두기 (저장소 전체를 받아도 돼요)
+3. 받아 둔 `client_secret_….json`을 같은 폴더에 넣기 (구글 드라이브 연결용, 없으면 연결 없이 만들어져요)
+4. `build.bat` 더블클릭 → 최신 소스를 `Curio-main` 폴더에 받아서 빌드하고, 끝나면 설치 파일 폴더가 열려요
 
 웹 버전은 `build-web.bat`: `dist-web` 폴더에 웹사이트를 만들고 `http://localhost:4173`으로 바로 열어요.
 
