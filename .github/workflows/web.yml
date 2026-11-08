@@ -6,6 +6,8 @@
 #     · Authorized JavaScript origins: https://<user>.github.io
 #  3) Repository → Settings → Secrets and variables → Actions → Variables → New repository variable
 #     · CURIO_GOOGLE_WEB_CLIENT_ID = that client id (a client id is public; there is no secret)
+#  4) Own domain instead of <user>.github.io/<repository>: Settings → Pages → Custom domain,
+#     and the variable CURIO_WEB_BASE = /   (also add the domain to the Google client's origins)
 # Runs on every push to main (and by hand from the Actions tab).
 name: Web version
 
@@ -42,7 +44,8 @@ jobs:
       - name: Build
         run: npm run build:web
         env:
-          VITE_BASE: /${{ github.event.repository.name }}/
+          # own domain (curio.example.com) → set the variable CURIO_WEB_BASE to "/"
+          VITE_BASE: ${{ vars.CURIO_WEB_BASE || format('/{0}/', github.event.repository.name) }}
           VITE_GOOGLE_CLIENT_ID: ${{ vars.CURIO_GOOGLE_WEB_CLIENT_ID }}
       - uses: actions/upload-pages-artifact@v3
         with:

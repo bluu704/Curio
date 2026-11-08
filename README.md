@@ -120,6 +120,14 @@ GitHub Pages로 올리기 (`.github/workflows/web.yml`, main에 올릴 때마다
    (클라이언트 ID는 공개돼도 되는 값이고, 웹 버전에는 비밀값이 없어요)
 4. 주소: `https://<GitHub 아이디>.github.io/Curio/`
 
+내 도메인으로 쓰기 (예: `curio.내도메인.com`):
+- 도메인 업체 DNS에 `CNAME` 레코드: `curio` → `<GitHub 아이디>.github.io`
+- 저장소 → Settings → Pages → **Custom domain**에 주소 입력, **Enforce HTTPS** 체크
+- Variables에 `CURIO_WEB_BASE` = `/` 추가 (사이트가 주소 맨 앞에서 열리도록)
+- Google Cloud 웹 클라이언트의 승인된 자바스크립트 원본에 `https://curio.내도메인.com` 추가
+
+무료 주소를 원하면 Cloudflare Pages(`이름.pages.dev`)·Netlify·Vercel에 `dist-web` 폴더(`build-web.bat`이 만듦)를 올려도 돼요.
+
 웹 버전에서 안 되는 것: PC 파일 연결·폴더 감시·드라이브 폴더 가져오기, 메타데이터는 AniList 등 브라우저에서 바로 부를 수 있는 곳만 검색돼요.
 
 ## 5. 구현 현황 / 로드맵
