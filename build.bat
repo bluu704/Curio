@@ -60,16 +60,33 @@ call npm install
 if errorlevel 1 goto :fail
 echo.
 echo  [2/2] Building the app ^(first time: 10-20 minutes^)
-call npm run tauri build
-if errorlevel 1 goto :fail
+rem only the .exe installer: the .msi one needs a large extra download (WiX) that often times out
+call npm run tauri build -- --bundles nsis
+if errorlevel 1 (
+  if exist "target\release\curio.exe" goto :app_only
+  goto :fail
+)
 
 echo.
 echo  ==============================
 echo    Done! Opening the installer folder
 echo  ==============================
-echo   msi : %CD%\target\release\bundle\msi
-echo   exe : %CD%\target\release\bundle\nsis
-if exist "target\release\bundle" start "" explorer "target\release\bundle"
+echo   installer : %CD%\target\release\bundle\nsis
+if exist "target\release\bundle\nsis" start "" explorer "target\release\bundle\nsis"
+pause
+exit /b 0
+
+:app_only
+echo.
+echo  ==============================
+echo    The app is built, but the installer step failed
+echo  ==============================
+echo   The installer tool download probably timed out. Run build.bat again to retry
+echo   ^(the app is not rebuilt, so it is quick^).
+echo.
+echo   You can use the app right now without installing:
+echo     %CD%\target\release\curio.exe
+start "" explorer /select,"%CD%\target\release\curio.exe"
 pause
 exit /b 0
 
