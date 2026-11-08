@@ -25,19 +25,32 @@ const SERIF_FALLBACK = '"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "N
 const FALLBACK_GOOGLE = ["Noto+Sans+JP:wght@300;400;500;700", "Noto+Sans+SC:wght@300;400;500;700", "Noto+Sans+TC:wght@400;700", "Noto+Sans:wght@300;400;500;700", "Noto+Sans+Thai", "Noto+Sans+Arabic"];
 
 /** Fonts offered in Settings. `google` = family loaded from Google Fonts on demand. */
-export const FONTS: { id: string; name: string; stack: string; google?: string }[] = [
+/**
+ * `fix` = vertical metrics (em) that put Hangul in the middle of its line box. Nanum fonts ship metrics
+ * that leave text sitting high in buttons, chips and rows; these replace them (ascent/descent-override).
+ */
+export const FONTS: { id: string; name: string; stack: string; google?: string; fix?: { ascent: number; descent: number; size?: number } }[] = [
   { id: "system", name: "기본 (시스템)", stack: `"Pretendard", "Inter", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", ${FALLBACK}` },
   { id: "noto", name: "본고딕 (Noto Sans)", stack: `"Noto Sans KR", ${FALLBACK}`, google: "Noto+Sans+KR:wght@300;400;500;600;700;800" },
-  { id: "nanum", name: "나눔고딕", stack: `"Nanum Gothic", "Noto Sans KR", ${FALLBACK}`, google: "Nanum+Gothic:wght@400;700;800" },
+  { id: "nanum", name: "나눔고딕", stack: `"Nanum Gothic", "Noto Sans KR", ${FALLBACK}`, google: "Nanum+Gothic:wght@400;700;800", fix: { ascent: 1, descent: 0.15 } },
   { id: "gothic", name: "Gothic A1", stack: `"Gothic A1", "Noto Sans KR", ${FALLBACK}`, google: "Gothic+A1:wght@300;400;500;600;700;800" },
   { id: "plex", name: "IBM Plex Sans KR", stack: `"IBM Plex Sans KR", "Noto Sans KR", ${FALLBACK}`, google: "IBM+Plex+Sans+KR:wght@300;400;500;600;700" },
-  { id: "myeongjo", name: "나눔명조 (세리프)", stack: `"Nanum Myeongjo", "Noto Serif KR", ${SERIF_FALLBACK}`, google: "Nanum+Myeongjo:wght@400;700;800" },
+  { id: "myeongjo", name: "나눔명조 (세리프)", stack: `"Nanum Myeongjo", "Noto Serif KR", ${SERIF_FALLBACK}`, google: "Nanum+Myeongjo:wght@400;700;800", fix: { ascent: 1, descent: 0.15, size: 1.04 } },
 ];
 
-function ensureFont(id: string, families: string[]) {
+function ensureFont(id: string, families: string[], fix?: { ascent: number; descent: number; size?: number }) {
   if (document.getElementById(id)) return;
   const href = `https://fonts.googleapis.com/css2?${families.map((f) => `family=${f}`).join("&")}&display=swap`;
-  document.head.appendChild(Object.assign(document.createElement("link"), { id, rel: "stylesheet", href }));
+  const link = () => document.head.appendChild(Object.assign(document.createElement("link"), { id, rel: "stylesheet", href }));
+  if (!fix) { link(); return; }
+  // same stylesheet, with corrected metrics added to every @font-face
+  const style = document.head.appendChild(Object.assign(document.createElement("style"), { id }));
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const extra = `ascent-override: ${pct(fix.ascent)}; descent-override: ${pct(fix.descent)}; line-gap-override: 0%;${fix.size ? ` size-adjust: ${pct(fix.size)};` : ""}`;
+  fetch(href)
+    .then((r) => (r.ok ? r.text() : Promise.reject()))
+    .then((css) => { style.textContent = css.replace(/@font-face\s*{/g, `@font-face { ${extra}`); })
+    .catch(() => { style.remove(); link(); });
 }
 
 function initialText(): TextPrefs {
@@ -47,7 +60,7 @@ function initialText(): TextPrefs {
 function applyText(t: TextPrefs) {
   const root = document.documentElement;
   const f = FONTS.find((x) => x.id === t.font) ?? FONTS[0];
-  if (f.google) ensureFont(`font-${f.id}`, [f.google]);
+  if (f.google) ensureFont(`font-${f.id}`, [f.google], f.fix);
   ensureFont("font-fallback", f.id === "myeongjo" ? [...FALLBACK_GOOGLE, "Noto+Serif+JP:wght@400;700", "Noto+Serif+SC:wght@400;700"] : FALLBACK_GOOGLE);
   root.style.setProperty("--font", f.stack);
   root.style.setProperty("--ts", String(t.scale));

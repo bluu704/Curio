@@ -120,6 +120,9 @@ interface AppState {
   setDialog(d: Dialog): void;
   notify(msg: string, action?: { label: string; run: () => void }): void;
   restoreItem(id: ID): Promise<void>;
+  /** Bring back a deleted archive / folder ("arc:<id>" / "cat:<id>") with everything that went with it. */
+  restoreGroup(id: string): Promise<void>;
+  purgeGroup(id: string): Promise<void>;
   purgeItem(id: ID): Promise<void>;
   emptyTrash(): Promise<void>;
   toggleSidebar(): void;
@@ -170,6 +173,8 @@ export const useApp = create<AppState>((set, get) => {
       if (f && isMainKind(f)) await api.updateItem(it.id, { props: { ...it.props, [FLAG.main]: f.id } }).catch(() => undefined);
     }
   };
+  /** After a restore: archives / folders may have come back too. */
+  const reloadContainers = () => get().reloadAll();
   const reloadDetail = async () => {
     const id = get().selectedId;
     if (!id) return;
@@ -360,8 +365,12 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async restoreItem(id) {
-      try { await api.restoreItem(id); await get().refresh(); get().notify("복원했어요"); } catch (e) { fail(e); }
+      try { await api.restoreItem(id); await reloadContainers(); get().notify("복원했어요"); } catch (e) { fail(e); }
     },
+    async restoreGroup(id) {
+      try { await api.restoreGroup(id); await reloadContainers(); get().notify("복원했어요"); } catch (e) { fail(e); }
+    },
+    async purgeGroup(id) { await api.purgeGroup(id); await get().refresh(); },
     async purgeItem(id) { await api.purgeItem(id); await get().refresh(); },
     async emptyTrash() { const n = await api.emptyTrash(); await get().refresh(); get().notify(`${n}개를 영구 삭제했어요`); },
 
@@ -523,11 +532,14 @@ export const useApp = create<AppState>((set, get) => {
       } catch (e) { fail(e); }
     },
     async deleteCategory(id) {
+      const name = get().categories.find((c) => c.id === id)?.name ?? "";
       await api.deleteCategory(id);
       set({ categories: await api.listCategories() });
       if (get().categoryId && !get().categories.some((c) => c.id === get().categoryId)) set({ categoryId: null });
+      const sel = get().selectedId;
       await get().refresh();
-      await reloadDetail();
+      if (sel && !get().items.some((i) => i.id === sel)) set({ selectedId: null, detail: null });
+      get().notify(`"${name}" 폴더를 휴지통으로 옮겼어요`, { label: "되돌리기", run: () => void get().restoreGroup(`cat:${id}`) });
     },
     async addToCategory(itemIds, categoryId) {
       await api.addToCategory(itemIds, categoryId);
@@ -555,10 +567,13 @@ export const useApp = create<AppState>((set, get) => {
       return a;
     },
     async deleteArchive(id) {
-      const n = await api.deleteArchive(id);
+      const name = get().archives.find((a) => a.id === id)?.name ?? "";
+      await api.deleteArchive(id);
       set((s) => ({ archives: s.archives.filter((a) => a.id !== id), views: s.views.filter((v) => !v.id.startsWith(`arc:${id}`)) }));
       if (get().activeViewId.startsWith(`arc:${id}`)) get().setView("sys:all"); else void get().refresh();
-      get().notify(`아카이브와 항목 ${n}개를 삭제했어요`);
+      const sel = get().selectedId;
+      if (sel && get().detail?.archiveId === id) set({ selectedId: null, detail: null });
+      get().notify(`"${name}"${particle(name, "을/를")} 휴지통으로 옮겼어요`, { label: "되돌리기", run: () => void get().restoreGroup(`arc:${id}`) });
     },
     async reorderArchives(ids) {
       const archives = ids.map((id, i) => ({ ...get().archives.find((a) => a.id === id)!, position: i }));

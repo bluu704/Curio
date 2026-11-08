@@ -77,6 +77,9 @@ async fn main() {
     let api = Router::new()
         .route("/items/query", post(|State(s): S, Json(q): Json<ItemQuery>| async move { json!(s, move |l| l.list_items(&q)) }))
         .route("/trash", get(|State(s): S| async move { json!(s, |l| l.list_trash()) }).delete(|State(s): S| async move { json!(s, |l| l.empty_trash(None)) }))
+        .route("/trash/groups", get(|State(s): S| async move { json!(s, |l| l.list_trash_groups()) }))
+        .route("/trash/groups/:id", delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.purge_group(&id)) }))
+        .route("/trash/groups/:id/restore", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.restore_group(&id)) }))
         .route("/trash/count", get(|State(s): S| async move { json!(s, |l| l.trash_count()) }))
         .route("/trash/:id", delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.purge_item(&id)) }))
         .route("/trash/:id/restore", post(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.restore_item(&id)) }))
@@ -137,7 +140,7 @@ async fn main() {
         .route(
             "/categories/:id",
             put(|State(s): S, Json(c): Json<Category>| async move { json!(s, move |l| l.save_category(c)) })
-                .delete(|State(s): S, Path(id): Path<String>| async move { empty!(s, move |l| l.delete_category(&id)) }),
+                .delete(|State(s): S, Path(id): Path<String>| async move { json!(s, move |l| l.delete_category(&id)) }),
         )
         .route("/categories/:id/items", post(|State(s): S, Path(id): Path<String>, Json(b): Json<Ids>| async move {
             empty!(s, move |l| l.add_to_category(&b.item_ids, &id))

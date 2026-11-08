@@ -131,9 +131,22 @@ fn wishlist_categories_counts_fts() {
     assert_eq!(q(serde_json::json!({ "search": "오픈월드" })).len(), 1);
     assert_eq!(q(serde_json::json!({ "search": "혼잣" })).len(), 1, "short query falls back to LIKE");
 
+    assert_eq!(l.delete_category("c1").unwrap(), 1, "items inside go to the trash too");
+    assert!(l.list_categories().unwrap().is_empty(), "children go with it");
+    assert!(l.get_item(&a.id).is_err());
+    let groups = l.list_trash_groups().unwrap();
+    assert_eq!((groups.len(), groups[0].id.as_str(), groups[0].count), (1, "cat:c1", 1));
+    assert_eq!(l.restore_group("cat:c1").unwrap(), 1);
+    assert_eq!(l.list_categories().unwrap().len(), 2, "sub-folders come back");
+    assert_eq!(l.get_item(&a.id).unwrap().category_ids, ["c2"]);
+    assert_eq!(q(serde_json::json!({ "search": "프리렌" })).len(), 1, "search index restored");
+    // restoring a single item brings its folders back too
     l.delete_category("c1").unwrap();
-    assert!(l.list_categories().unwrap().is_empty(), "children cascade");
-    assert!(l.get_item(&a.id).unwrap().category_ids.is_empty());
+    l.restore_item(&a.id).unwrap();
+    assert_eq!(l.list_categories().unwrap().len(), 2);
+    l.delete_category("c1").unwrap();
+    l.purge_group("cat:c1").unwrap();
+    assert_eq!(l.trash_count().unwrap(), 0);
 }
 
 #[test]
@@ -192,6 +205,16 @@ fn user_archives_and_pins() {
     assert_eq!(l.list_items(&q).unwrap()[0].title, "Zzz", "pinned items come first");
     assert_eq!(l.delete_archive("vocaloid").unwrap(), 2);
     assert!(l.get_item(&x.id).is_err());
+    assert_eq!(l.list_archives().unwrap().len(), 1);
+    assert_eq!(l.trash_count().unwrap(), 1, "the archive (its two items inside it)");
+    let g = &l.list_trash_groups().unwrap()[0];
+    assert_eq!((g.id.as_str(), g.name.as_str(), g.count), ("arc:vocaloid", "보컬로이드", 2));
+    assert_eq!(l.restore_group("arc:vocaloid").unwrap(), 2);
+    assert_eq!(l.get_item(&x.id).unwrap().archive_id.as_deref(), Some("vocaloid"));
+    assert_eq!(l.list_archives().unwrap().len(), 2);
+    l.delete_archive("vocaloid").unwrap();
+    l.empty_trash(None).unwrap();
+    assert_eq!(l.trash_count().unwrap(), 0);
     assert_eq!(l.list_archives().unwrap().len(), 1);
 }
 

@@ -1,6 +1,6 @@
 import type {
   Archive, ArchiveCount, Candidate, DriveImport, DriveStatus, SyncReport, Capabilities, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, ItemQuery, Kind,
-  ListKind, NewItem, StatusDef, TrashedItem, Tag, TagCategory, View, WatchFolder,
+  ListKind, NewItem, StatusDef, TrashedItem, TrashGroup, Tag, TagCategory, View, WatchFolder,
 } from "./types";
 
 /**
@@ -20,6 +20,10 @@ export interface ApiClient {
   trashCount(): Promise<number>;
   restoreItem(id: ID): Promise<Item>;
   purgeItem(id: ID): Promise<void>;
+  /** Deleted archives / folders ("arc:<id>" / "cat:<id>") and how many items went with each. */
+  listTrashGroups(): Promise<TrashGroup[]>;
+  restoreGroup(id: string): Promise<number>;
+  purgeGroup(id: string): Promise<void>;
   emptyTrash(): Promise<number>;
   /** Small JSON settings stored in the library (e.g. user-defined formats). */
   getSettings<T = unknown>(key: string): Promise<T | null>;
@@ -27,7 +31,7 @@ export interface ApiClient {
 
   listArchives(): Promise<Archive[]>;
   saveArchive(a: Archive): Promise<Archive>;
-  /** Deletes the archive and its items (linked files on disk stay). Returns deleted item count. */
+  /** Moves the archive and its items to the trash (linked files on disk stay). Returns the item count. */
   deleteArchive(id: ID): Promise<number>;
   bulkCreate(inputs: NewItem[]): Promise<ID[]>;
   getItem(id: ID): Promise<Item>;
@@ -40,7 +44,8 @@ export interface ApiClient {
 
   listCategories(): Promise<Category[]>;
   saveCategory(c: Category): Promise<Category>;
-  deleteCategory(id: ID): Promise<void>;
+  /** Moves the folder, its sub-folders and their items to the trash. Returns the item count. */
+  deleteCategory(id: ID): Promise<number>;
   addToCategory(itemIds: ID[], categoryId: ID): Promise<void>;
 
   listStatuses(): Promise<StatusDef[]>;

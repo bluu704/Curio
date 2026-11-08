@@ -3,7 +3,7 @@ import { unzipSync } from "fflate";
 import type { ApiClient } from "../client";
 import type {
   Archive, Candidate, Category, StatusDef, FieldDef, FileKind, FileRef, ID, Item, ItemQuery, Kind, ListKind, NewItem, Tag, TagCategory, View,
-  WatchFolder,
+  TrashGroup, WatchFolder,
 } from "../types";
 import { DEFAULT_VIEWS } from "@/lib/defaults";
 import { searchAniList } from "@/lib/anilist";
@@ -47,7 +47,7 @@ export interface DB {
   watch: WatchFolder[];
   archives: Archive[];
   statuses: StatusDef[];
-  trash: (Item & { deletedAt: number })[];
+  trash: (Item & { deletedAt: number; trashGroup?: string | null })[];
   settings: Record<string, unknown>;
 }
 
@@ -290,6 +290,22 @@ export const hasMockBlob = (id: ID) => !!blobs.get(id);
 export const getMockBlob = (id: ID): File | undefined => blobs.get(id);
 export const mockBlobsReady = () => blobs.ready;
 
+/** hitomi.la gallery info (the site allows reading it from any page; its images need hitomi.la itself). */
+async function hitomiGallery(id: string): Promise<Candidate> {
+  const js = await (await fetch(`https://ltn.gold-usergeneratedcontent.net/galleries/${id}.js`, { signal: AbortSignal.timeout(10000) })).text();
+  const g = JSON.parse(js.replace(/^\s*var galleryinfo\s*=\s*/, "").replace(/;\s*$/, ""));
+  const list = (v: unknown, k: string): string[] => (Array.isArray(v) ? v.map((x) => x?.[k]).filter((x): x is string => typeof x === "string") : []);
+  const pages = Array.isArray(g.files) ? g.files.length : 0;
+  return {
+    provider: "hitomi", id, title: String(g.title ?? ""), altTitles: g.japanese_title ? [String(g.japanese_title)] : [],
+    kind: g.type === "doujinshi" ? "doujin" : "manga", year: Number(String(g.date ?? "").slice(0, 4)) || null, coverUrl: null, bannerUrl: null, summary: null,
+    people: [...list(g.artists, "artist").map((name) => ({ name, category: "author" as const, role: "Artist" })), ...list(g.groups, "group").map((name) => ({ name, category: "circle" as const, role: "Group" }))],
+    genres: list(g.tags, "tag").slice(0, 20), series: list(g.parodys, "parody").find((p) => p !== "original") ?? null,
+    url: `https://hitomi.la/galleries/${id}.html`, code: null,
+    detail: [g.type, g.language_localname ?? g.language, pages ? `${pages}쪽` : ""].filter(Boolean).join(" · ") || null,
+  };
+}
+
 /** Direct access to the engine's data (used by the web version's Drive sync). */
 export const mockDb: { get(): DB; set(next: DB): void } = { get: () => { throw new Error("not ready"); }, set: () => undefined };
 
@@ -320,7 +336,7 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
     const t = now();
     const it: Item = {
       id: uid(), title: input.title.trim() || "제목 없음", kind: input.kind ?? "other",
-      archiveId: input.archiveId ?? (db.archives.some((a) => a.id === input.kind) ? input.kind! : null), pinned: false, list: input.list ?? "archive",
+      archiveId: input.archiveId ?? (db.archives.some((a) => a.id === input.kind && !a.deletedAt) ? input.kind! : null), pinned: false, list: input.list ?? "archive",
       status: input.status ?? "planned", rating: input.rating ?? null, favorite: false, coverUri: input.coverUri ?? null,
       bannerUri: null, summary: input.summary ?? null, year: input.year ?? null, url: input.url ?? null,
       code: input.code ? input.code.toUpperCase() : null, source: null, categoryIds: input.categoryIds ?? [],
@@ -329,6 +345,42 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
     };
     db.items.unshift(it);
     return it;
+  };
+
+  /** Deleted archives / top folders still in the trash. */
+  const trashGroups = (): TrashGroup[] => {
+    const count = (g: string) => db.trash.filter((x) => x.trashGroup === g).length;
+    return [
+      ...db.archives.filter((a) => a.deletedAt).map((a) => ({ id: `arc:${a.id}`, name: a.name, icon: a.icon, color: null, deletedAt: a.deletedAt!, count: count(`arc:${a.id}`) })),
+      ...db.categories.filter((c) => c.deletedAt && c.trashGroup === `cat:${c.id}`).map((c) => ({ id: `cat:${c.id}`, name: c.name, icon: null, color: c.color ?? null, deletedAt: c.deletedAt!, count: count(`cat:${c.id}`) })),
+    ].sort((a, b) => b.deletedAt - a.deletedAt);
+  };
+  /** A trashed item made live again; its archive and folders (with parents) come back too. */
+  const takeBack = (t: DB["trash"][number]): Item => {
+    const { deletedAt: _d, trashGroup: _g, ...item } = t;
+    const arc = db.archives.find((a) => a.id === item.archiveId);
+    if (arc) arc.deletedAt = null;
+    else if (item.archiveId) item.archiveId = db.archives.some((a) => a.id === item.kind && !a.deletedAt) ? item.kind : null;
+    const up = new Set(item.categoryIds);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const c of db.categories) if (up.has(c.id) && c.parentId && !up.has(c.parentId)) { up.add(c.parentId); grew = true; }
+    }
+    db.categories.forEach((c) => { if (up.has(c.id) && c.deletedAt) { c.deletedAt = null; c.trashGroup = null; } });
+    item.updatedAt = now();
+    return item;
+  };
+  const dropCategories = (ids: Set<ID>) => {
+    if (!ids.size) return;
+    const all = new Set([...ids].flatMap((id) => [...descendants(db.categories, id)]));
+    db.categories = db.categories.filter((c) => !all.has(c.id));
+    [...db.items, ...db.trash].forEach((it) => { it.categoryIds = it.categoryIds.filter((c) => !all.has(c)); });
+  };
+  const dropArchives = (ids: Set<ID>) => {
+    if (!ids.size) return;
+    db.archives = db.archives.filter((a) => !ids.has(a.id));
+    db.views = db.views.filter((v) => !(v.id.startsWith("arc:") && ids.has(v.id.slice(4).replace(/:wish$/, ""))));
+    db.trash.forEach((it) => { if (it.archiveId && ids.has(it.archiveId)) it.archiveId = null; });
   };
 
   const api: ApiClient = {
@@ -342,20 +394,19 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       for (const it of db.items) { const k = `${it.archiveId ?? ""}|${it.list}`; m.set(k, (m.get(k) ?? 0) + 1); }
       return [...m].map(([k, count]) => { const [a, list] = k.split("|"); return { archiveId: a || null, list: list as ListKind, count }; });
     },
-    async listArchives() { return delay([...db.archives].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.position - b.position)); },
+    async listArchives() { return delay(db.archives.filter((a) => !a.deletedAt).sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.position - b.position)); },
     async saveArchive(a) {
       const i = db.archives.findIndex((x) => x.id === a.id);
       if (i >= 0) db.archives[i] = a; else db.archives.push(a);
       commit(); return delay(a);
     },
     async deleteArchive(id) {
+      const t = now();
       const gone = db.items.filter((it) => it.archiveId === id);
-      const n = gone.length;
-      db.trash.unshift(...gone.map((it) => ({ ...it, archiveId: null, deletedAt: now() })));
+      db.trash.unshift(...gone.map((it) => ({ ...it, updatedAt: t, deletedAt: t, trashGroup: `arc:${id}` })));
       db.items = db.items.filter((it) => it.archiveId !== id);
-      db.archives = db.archives.filter((a) => a.id !== id);
-      db.views = db.views.filter((v) => v.id !== `arc:${id}` && v.id !== `arc:${id}:wish`);
-      commit(); return n;
+      db.archives.forEach((a) => { if (a.id === id && !a.deletedAt) a.deletedAt = t; });
+      commit(); return gone.length;
     },
     async bulkCreate(inputs) {
       const ids = inputs.map((i) => insert(i).id);
@@ -378,25 +429,47 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       db.items = db.items.filter((x) => x.id !== id); commit();
     },
     async listTrash() { return delay(db.trash); },
-    async trashCount() { return db.trash.length; },
+    async trashCount() {
+      const groups = new Set(trashGroups().map((g) => g.id));
+      return db.trash.filter((x) => !x.trashGroup || !groups.has(x.trashGroup)).length + groups.size;
+    },
     async restoreItem(id) {
       const t = db.trash.find((x) => x.id === id);
       if (!t) throw new Error("휴지통에 없는 항목이에요");
-      const { deletedAt: _d, ...item } = t;
-      if (item.archiveId && !db.archives.some((a) => a.id === item.archiveId)) item.archiveId = db.archives.some((a) => a.id === item.kind) ? item.kind : null;
-      item.updatedAt = now();
+      const item = takeBack(t);
       db.trash = db.trash.filter((x) => x.id !== id); db.items.unshift(item); commit();
       return delay(item);
     },
     async purgeItem(id) { db.trash = db.trash.filter((x) => x.id !== id); commit(); },
-    async emptyTrash() { const n = db.trash.length; db.trash = []; commit(); return n; },
+    async listTrashGroups() { return delay(trashGroups()); },
+    async restoreGroup(g) {
+      const arc = g.startsWith("arc:") ? g.slice(4) : null;
+      db.archives.forEach((a) => { if (a.id === arc) a.deletedAt = null; });
+      db.categories.forEach((c) => { if (c.trashGroup === g) { c.deletedAt = null; c.trashGroup = null; } });
+      const back = db.trash.filter((x) => x.trashGroup === g);
+      db.trash = db.trash.filter((x) => x.trashGroup !== g);
+      db.items.unshift(...back.map(takeBack));
+      commit(); return back.length;
+    },
+    async purgeGroup(g) {
+      db.trash = db.trash.filter((x) => x.trashGroup !== g);
+      dropCategories(new Set(db.categories.filter((c) => c.trashGroup === g && c.deletedAt).map((c) => c.id)));
+      if (g.startsWith("arc:")) dropArchives(new Set([g.slice(4)]));
+      commit();
+    },
+    async emptyTrash() {
+      const n = db.trash.length; db.trash = [];
+      dropCategories(new Set(db.categories.filter((c) => c.deletedAt).map((c) => c.id)));
+      dropArchives(new Set(db.archives.filter((a) => a.deletedAt).map((a) => a.id)));
+      commit(); return n;
+    },
     async getSettings(key) { return delay((db.settings[key] ?? null) as never); },
     async setSettings(key, value) { db.settings[key] = value; commit(); },
 
     async listTags() { return delay(db.tags); },
     async upsertTag(name, category) { const t = upsertTag(name, category); commit(); return delay(t); },
 
-    async listCategories() { return delay([...db.categories].sort((a, b) => a.position - b.position)); },
+    async listCategories() { return delay(db.categories.filter((c) => !c.deletedAt).sort((a, b) => a.position - b.position)); },
     async saveCategory(c) {
       if (c.parentId && descendants(db.categories, c.id).has(c.parentId)) throw new Error("폴더를 자기 안으로 옮길 수 없어요");
       const i = db.categories.findIndex((x) => x.id === c.id);
@@ -404,10 +477,13 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       commit(); return delay(c);
     },
     async deleteCategory(id) {
-      const gone = descendants(db.categories, id);
-      db.categories = db.categories.filter((c) => !gone.has(c.id));
-      db.items.forEach((it) => { it.categoryIds = it.categoryIds.filter((c) => !gone.has(c)); });
-      commit();
+      const t = now(), g = `cat:${id}`;
+      const sub = descendants(db.categories.filter((c) => !c.deletedAt), id);
+      db.categories.forEach((c) => { if (sub.has(c.id) && !c.deletedAt) { c.deletedAt = t; c.trashGroup = g; } });
+      const gone = db.items.filter((it) => it.categoryIds.some((c) => sub.has(c)));
+      db.trash.unshift(...gone.map((it) => ({ ...it, updatedAt: t, deletedAt: t, trashGroup: g })));
+      db.items = db.items.filter((it) => !gone.includes(it));
+      commit(); return gone.length;
     },
     async addToCategory(itemIds, categoryId) {
       for (const id of itemIds) { const it = find(id); if (!it.categoryIds.includes(categoryId)) it.categoryIds.push(categoryId); }
@@ -505,17 +581,21 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
     },
 
     async searchMetadata(kind, query) {
-      if (kind === "doujin") return [];
+      const bare = /^\s*#?(\d{7})\s*$/.exec(query)?.[1];
+      if (bare) return [await hitomiGallery(bare)];
       if (/^https?:\/\//i.test(query)) {
-        // preview: recognised links get a sample result, others are "unsupported" (the desktop app reads any page)
+        const hitomi = /hitomi\.la\/[a-z]+\/(?:[^/?#]*-)?(\d+)\.html/i.exec(query)?.[1];
+        if (hitomi) return [await hitomiGallery(hitomi)];
+        // other pages can't be read from a browser (cross-site): keep the link with a name from its address
         if (!kindFromLink(query)) return [];
         let name = query;
         try { name = decodeURIComponent(new URL(query).pathname.split("/").filter(Boolean).pop() ?? query).replace(/[-_]/g, " "); } catch { /* keep */ }
-        return [{ provider: "web", id: query, title: name, altTitles: [], kind, year: null, coverUrl: svgCover(7, name), bannerUrl: null,
-          summary: "미리보기 예시 결과예요. 데스크톱 앱에서는 실제 페이지에서 제목·이미지를 가져와요.", people: [], genres: [], series: null, url: query, code: null, detail: "미리보기" }];
+        return [{ provider: "web", id: query, title: name, altTitles: [], kind, year: null, coverUrl: null, bannerUrl: null,
+          summary: null, people: [], genres: [], series: null, url: query, code: null, detail: null }];
       }
+      if (kind === "doujin") return [];
       if (/youtu\.?be|music\.youtube|steampowered|play\.google/.test(query) || kind === "game" || kind === "music" || kind === "catalog" || kind === "movie" || kind === "illust" || kind === "other") {
-        throw new Error("브라우저 미리보기에서는 AniList만 검색돼요. 데스크톱 앱에서는 Steam·Google Play·네이버·위키백과·YouTube도 함께 검색해요.");
+        throw new Error("웹에서는 AniList만 검색돼요");
       }
       try {
         return await searchAniList(kind, query);

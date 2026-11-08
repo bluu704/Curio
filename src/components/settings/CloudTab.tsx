@@ -1,4 +1,5 @@
 import { ChevronDown, Cloud, Download, FileKey2, FolderPlus, Loader2, LogOut, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Select } from "@/components/ui/Select";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import type { DriveStatus, SyncReport } from "@/api/types";
@@ -184,10 +185,8 @@ export function CloudTab() {
               <div className="truncate font-medium">{f.label}</div>
               <div className="text-[length:calc(11px*var(--ts))] text-muted">{f.lastImport ? `마지막 ${new Date(f.lastImport).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}` : "가져오기 전"}</div>
             </div>
-            <select className="input h-8 w-32" value={f.archiveId ?? ""} onChange={(e) => save({ ...cfg, folders: cfg.folders.map((x) => (x.id === f.id ? { ...x, archiveId: e.target.value || null } : x)) })}>
-              <option value="">자동 분류</option>
-              {archives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            <Select className="h-8 w-32 shrink-0" value={f.archiveId ?? ""} onChange={(v) => save({ ...cfg, folders: cfg.folders.map((x) => (x.id === f.id ? { ...x, archiveId: v || null } : x)) })}
+              options={[{ value: "", label: "자동 분류" }, ...archives.map((a) => ({ value: a.id, label: a.name }))]} />
             <button className="btn btn-primary h-8" disabled={!!busy} onClick={() => void importOne(f)}>
               {busy === f.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}가져오기
             </button>
@@ -196,10 +195,7 @@ export function CloudTab() {
         ))}
         <div className="flex gap-2">
           <input className="input flex-1" placeholder="드라이브 폴더 주소" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => e.key === "Enter" && link.trim() && void addFolder()} />
-          <select className="input w-32" value={target} onChange={(e) => setTarget(e.target.value)}>
-            <option value="">자동 분류</option>
-            {archives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <Select className="w-32 shrink-0" value={target} onChange={setTarget} options={[{ value: "", label: "자동 분류" }, ...archives.map((a) => ({ value: a.id, label: a.name }))]} />
           <button className="btn btn-primary" disabled={!link.trim() || !!busy} onClick={() => void addFolder()}>
             {busy === "add" ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}추가
           </button>

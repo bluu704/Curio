@@ -233,7 +233,7 @@ impl Library {
 
     pub fn list_archives(&self) -> Result<Vec<Archive>> {
         let c = self.conn();
-        let mut st = c.prepare("SELECT id, name, icon, kind, position, pinned, format FROM archives ORDER BY pinned DESC, position, name")?;
+        let mut st = c.prepare("SELECT id, name, icon, kind, position, pinned, format FROM archives WHERE deleted_at IS NULL ORDER BY pinned DESC, position, name")?;
         let rows = st.query_map([], |r| {
             Ok(Archive { id: r.get(0)?, name: r.get(1)?, icon: r.get(2)?, kind: r.get(3)?, position: r.get(4)?, pinned: r.get::<_, i64>(5)? != 0, format: r.get(6)? })
         })?;
@@ -253,16 +253,19 @@ impl Library {
         Ok(a)
     }
 
-    /// Removes the archive and (soft-)deletes its items. Linked files on disk are never touched.
+    /// Moves the archive to the trash together with its items (they come back together).
+    /// Linked files on disk are never touched.
     pub fn delete_archive(&self, id: &str) -> Result<usize> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         let t = now();
-        tx.execute("DELETE FROM items_fts WHERE rowid IN (SELECT rowid FROM items WHERE archive_id = ?)", [id])?;
-        let n = tx.execute("UPDATE items SET deleted_at = ?1, updated_at = ?1 WHERE archive_id = ?2 AND deleted_at IS NULL", params![t, id])?;
-        tx.execute("UPDATE items SET archive_id = NULL WHERE archive_id = ?", [id])?;
-        tx.execute("DELETE FROM archives WHERE id = ?", [id])?;
-        tx.execute("DELETE FROM views WHERE id = ?1 OR id = ?1 || ':wish'", [format!("arc:{id}")])?;
+        let group = format!("arc:{id}");
+        tx.execute("DELETE FROM items_fts WHERE rowid IN (SELECT rowid FROM items WHERE archive_id = ? AND deleted_at IS NULL)", [id])?;
+        let n = tx.execute(
+            "UPDATE items SET deleted_at = ?1, updated_at = ?1, trash_group = ?2 WHERE archive_id = ?3 AND deleted_at IS NULL",
+            params![t, group, id],
+        )?;
+        tx.execute("UPDATE archives SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL", params![t, id])?;
         tx.commit()?;
         Ok(n)
     }
@@ -351,33 +354,96 @@ impl Library {
     /// Items in the trash, most recently deleted first.
     pub fn list_trash(&self) -> Result<Vec<TrashedItem>> {
         let c = self.conn();
-        let mut st = c.prepare(&format!("SELECT {ITEM_COLS}, i.deleted_at FROM items i WHERE i.deleted_at IS NOT NULL ORDER BY i.deleted_at DESC"))?;
-        let rows: Vec<(Item, i64)> = st.query_map([], |r| Ok((row_to_item(r)?, r.get(19)?)))?.collect::<rusqlite::Result<_>>()?;
-        let mut items: Vec<Item> = rows.iter().map(|(i, _)| i.clone()).collect();
+        let mut st = c.prepare(&format!("SELECT {ITEM_COLS}, i.deleted_at, i.trash_group FROM items i WHERE i.deleted_at IS NOT NULL ORDER BY i.deleted_at DESC"))?;
+        let rows: Vec<(Item, i64, Option<String>)> = st.query_map([], |r| Ok((row_to_item(r)?, r.get(19)?, r.get(20)?)))?.collect::<rusqlite::Result<_>>()?;
+        let mut items: Vec<Item> = rows.iter().map(|(i, _, _)| i.clone()).collect();
         hydrate(&c, &mut items)?;
-        Ok(items.into_iter().zip(rows).map(|(item, (_, d))| TrashedItem { item, deleted_at: d }).collect())
+        Ok(items.into_iter().zip(rows).map(|(item, (_, d, g))| TrashedItem { item, deleted_at: d, trash_group: g }).collect())
+    }
+
+    /// Deleted archives and folders (top folder of each deletion only), newest first.
+    pub fn list_trash_groups(&self) -> Result<Vec<TrashGroup>> {
+        let c = self.conn();
+        let mut st = c.prepare(
+            "SELECT 'arc:' || a.id, a.name, a.icon, NULL, a.deleted_at,
+                    (SELECT COUNT(*) FROM items i WHERE i.trash_group = 'arc:' || a.id AND i.deleted_at IS NOT NULL)
+               FROM archives a WHERE a.deleted_at IS NOT NULL
+             UNION ALL
+             SELECT 'cat:' || k.id, k.name, NULL, k.color, k.deleted_at,
+                    (SELECT COUNT(*) FROM items i WHERE i.trash_group = 'cat:' || k.id AND i.deleted_at IS NOT NULL)
+               FROM categories k WHERE k.deleted_at IS NOT NULL AND k.trash_group = 'cat:' || k.id
+             ORDER BY 5 DESC",
+        )?;
+        let rows = st.query_map([], |r| Ok(TrashGroup { id: r.get(0)?, name: r.get(1)?, icon: r.get(2)?, color: r.get(3)?, deleted_at: r.get(4)?, count: r.get(5)? }))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn trash_count(&self) -> Result<i64> {
-        Ok(self.conn().query_row("SELECT COUNT(*) FROM items WHERE deleted_at IS NOT NULL", [], |r| r.get(0))?)
+        Ok(self.conn().query_row(
+            // entries as the trash shows them: an archive / folder counts once, with what went with it
+            "SELECT (SELECT COUNT(*) FROM items i WHERE i.deleted_at IS NOT NULL
+                       AND NOT EXISTS (SELECT 1 FROM archives a WHERE i.trash_group = 'arc:' || a.id AND a.deleted_at IS NOT NULL)
+                       AND NOT EXISTS (SELECT 1 FROM categories k WHERE i.trash_group = 'cat:' || k.id AND k.trash_group = i.trash_group AND k.deleted_at IS NOT NULL))
+                  + (SELECT COUNT(*) FROM archives WHERE deleted_at IS NOT NULL)
+                  + (SELECT COUNT(*) FROM categories WHERE deleted_at IS NOT NULL AND trash_group = 'cat:' || id)",
+            [],
+            |r| r.get(0),
+        )?)
     }
 
-    /// Put an item back. If its archive was deleted meanwhile, it goes to the built-in archive of its kind.
+    /// Put an item back, together with its archive if that is in the trash too.
     pub fn restore_item(&self, id: &str) -> Result<Item> {
         {
-            let c = self.conn();
-            let n = c.execute(
-                "UPDATE items SET deleted_at = NULL, updated_at = ?1,
-                   archive_id = COALESCE((SELECT a.id FROM archives a WHERE a.id = items.archive_id), (SELECT a.id FROM archives a WHERE a.id = items.kind))
+            let mut c = self.conn();
+            let tx = c.transaction()?;
+            let n = tx.execute(
+                "UPDATE items SET deleted_at = NULL, trash_group = NULL, updated_at = ?1,
+                   archive_id = COALESCE((SELECT a.id FROM archives a WHERE a.id = items.archive_id), (SELECT a.id FROM archives a WHERE a.id = items.kind AND a.deleted_at IS NULL))
                  WHERE id = ?2 AND deleted_at IS NOT NULL",
                 params![now(), id],
             )?;
             if n == 0 {
                 return Err(Error::NotFound(format!("trashed item {id}")));
             }
-            reindex(&c, id)?;
+            revive_containers(&tx, "id = ?", id)?;
+            reindex(&tx, id)?;
+            tx.commit()?;
         }
         self.get_item(id)
+    }
+
+    /// Bring back a deleted archive / folder (with its sub-folders) and every item that went with it.
+    pub fn restore_group(&self, group: &str) -> Result<usize> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        if let Some(id) = group.strip_prefix("arc:") {
+            tx.execute("UPDATE archives SET deleted_at = NULL WHERE id = ?", [id])?;
+        }
+        tx.execute("UPDATE categories SET deleted_at = NULL, trash_group = NULL WHERE trash_group = ?", [group])?;
+        let ids: Vec<String> = tx
+            .prepare("SELECT id FROM items WHERE trash_group = ? AND deleted_at IS NOT NULL")?
+            .query_map([group], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        tx.execute("UPDATE items SET deleted_at = NULL, trash_group = NULL, updated_at = ?1 WHERE trash_group = ?2 AND deleted_at IS NOT NULL", params![now(), group])?;
+        revive_containers(&tx, "trash_group IS NULL AND id IN (SELECT value FROM json_each(?))", &serde_json::to_string(&ids)?)?;
+        for id in &ids {
+            reindex(&tx, id)?;
+        }
+        tx.commit()?;
+        Ok(ids.len())
+    }
+
+    /// Delete a trashed archive / folder for good, with the items that went with it.
+    pub fn purge_group(&self, group: &str) -> Result<()> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        tx.execute("DELETE FROM items WHERE trash_group = ? AND deleted_at IS NOT NULL", [group])?;
+        tx.execute("DELETE FROM categories WHERE trash_group = ? AND deleted_at IS NOT NULL", [group])?;
+        if let Some(id) = group.strip_prefix("arc:") {
+            drop_archive(&tx, id)?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// Delete for good (tags/files/category links cascade). Linked files on disk are never touched.
@@ -386,10 +452,22 @@ impl Library {
         Ok(())
     }
 
-    /// Empty the trash. `older_than_ms` = only items deleted before that time (auto-clean), None = all.
+    /// Empty the trash. `older_than_ms` = only things deleted before that time (auto-clean), None = all.
     pub fn empty_trash(&self, older_than_ms: Option<i64>) -> Result<usize> {
         let before = older_than_ms.unwrap_or(i64::MAX);
-        Ok(self.conn().execute("DELETE FROM items WHERE deleted_at IS NOT NULL AND deleted_at < ?", [before])?)
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        let n = tx.execute("DELETE FROM items WHERE deleted_at IS NOT NULL AND deleted_at < ?", [before])?;
+        tx.execute("DELETE FROM categories WHERE deleted_at IS NOT NULL AND deleted_at < ?", [before])?;
+        let gone: Vec<String> = tx
+            .prepare("SELECT id FROM archives WHERE deleted_at IS NOT NULL AND deleted_at < ?")?
+            .query_map([before], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        for id in gone {
+            drop_archive(&tx, &id)?;
+        }
+        tx.commit()?;
+        Ok(n)
     }
 
     // ------------------------------------------------------------------ settings (JSON blobs, e.g. formats)
@@ -525,7 +603,7 @@ impl Library {
 
     pub fn list_categories(&self) -> Result<Vec<Category>> {
         let c = self.conn();
-        let mut st = c.prepare("SELECT id, parent_id, kind, name, position, color FROM categories ORDER BY position, name COLLATE NOCASE")?;
+        let mut st = c.prepare("SELECT id, parent_id, kind, name, position, color FROM categories WHERE deleted_at IS NULL ORDER BY position, name COLLATE NOCASE")?;
         let rows = st.query_map([], |r| Ok(Category { id: r.get(0)?, parent_id: r.get(1)?, kind: r.get(2)?, name: r.get(3)?, position: r.get(4)?, color: r.get(5)? }))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
@@ -553,10 +631,19 @@ impl Library {
         Ok(cat)
     }
 
-    /// Deletes the category and its sub-categories. Items stay (only unlinked).
-    pub fn delete_category(&self, id: &str) -> Result<()> {
-        self.conn().execute("DELETE FROM categories WHERE id = ?", [id])?;
-        Ok(())
+    /// Moves the folder, its sub-folders and every item in them to the trash (they come back together).
+    pub fn delete_category(&self, id: &str) -> Result<usize> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        let t = now();
+        let group = format!("cat:{id}");
+        let sub = "WITH RECURSIVE sub(id) AS (SELECT ?1 UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id WHERE c.deleted_at IS NULL)";
+        let in_sub = "id IN (SELECT ic.item_id FROM item_categories ic WHERE ic.category_id IN (SELECT id FROM sub)) AND deleted_at IS NULL";
+        tx.execute(&format!("{sub} DELETE FROM items_fts WHERE rowid IN (SELECT rowid FROM items WHERE {in_sub})"), [id])?;
+        let n = tx.execute(&format!("{sub} UPDATE items SET deleted_at = ?2, updated_at = ?2, trash_group = ?3 WHERE {in_sub}"), params![id, t, group])?;
+        tx.execute(&format!("{sub} UPDATE categories SET deleted_at = ?2, trash_group = ?3 WHERE id IN (SELECT id FROM sub) AND deleted_at IS NULL"), params![id, t, group])?;
+        tx.commit()?;
+        Ok(n)
     }
 
     /// Add (not replace) a category to many items — used by drag & drop onto the tree.
@@ -1190,6 +1277,29 @@ fn upsert_tag(c: &Connection, name: &str, category: TagCategory) -> Result<Tag> 
     Ok(t)
 }
 
+/// Restored items must not sit in a hidden archive / folder: bring those back too (with parent folders).
+/// `filter` selects the restored items (one `?` bound to `arg`).
+fn revive_containers(c: &Connection, filter: &str, arg: &str) -> Result<()> {
+    c.execute(&format!("UPDATE archives SET deleted_at = NULL WHERE deleted_at IS NOT NULL AND id IN (SELECT archive_id FROM items WHERE {filter})"), [arg])?;
+    c.execute(
+        &format!(
+            "WITH RECURSIVE up(id) AS (SELECT category_id FROM item_categories WHERE item_id IN (SELECT id FROM items WHERE {filter})
+                                       UNION SELECT c.parent_id FROM categories c JOIN up ON c.id = up.id WHERE c.parent_id IS NOT NULL)
+             UPDATE categories SET deleted_at = NULL, trash_group = NULL WHERE deleted_at IS NOT NULL AND id IN (SELECT id FROM up)"
+        ),
+        [arg],
+    )?;
+    Ok(())
+}
+
+/// Remove an archive row for good (items keep their rows; their archive link is cleared).
+fn drop_archive(c: &Connection, id: &str) -> Result<()> {
+    c.execute("UPDATE items SET archive_id = NULL WHERE archive_id = ?", [id])?;
+    c.execute("DELETE FROM archives WHERE id = ?", [id])?;
+    c.execute("DELETE FROM views WHERE id = ?1 OR id = ?1 || ':wish'", [format!("arc:{id}")])?;
+    Ok(())
+}
+
 fn insert_item(c: &Connection, input: NewItem) -> Result<String> {
     let id = new_id();
     let t = now();
@@ -1197,7 +1307,7 @@ fn insert_item(c: &Connection, input: NewItem) -> Result<String> {
     c.execute(
         "INSERT INTO items (id, title, kind, list, status, rating, cover_uri, url, code, year, summary, created_at, updated_at, archive_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12,
-                 COALESCE((SELECT id FROM archives WHERE id = ?13), (SELECT id FROM archives WHERE id = ?3)))",
+                 COALESCE((SELECT id FROM archives WHERE id = ?13 AND deleted_at IS NULL), (SELECT id FROM archives WHERE id = ?3 AND deleted_at IS NULL)))",
         params![
             id,
             if title.is_empty() { "제목 없음" } else { title },

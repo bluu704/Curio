@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { Select } from "@/components/ui/Select";
 import type { FieldDef, Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { cn } from "@/lib/cn";
@@ -27,10 +28,8 @@ export function FieldInput({ item, field }: { item: Item; field: FieldDef }) {
       );
     case "select":
       return (
-        <select className={ghost} value={(value as string) ?? ""} onChange={(e) => setValue(e.target.value)}>
-          <option value="">—</option>
-          {field.options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+        <Select bare className={ghost} value={(value as string) ?? ""} onChange={setValue}
+          options={[{ value: "", label: "—" }, ...field.options.map((o) => ({ value: o, label: o }))]} />
       );
     case "multi_select": {
       const arr = (value as string[] | undefined) ?? [];

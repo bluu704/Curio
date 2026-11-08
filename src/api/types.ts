@@ -216,9 +216,16 @@ export interface Category {
   position: number;
   /** Folder color (tone key). null = default */
   color?: string | null;
+  /** In the trash (with its items) since this time. */
+  deletedAt?: number | null;
+  trashGroup?: string | null;
 }
 
-export interface TrashedItem extends Item { deletedAt: number }
+/** `trashGroup` = "arc:<id>" / "cat:<id>" when it went to the trash with its archive / folder. */
+export interface TrashedItem extends Item { deletedAt: number; trashGroup?: string | null }
+
+/** A deleted archive or folder in the trash; its items come back with it. */
+export interface TrashGroup { id: string; name: string; icon: string | null; color: string | null; deletedAt: number; count: number }
 
 export interface ArchiveCount { archiveId: ID | null; list: ListKind; count: number }
 
@@ -232,6 +239,8 @@ export interface Archive {
   format?: string | null;
   position: number;
   pinned: boolean;
+  /** In the trash (with its items) since this time. */
+  deletedAt?: number | null;
 }
 
 /** Where imported files go. */

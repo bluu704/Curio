@@ -12,6 +12,7 @@ export function kindFromLink(s: string): Kind | null {
   if (/series\.naver\.com|page\.kakao|ridibooks|novelpia|munpia/i.test(s)) return "web_novel";
   if (/anilist\.co\/anime|laftel|myanimelist\.net\/anime|kitsu\.(io|app)\/anime/i.test(s)) return "anime";
   if (/pixiv\.net|artstation|deviantart/i.test(s)) return "illust";
+  if (/hitomi\.la\/[a-z]+\//i.test(s)) return "doujin";
   if (/tvmaze\.com|netflix\.com|tving|wavve|coupangplay/i.test(s)) return "drama";
   if (/openlibrary\.org|books\.google|yes24|aladin|kyobobook/i.test(s)) return "book";
   return null;

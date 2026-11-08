@@ -1,4 +1,5 @@
 import { CircleDot, Cloud, Database, FolderSearch, HardDrive, Info, Keyboard, Monitor, Moon, Palette, Plus, RefreshCw, Server, Shapes, Sun, Trash2, Type, type LucideIcon } from "lucide-react";
+import { Select } from "@/components/ui/Select";
 import { useEffect, useState } from "react";
 import { api } from "@/api";
 import type { FieldType, Kind, ListKind, WatchFolder } from "@/api/types";
@@ -280,9 +281,7 @@ function Fields() {
       <div className="flex gap-2">
         <input className="input flex-1" placeholder="새 속성 이름" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void go()} />
         {!known && (
-          <select className="input w-32" value={type} onChange={(e) => setType(e.target.value as FieldType)}>
-            {(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => <option key={t} value={t}>{FIELD_LABELS[t]}</option>)}
-          </select>
+          <Select className="w-32 shrink-0" value={type} onChange={setType} options={(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => ({ value: t, label: FIELD_LABELS[t] }))} />
         )}
         <button className="btn btn-primary" disabled={!name.trim()} onClick={() => void go()}><Plus size={15} />추가</button>
       </div>
@@ -332,9 +331,7 @@ function Watch() {
         ))}
       </div>
       <div className="flex gap-2">
-        <select className="input w-32" value={lk} onChange={(e) => setLk(e.target.value as ListKind)}>
-          <option value="archive">아카이브</option><option value="wishlist">위시리스트</option>
-        </select>
+        <Select className="w-32 shrink-0" value={lk} onChange={setLk} options={[{ value: "archive", label: "아카이브" }, { value: "wishlist", label: "위시리스트" }]} />
         <button className="btn btn-primary" onClick={() => void add()}><Plus size={15} />폴더 추가</button>
         <button className="btn ml-auto border border-line" disabled={busy} onClick={() => void rescan()}><RefreshCw size={14} className={busy ? "animate-spin" : ""} />지금 확인</button>
       </div>

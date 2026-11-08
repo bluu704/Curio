@@ -1,4 +1,6 @@
 import { CircleAlert, CircleCheck, ClipboardCopy, Loader2 } from "lucide-react";
+import { Select } from "@/components/ui/Select";
+import { iconOf } from "@/lib/icons";
 import { useEffect, useMemo, useState } from "react";
 import type { ListKind } from "@/api/types";
 import { activeView, useApp, viewContext } from "@/store/app";
@@ -46,13 +48,8 @@ export function ImportDialog() {
   return (
     <Modal open onClose={() => !progress && s.setDialog(null)} title="목록 붙여넣기로 가져오기" width={860}>
       <div className="flex flex-wrap items-center gap-2">
-        <select className="input h-8 w-36" value={archive?.id ?? ""} onChange={(e) => setArcId(e.target.value)}>
-          {s.archives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-        <select className="input h-8 w-32" value={list} onChange={(e) => setList(e.target.value as ListKind)}>
-          <option value="archive">아카이브</option>
-          <option value="wishlist">위시리스트</option>
-        </select>
+        <Select className="h-8 w-36" value={archive?.id ?? ""} onChange={setArcId} options={s.archives.map((a) => ({ value: a.id, label: a.name, icon: iconOf(a.icon) }))} />
+        <Select className="h-8 w-32" value={list} onChange={setList} options={[{ value: "archive", label: "아카이브" }, { value: "wishlist", label: "위시리스트" }]} />
         <button className="btn ml-auto border border-line" onClick={() => void navigator.clipboard?.writeText(TEMPLATE)}><ClipboardCopy size={14} />템플릿 복사</button>
       </div>
 

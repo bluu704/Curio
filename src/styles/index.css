@@ -69,6 +69,12 @@
   .popover {
     @apply rounded-xl border border-line bg-elevated p-1 shadow-pop;
   }
+  /* floating panels never run off the window: they scroll inside instead */
+  .popover.fixed {
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   .menu-item {
     @apply flex h-8 w-full items-center gap-2 whitespace-nowrap rounded-lg px-2 text-left text-[length:calc(13px*var(--ts))] text-fg hover:bg-subtle;
   }

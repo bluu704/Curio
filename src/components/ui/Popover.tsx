@@ -27,15 +27,21 @@ export function Popover({ trigger, children, align = "start", className, width }
       let left = align === "end" ? r.right - pw : r.left;
       left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
       let top = r.bottom + 6;
-      if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+      if (top + ph > window.innerHeight - 8) {
+        const above = r.top - ph - 6; // flip up; fits neither way → as low as it can go (it scrolls inside)
+        top = above >= 8 ? above : Math.max(8, window.innerHeight - ph - 8);
+      }
       setPos({ top, left });
     };
     place();
     const raf = requestAnimationFrame(place); // re-measure after content renders
+    const ro = new ResizeObserver(place); // …and whenever it grows or shrinks
+    if (panel.current) ro.observe(panel.current);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
       cancelAnimationFrame(raf);
+      ro.disconnect();
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };

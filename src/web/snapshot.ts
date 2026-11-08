@@ -115,21 +115,21 @@ export function toSnapshot(db: DB, ref: Snapshot | null): Snapshot {
   };
   const created = (t: string, id: string) => (ref?.tables[t]?.[id]?.created_at as number | undefined) ?? Date.now();
 
-  db.archives.forEach((a: Archive) => put("archives", { id: a.id, name: a.name, icon: a.icon, kind: a.kind, position: a.position, pinned: a.pinned ? 1 : 0, format: a.format ?? null, created_at: (ref?.tables.archives?.[a.id]?.created_at as number | undefined) ?? 0 }));
+  db.archives.forEach((a: Archive) => put("archives", { id: a.id, name: a.name, icon: a.icon, kind: a.kind, position: a.position, pinned: a.pinned ? 1 : 0, format: a.format ?? null, deleted_at: a.deletedAt ?? null, created_at: (ref?.tables.archives?.[a.id]?.created_at as number | undefined) ?? 0 }));
   db.statuses.forEach((s: StatusDef) => put("statuses", { id: s.id, label: s.label, icon: s.icon, color: s.color, position: s.position }));
   db.fields.forEach((f: FieldDef) => put("field_defs", { id: f.id, name: f.name, type: f.type, options: JSON.stringify(f.options ?? []), position: f.position }));
   db.views.forEach((v: View) => put("views", { id: v.id, name: v.name, icon: v.icon, position: v.position, config: JSON.stringify({ layout: v.layout, query: v.query, card: v.card, columns: v.columns }) }));
   db.tags.forEach((t: Tag) => put("tags", { id: t.id, name: t.name, category: t.category, color: t.color ?? null, created_at: created("tags", t.id) }));
-  db.categories.forEach((c: Category) => put("categories", { id: c.id, parent_id: c.parentId, kind: c.kind, name: c.name, position: c.position, color: c.color ?? null, created_at: created("categories", c.id) }));
+  db.categories.forEach((c: Category) => put("categories", { id: c.id, parent_id: c.parentId, kind: c.kind, name: c.name, position: c.position, color: c.color ?? null, deleted_at: c.deletedAt ?? null, trash_group: c.trashGroup ?? null, created_at: created("categories", c.id) }));
 
   // items switched off in the cloud icon stay in this browser only
-  const items: (Item & { deletedAt?: number })[] = [...db.items, ...db.trash].filter((it) => it.props?._cloud !== false);
+  const items: (Item & { deletedAt?: number; trashGroup?: string | null })[] = [...db.items, ...db.trash].filter((it) => it.props?._cloud !== false);
   for (const it of items) {
     put("items", {
       id: it.id, title: it.title, kind: it.kind, status: it.status, rating: it.rating, favorite: it.favorite ? 1 : 0,
       cover_uri: it.coverUri, banner_uri: it.bannerUri, summary: it.summary, year: it.year, url: it.url, code: it.code,
       source: it.source ? JSON.stringify(it.source) : null, props: JSON.stringify(it.props ?? {}), blocks: JSON.stringify(it.blocks ?? []),
-      created_at: it.createdAt, updated_at: it.updatedAt, deleted_at: it.deletedAt ?? null, list: it.list, archive_id: it.archiveId, pinned: it.pinned ? 1 : 0,
+      created_at: it.createdAt, updated_at: it.updatedAt, deleted_at: it.deletedAt ?? null, trash_group: it.trashGroup ?? null, list: it.list, archive_id: it.archiveId, pinned: it.pinned ? 1 : 0,
     });
     it.tags.forEach((t, i) => put("item_tags", { item_id: it.id, tag_id: t.id, position: i }));
     (it.categoryIds ?? []).forEach((c) => put("item_categories", { item_id: it.id, category_id: c }));
@@ -175,7 +175,7 @@ export function fromSnapshot(snap: Snapshot, prev: DB): DB {
     if (keep.length) browserFiles.set(it.id, keep);
   }
 
-  const items: Item[] = [], trash: (Item & { deletedAt: number })[] = [];
+  const items: Item[] = [], trash: DB["trash"] = [];
   for (const r of T("items")) {
     const id = String(r.id);
     const it: Item = {
@@ -188,7 +188,7 @@ export function fromSnapshot(snap: Snapshot, prev: DB): DB {
       categoryIds: itemCats.get(id) ?? [],
       files: [...(files.get(id) ?? []), ...(browserFiles.get(id) ?? [])],
     };
-    if (r.deleted_at !== null && r.deleted_at !== undefined) trash.push({ ...it, deletedAt: Number(r.deleted_at) });
+    if (r.deleted_at !== null && r.deleted_at !== undefined) trash.push({ ...it, deletedAt: Number(r.deleted_at), trashGroup: (r.trash_group as string) ?? null });
     else items.push(it);
   }
   for (const it of localOnly) {
@@ -209,10 +209,10 @@ export function fromSnapshot(snap: Snapshot, prev: DB): DB {
 
   return {
     items, trash, tags, views, watch: prev.watch,
-    archives: T("archives").map((r): Archive => ({ id: String(r.id), name: String(r.name), icon: String(r.icon), kind: r.kind as Archive["kind"], position: Number(r.position), pinned: !!Number(r.pinned), format: (r.format as string) ?? null })).sort((a, b) => a.position - b.position),
+    archives: T("archives").map((r): Archive => ({ id: String(r.id), name: String(r.name), icon: String(r.icon), kind: r.kind as Archive["kind"], position: Number(r.position), pinned: !!Number(r.pinned), format: (r.format as string) ?? null, deletedAt: num(r.deleted_at) })).sort((a, b) => a.position - b.position),
     statuses: T("statuses").map((r): StatusDef => ({ id: String(r.id), label: String(r.label), icon: String(r.icon), color: String(r.color), position: Number(r.position) })).sort((a, b) => a.position - b.position),
     fields: T("field_defs").map((r): FieldDef => ({ id: String(r.id), name: String(r.name), type: r.type as FieldDef["type"], options: parse(r.options, []), position: Number(r.position) })).sort((a, b) => a.position - b.position),
-    categories: T("categories").map((r): Category => ({ id: String(r.id), parentId: (r.parent_id as string) ?? null, kind: (r.kind as Category["kind"]) ?? null, name: String(r.name), position: Number(r.position), color: (r.color as string) ?? null })),
+    categories: T("categories").map((r): Category => ({ id: String(r.id), parentId: (r.parent_id as string) ?? null, kind: (r.kind as Category["kind"]) ?? null, name: String(r.name), position: Number(r.position), color: (r.color as string) ?? null, deletedAt: num(r.deleted_at), trashGroup: (r.trash_group as string) ?? null })),
     settings: Object.fromEntries(T("settings").map((r) => [String(r.key), parse(r.value, null)])),
   };
 }

@@ -1,4 +1,6 @@
 import { Link2, Loader2 } from "lucide-react";
+import { Select } from "@/components/ui/Select";
+import { iconOf } from "@/lib/icons";
 import { useEffect, useState } from "react";
 import { api } from "@/api";
 import { activeView, useApp, viewContext } from "@/store/app";
@@ -76,10 +78,7 @@ export function LinkDialog() {
           {err && <div className="mt-1 text-[length:calc(11px*var(--ts))] text-danger">{err}</div>}
         </div>
         <div className="flex items-center gap-2 text-[length:calc(12px*var(--ts))] text-muted">
-          <span>종류</span>
-          <select className="input h-7 w-40" value={arcId} onChange={(e) => { setArcId(e.target.value); setPicked(true); }}>
-            {archives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+          <Select className="h-7 w-40" value={arcId} onChange={(v) => { setArcId(v); setPicked(true); }} options={archives.map((a) => ({ value: a.id, label: a.name, icon: iconOf(a.icon) }))} />
           <span className="ml-auto">{ctx.list === "wishlist" ? "위시리스트에 추가" : "아카이브에 추가"}</span>
         </div>
         <div className="flex justify-end">

@@ -21,6 +21,7 @@ pub mod lyrics;
 mod more;
 mod music;
 mod naver;
+mod sites;
 mod social;
 mod steam;
 mod wikipedia;
@@ -50,6 +51,9 @@ type Job<'a> = Box<dyn FnOnce() -> Result<Vec<Candidate>> + Send + 'a>;
 /// `query` may be a title, a YouTube/Steam/Play URL. A failing source is skipped.
 pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
     let q = query.trim();
+    if let Some(id) = sites::hitomi_id(q) {
+        return sites::hitomi(&id).map(|c| vec![c]);
+    }
     if q.is_empty() || kind == Kind::Doujin {
         return Ok(vec![]);
     }
@@ -75,6 +79,12 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
     }
     if let Some(id) = regex::Regex::new(r"play\.google\.com/store/apps/details\?id=([A-Za-z0-9._]+)").unwrap().captures(q) {
         return googleplay::fetch(&id[1]).map(|c| vec![c]);
+    }
+    if sites::is_dcinside(q) {
+        return sites::dcinside(q).map(|c| vec![c]);
+    }
+    if let Some((ch, no)) = sites::arca_post(q) {
+        return sites::arca(q, &ch, &no).map(|c| vec![c]);
     }
     if let Some(id) = more::pixiv_id(q) {
         return more::pixiv(&id).map(|c| vec![c]);
@@ -156,6 +166,7 @@ pub fn fetch(provider: &str, id: &str) -> Result<Candidate> {
         "youtube" => music::from_youtube(id),
         "youtube-video" => music::video(id),
         "pixiv" => more::pixiv(id),
+        "hitomi" => sites::hitomi(id),
         "web" => more::opengraph(id),
         "x" => id.split_once('/').ok_or_else(|| Error::Invalid("bad id".into())).and_then(|(u, i)| social::tweet(u, i)),
         "youtube-post" => social::yt_post(id),
@@ -186,7 +197,16 @@ pub fn download_image(url: &str, cache_dir: &Path) -> Result<PathBuf> {
         return Ok(out);
     }
     // Some CDNs only serve images to their own pages (Naver: image-comic.pstatic.net → 403 without Referer).
-    let referer = if url.contains("pstatic.net") { Some("https://comic.naver.com/") } else { None };
+    let referer = [
+        ("pstatic.net", "https://comic.naver.com/"),
+        ("gold-usergeneratedcontent.net", "https://hitomi.la/"),
+        ("dcinside.co.kr", "https://gall.dcinside.com/"),
+        ("namu.la", "https://arca.live/"),
+        ("pximg.net", "https://www.pixiv.net/"),
+    ]
+    .into_iter()
+    .find(|(host, _)| url.contains(host))
+    .map(|(_, r)| r);
     let mut req = agent().get(url);
     if let Some(r) = referer {
         req = req.set("Referer", r);

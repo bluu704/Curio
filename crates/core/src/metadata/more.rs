@@ -183,27 +183,40 @@ pub fn pixiv(id: &str) -> Result<Candidate> {
     })
 }
 
+pub(crate) fn unescape(v: &str) -> String {
+    v.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").replace("&#039;", "'").replace("&lt;", "<").replace("&gt;", ">")
+}
+
 // ---------------------------------------------------------------- OpenGraph (any page)
 /// Title / image / description from a page's <meta property="og:*"> tags — works for most sites
 /// (Kakao Page, Webtoon, Ridi, Laftel, Netflix, blogs…).
 pub fn opengraph(url: &str) -> Result<Candidate> {
-    let html = agent().get(url).set("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8")
+    opengraph_html(url, &page(url)?)
+}
+
+/// A web page's HTML, fetched the way a browser would ask for it.
+pub(crate) fn page(url: &str) -> Result<String> {
+    Ok(agent().get(url).set("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8")
         .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36")
-        .call().map_err(net)?.into_string()?;
+        .call().map_err(net)?.into_string()?)
+}
+
+/// OpenGraph fields of an already fetched page.
+pub(crate) fn opengraph_html(url: &str, html: &str) -> Result<Candidate> {
     let meta = |names: &[&str]| -> Option<String> {
         for n in names {
             let re = Regex::new(&format!(r#"(?is)<meta[^>]+(?:property|name)=["']{n}["'][^>]*content=["']([^"']+)["']|<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']{n}["']"#)).unwrap();
-            if let Some(c) = re.captures(&html) {
+            if let Some(c) = re.captures(html) {
                 let v = c.get(1).or(c.get(2)).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
                 if !v.is_empty() {
-                    return Some(v.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'"));
+                    return Some(unescape(&v));
                 }
             }
         }
         None
     };
     let title = meta(&["og:title", "twitter:title"])
-        .or_else(|| Regex::new(r"(?is)<title[^>]*>(.*?)</title>").unwrap().captures(&html).map(|c| c[1].trim().to_string()))
+        .or_else(|| Regex::new(r"(?is)<title[^>]*>(.*?)</title>").unwrap().captures(html).map(|c| unescape(c[1].trim())))
         .ok_or_else(|| crate::Error::NotFound("no title on page".into()))?;
     let image = meta(&["og:image", "og:image:url", "twitter:image"]).map(|i| if i.starts_with("//") { format!("https:{i}") } else { i });
     let site = meta(&["og:site_name"]);

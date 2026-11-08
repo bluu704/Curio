@@ -25,7 +25,7 @@ type R<T> = Result<T, Error>;
 
 #[tauri::command] pub async fn list_categories(lib: State<'_, Library>) -> R<Vec<Category>> { lib.list_categories() }
 #[tauri::command] pub async fn save_category(lib: State<'_, Library>, category: Category) -> R<Category> { lib.save_category(category) }
-#[tauri::command] pub async fn delete_category(lib: State<'_, Library>, id: String) -> R<()> { lib.delete_category(&id) }
+#[tauri::command] pub async fn delete_category(lib: State<'_, Library>, id: String) -> R<usize> { lib.delete_category(&id) }
 #[tauri::command] pub async fn add_to_category(lib: State<'_, Library>, item_ids: Vec<String>, category_id: String) -> R<()> { lib.add_to_category(&item_ids, &category_id) }
 
 #[tauri::command] pub async fn list_statuses(lib: State<'_, Library>) -> R<Vec<StatusDef>> { lib.list_statuses() }
@@ -70,6 +70,9 @@ type R<T> = Result<T, Error>;
 #[tauri::command] pub async fn list_trash(lib: State<'_, Library>) -> R<Vec<TrashedItem>> { lib.list_trash() }
 #[tauri::command] pub async fn trash_count(lib: State<'_, Library>) -> R<i64> { lib.trash_count() }
 #[tauri::command] pub async fn restore_item(lib: State<'_, Library>, id: String) -> R<Item> { lib.restore_item(&id) }
+#[tauri::command] pub async fn list_trash_groups(lib: State<'_, Library>) -> R<Vec<TrashGroup>> { lib.list_trash_groups() }
+#[tauri::command] pub async fn restore_group(lib: State<'_, Library>, id: String) -> R<usize> { lib.restore_group(&id) }
+#[tauri::command] pub async fn purge_group(lib: State<'_, Library>, id: String) -> R<()> { lib.purge_group(&id) }
 #[tauri::command] pub async fn purge_item(lib: State<'_, Library>, id: String) -> R<()> { lib.purge_item(&id) }
 #[tauri::command] pub async fn empty_trash(lib: State<'_, Library>, older_than: Option<i64>) -> R<usize> { lib.empty_trash(older_than) }
 #[tauri::command] pub async fn get_settings(lib: State<'_, Library>, key: String) -> R<Option<serde_json::Value>> { lib.get_settings(&key) }

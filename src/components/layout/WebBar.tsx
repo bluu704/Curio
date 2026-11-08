@@ -34,6 +34,13 @@ export function WebBar() {
       <span className="min-w-0 flex-1 truncate">
         {st.connected ? <b>{st.email}</b> : "구글 계정으로 로그인하면 라이브러리를 불러와요"}
       </span>
+      {!st.connected && (
+        <span className="shrink-0 text-[length:calc(11px*var(--ts))] text-muted max-sm:hidden">
+          <a href="/privacy.html" target="_blank" rel="noreferrer" className="hover:text-fg hover:underline">개인정보처리방침</a>
+          {" · "}
+          <a href="/terms.html" target="_blank" rel="noreferrer" className="hover:text-fg hover:underline">약관</a>
+        </span>
+      )}
       <button className="btn btn-primary h-8 shrink-0" disabled={busy} onClick={() => void go()}>
         {busy ? <Loader2 size={14} className="animate-spin" /> : st.connected ? <RefreshCw size={14} /> : <GoogleMark />}
         {st.connected ? "동기화" : "구글 계정으로 로그인"}

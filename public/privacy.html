@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Curio 개인정보처리방침</title>
+<link rel="icon" href="/favicon.svg">
+<style>
+  :root { --bg: #fafafa; --fg: #18181b; --muted: #71717a; --line: #e4e4e7; --accent: #6366f1; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111113; --fg: #f4f4f5; --muted: #a1a1aa; --line: #27272a; --accent: #818cf8; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.7 system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 16px 80px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  header img { width: 40px; height: 40px; border-radius: 10px; }
+  h1 { font-size: 24px; margin: 0; } h2 { font-size: 17px; margin: 32px 0 8px; }
+  p, li { color: var(--fg); } .muted { color: var(--muted); font-size: 13px; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; } a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="/curio-logo-120.png" alt=""><h1>개인정보처리방침</h1></header>
+  <p class="muted">시행일: 2026년 11월 8일</p>
+
+  <p>Curio는 개인 콘텐츠 기록 앱이에요. 운영 서버가 없고, 기록은 사용자의 기기와 사용자 본인의 Google 드라이브에만 저장돼요.</p>
+
+  <h2>1. 저장하는 정보</h2>
+  <ul>
+    <li><b>기록 데이터</b>: 항목 제목, 평점, 메모, 태그, 폴더, 첨부 파일 등 사용자가 직접 넣은 내용.</li>
+    <li><b>저장 위치</b>: 웹 버전은 브라우저 저장소(IndexedDB), 데스크톱 앱은 컴퓨터의 로컬 파일. 동기화를 켜면 사용자 Google 드라이브의 앱 전용 폴더(appDataFolder)에도 저장돼요.</li>
+    <li>Curio 개발자는 이 데이터를 받거나 볼 수 없어요.</li>
+  </ul>
+
+  <h2>2. Google 계정으로 받는 정보</h2>
+  <ul>
+    <li><b>이메일 주소</b>(openid, email): 연결된 계정을 화면에 표시하는 데만 써요.</li>
+    <li><b>드라이브 앱 전용 폴더</b>(drive.appdata): 기록을 동기화하는 데 써요. 이 폴더는 Curio만 읽고 쓸 수 있고, 사용자의 다른 드라이브 파일에는 접근하지 않아요.</li>
+    <li><b>드라이브 읽기</b>(drive.readonly, 데스크톱 앱에서 "드라이브 폴더에서 가져오기"를 쓸 때만): 사용자가 고른 폴더의 파일 목록과 파일을 가져오는 데만 써요. 드라이브 파일을 수정하거나 지우지 않아요.</li>
+  </ul>
+  <p>Curio가 Google API로 받은 정보의 사용과 다른 앱으로의 전송은 <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 서비스 사용자 데이터 정책</a>의 제한적 사용(Limited Use) 요구사항을 따릅니다. 이 정보를 판매하거나, 광고에 쓰거나, 제3자와 공유하지 않아요.</p>
+
+  <h2>3. 외부 정보 검색</h2>
+  <p>제목이나 링크로 정보·이미지를 찾을 때, 검색어나 링크가 해당 사이트(예: AniList, 네이버, Steam, 위키백과, YouTube)로 전송돼요. 그 사이트의 개인정보처리방침이 적용돼요.</p>
+
+  <h2>4. 보관과 삭제</h2>
+  <ul>
+    <li>앱에서 항목을 지우면 휴지통으로 가고, 30일 뒤 자동으로 완전히 지워져요.</li>
+    <li>드라이브 동기화 데이터는 Google 드라이브 → 설정 → 앱 관리 → Curio → "숨겨진 앱 데이터 삭제"로 지울 수 있어요.</li>
+    <li>연결 해제: <a href="https://myaccount.google.com/permissions">Google 계정 → 보안 → 서드 파티 액세스</a>에서 Curio 권한을 삭제하면 돼요.</li>
+  </ul>
+
+  <h2>5. 쿠키와 분석</h2>
+  <p>광고나 분석용 쿠키·추적 도구를 쓰지 않아요.</p>
+
+  <h2>6. 변경</h2>
+  <p>이 방침이 바뀌면 이 페이지에 시행일과 함께 올려요.</p>
+
+  <hr>
+  <h1 style="font-size:20px">Privacy Policy (English)</h1>
+  <p>Curio is a personal archive app with no backend server. Your records stay on your device and, if you turn on sync, in the app-only folder (appDataFolder) of <i>your own</i> Google Drive. The developer never receives or sees this data.</p>
+  <p><b>Google data.</b> Email address (openid, email) is used only to show which account is connected. drive.appdata is used only to sync your library. drive.readonly (desktop app, only when you use "Import from Drive folder") is used only to read the folders you choose; Curio never modifies or deletes your Drive files.</p>
+  <p>Curio's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Google user data is never sold, used for advertising, or shared with third parties.</p>
+  <p><b>Lookups.</b> When you search for titles or paste links, the query is sent to the site being searched (e.g. AniList, Naver, Steam, Wikipedia, YouTube).</p>
+  <p><b>Deletion.</b> Remove synced data in Google Drive → Settings → Manage apps → Curio → "Delete hidden app data", and revoke access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. No cookies, analytics or ads.</p>
+  <p class="muted"><a href="/terms.html">서비스 약관 · Terms</a> · <a href="/">Curio</a></p>
+</main>
+</body>
+</html>

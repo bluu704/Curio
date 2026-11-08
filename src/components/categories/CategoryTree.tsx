@@ -1,7 +1,8 @@
 import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Pencil, Trash2 } from "lucide-react";
 import { CustomSwatches } from "@/components/ui/CustomSwatches";
 import { FOLDER_COLORS, FOLDER_NAMES, folderColor } from "@/lib/statuses";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useOnScreen } from "@/lib/onScreen";
 import type { Category, ID, Kind } from "@/api/types";
 import { useApp, activeView, viewContext } from "@/store/app";
 import { useDrag, startItemDrag, consumeDragClick } from "@/store/drag";
@@ -17,7 +18,7 @@ export function CategoryTree() {
   const cats = useMemo(() => s.categories.filter((c) => !kind || c.kind === kind || c.kind === null), [s.categories, kind]);
   const [open, setOpen] = useState<Set<string>>(loadOpen);
   const [editing, setEditing] = useState<ID | null>(null);
-  const [menu, setMenu] = useState<{ id: ID; x: number; y: number; confirm?: boolean } | null>(null);
+  const [menu, setMenu] = useState<{ id: ID; x: number; y: number } | null>(null);
   const overId = useDrag((d) => d.overId);
   const dragging = useDrag((d) => d.ids.length > 0);
 
@@ -158,17 +159,11 @@ function FolderColorPanel({ c, onDone }: { c: Category; onDone: () => void }) {
 
 /** Right-click menu of a folder: new sub-folder, rename, colour, delete (asks once more in place). */
 function FolderMenu({ c, at, onClose, onRename, onAdd }: {
-  c: Category; at: { x: number; y: number; confirm?: boolean }; onClose: () => void; onRename: () => void; onAdd: () => void;
+  c: Category; at: { x: number; y: number }; onClose: () => void; onRename: () => void; onAdd: () => void;
 }) {
   const s = useApp();
   const ref = useRef<HTMLDivElement>(null);
-  const [sure, setSure] = useState(!!at.confirm);
-  const [pos, setPos] = useState({ left: at.x, top: at.y });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setPos({ left: Math.max(8, Math.min(at.x, innerWidth - el.offsetWidth - 8)), top: Math.max(8, Math.min(at.y, innerHeight - el.offsetHeight - 8)) });
-  }, [at.x, at.y, sure]);
+  const pos = useOnScreen(ref, at.x, at.y) ?? { left: at.x, top: at.y };
   useEffect(() => {
     // stay open while a colour picker opened from this menu is used
     const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest?.(".popover")) onClose(); };
@@ -187,17 +182,7 @@ function FolderMenu({ c, at, onClose, onRename, onAdd }: {
       <div className="px-2 pt-1 text-[length:calc(11px*var(--ts))] text-muted">색</div>
       <FolderColorPanel c={c} onDone={onClose} />
       <div className="mx-1 my-1 h-px bg-line" />
-      {sure ? (
-        <div className="space-y-1.5 p-1.5">
-          <div className="text-[length:calc(12px*var(--ts))] leading-snug text-muted">하위 폴더까지 삭제돼요. 항목은 그대로 남아요.</div>
-          <div className="flex gap-1.5">
-            <button className="btn h-8 flex-1 justify-center border border-line" onClick={() => setSure(false)}>취소</button>
-            <button className="btn h-8 flex-1 justify-center bg-danger text-white hover:bg-danger/90" onClick={() => { void s.deleteCategory(c.id); onClose(); }}>삭제</button>
-          </div>
-        </div>
-      ) : (
-        <button className={cn(row, "text-danger")} onClick={() => setSure(true)}><Trash2 size={14} />폴더 삭제</button>
-      )}
+      <button className={cn(row, "text-danger")} onClick={() => { void s.deleteCategory(c.id); onClose(); }}><Trash2 size={14} />폴더 삭제</button>
     </div>
   );
 }

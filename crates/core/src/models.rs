@@ -265,6 +265,21 @@ pub struct TrashedItem {
     #[serde(flatten)]
     pub item: Item,
     pub deleted_at: i64,
+    /// Set when the item went to the trash with its archive / folder ("arc:<id>" / "cat:<id>").
+    pub trash_group: Option<String>,
+}
+
+/// A deleted archive or folder waiting in the trash (its items come back with it).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashGroup {
+    /// "arc:<id>" or "cat:<id>"
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub deleted_at: i64,
+    pub count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]

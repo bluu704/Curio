@@ -1,4 +1,5 @@
 import { Eye, EyeOff, ListPlus, Pencil, Trash2, type LucideIcon } from "lucide-react";
+import { Select } from "@/components/ui/Select";
 import { useState } from "react";
 import type { FieldType, Item, TagCategory } from "@/api/types";
 import { useApp } from "@/store/app";
@@ -152,9 +153,7 @@ function NewProp({ onDone }: { onDone: () => void }) {
     <div className="space-y-2 p-2">
       <input autoFocus className="input h-8" placeholder="속성 이름" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void go()} />
       {!known && (
-        <select className="input h-8" value={type} onChange={(e) => setType(e.target.value as FieldType)}>
-          {(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => <option key={t} value={t}>{FIELD_LABELS[t]}</option>)}
-        </select>
+        <Select className="h-8" value={type} onChange={setType} options={(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => ({ value: t, label: FIELD_LABELS[t] }))} />
       )}
       <IconGrid value={shown} onChange={setIcon} cols={8} suggested={suggested} compact />
       <button className="btn btn-primary h-8 w-full justify-center" disabled={!name.trim()} onClick={() => void go()}>추가</button>

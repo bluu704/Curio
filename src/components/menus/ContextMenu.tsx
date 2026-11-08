@@ -1,7 +1,8 @@
 import {
   Archive as ArchiveIcon, BookOpen, FolderInput, Gift, PanelRightOpen, Pin, PinOff, Star, Trash2, Wand2,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useOnScreen } from "@/lib/onScreen";
 import { createPortal } from "react-dom";
 import { useApp } from "@/store/app";
 import { STATUS_META } from "@/lib/meta";
@@ -15,13 +16,7 @@ import { isReadable } from "@/components/reader/source";
 export function ContextMenu() {
   const { menu, openMenu } = useApp();
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-
-  useLayoutEffect(() => {
-    if (!menu || !ref.current) return;
-    const r = ref.current.getBoundingClientRect();
-    setPos({ x: Math.min(menu.x, innerWidth - r.width - 8), y: Math.max(8, Math.min(menu.y, innerHeight - r.height - 8)) });
-  }, [menu]);
+  const pos = useOnScreen(ref, menu?.x ?? 0, menu?.y ?? 0, !!menu);
 
   useEffect(() => {
     if (!menu) return;
@@ -41,7 +36,7 @@ export function ContextMenu() {
   if (!menu) return null;
   const close = () => openMenu(null);
   return createPortal(
-    <div ref={ref} className="popover anim-pop fixed z-[85] w-64" style={{ left: pos.x || menu.x, top: pos.y || menu.y }} onContextMenu={(e) => e.preventDefault()}>
+    <div ref={ref} className="popover anim-pop fixed z-[85] w-64" style={{ left: pos?.left ?? menu.x, top: pos?.top ?? menu.y, visibility: pos ? undefined : "hidden" }} onContextMenu={(e) => e.preventDefault()}>
       {menu.target.type === "archive" && <ArchiveMenu id={menu.target.id} close={close} />}
       {menu.target.type === "view" && <ViewMenu id={menu.target.id} close={close} />}
       {menu.target.type === "item" && <ItemMenu id={menu.target.id} close={close} />}
@@ -64,30 +59,18 @@ function NameField({ value, onSave }: { value: string; onSave: (v: string) => vo
 }
 
 function ArchiveMenu({ id, close }: { id: string; close: () => void }) {
-  const { archives, saveArchive, deleteArchive, counts } = useApp();
+  const { archives, saveArchive, deleteArchive } = useApp();
   const a = archives.find((x) => x.id === id);
-  const [confirm, setConfirm] = useState(false);
   if (!a) return null;
-  const n = counts.filter((c) => c.archiveId === id).reduce((s, c) => s + c.count, 0);
   return (
     <div className="p-1">
       <MenuLabel>이름</MenuLabel>
       <div className="px-1 pb-1"><NameField value={a.name} onSave={(name) => void saveArchive({ ...a, name })} /></div>
       <MenuLabel>아이콘</MenuLabel>
-      <div className="px-1 pb-1"><IconGrid value={a.icon} onChange={(icon) => void saveArchive({ ...a, icon })} /></div>
+      <div className="px-1 pb-1"><IconGrid compact value={a.icon} onChange={(icon) => void saveArchive({ ...a, icon })} /></div>
       <MenuSep />
       <MenuItem icon={a.pinned ? PinOff : Pin} onClick={() => { void saveArchive({ ...a, pinned: !a.pinned }); close(); }}>{a.pinned ? "고정 해제" : "고정"}</MenuItem>
-      {!confirm ? (
-        <MenuItem icon={Trash2} danger onClick={() => setConfirm(true)}>아카이브 삭제</MenuItem>
-      ) : (
-        <div className="m-1 rounded-lg bg-danger/10 p-2 text-[length:calc(12px*var(--ts))]">
-          <div className="text-danger">항목 {n}개는 휴지통으로 옮겨져요 (30일 보관). 연결된 원본 파일은 남아 있어요.</div>
-          <div className="mt-2 flex gap-1">
-            <button className="btn h-7 flex-1 justify-center bg-danger text-white hover:bg-danger/90" onClick={() => { void deleteArchive(a.id); close(); }}>삭제</button>
-            <button className="btn h-7 flex-1 justify-center border border-line" onClick={() => setConfirm(false)}>취소</button>
-          </div>
-        </div>
-      )}
+      <MenuItem icon={Trash2} danger onClick={() => { void deleteArchive(a.id); close(); }}>아카이브 삭제</MenuItem>
     </div>
   );
 }
@@ -107,7 +90,7 @@ function ViewMenu({ id, close }: { id: string; close: () => void }) {
       <MenuLabel>이름</MenuLabel>
       <div className="px-1 pb-1"><NameField value={v.name} onSave={(name) => save({ name })} /></div>
       <MenuLabel>아이콘</MenuLabel>
-      <div className="px-1 pb-1"><IconGrid value={v.icon} onChange={(icon) => save({ icon })} /></div>
+      <div className="px-1 pb-1"><IconGrid compact value={v.icon} onChange={(icon) => save({ icon })} /></div>
       <MenuSep />
       <MenuItem icon={Trash2} danger onClick={() => { void deleteView(v.id); close(); }}>보기 삭제</MenuItem>
     </div>
