@@ -124,11 +124,6 @@ export function CategoryTree() {
           const c = cats.find((x) => x.id === menu.id);
           return c ? <FolderMenu c={c} at={menu} onClose={() => setMenu(null)} onRename={() => setEditing(c.id)} onAdd={() => void add(c.id)} /> : null;
         })()}
-        {!cats.length && (
-          <div className="mt-3 rounded-lg border border-dashed border-line p-3 text-center text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">
-            폴더를 만들고<br />카드를 끌어다 넣어 보세요
-          </div>
-        )}
       </div>
     </div>
   );

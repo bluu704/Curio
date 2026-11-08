@@ -5,6 +5,13 @@ fn lib() -> (Library, tempfile::TempDir) {
     (Library::open_in_memory(dir.path()).unwrap(), dir)
 }
 
+/// Archives named after kinds (new libraries only have "아카이브 1"), so items of that kind land in them.
+fn kind_archives(l: &Library, kinds: &[Kind]) {
+    for (i, k) in kinds.iter().enumerate() {
+        l.save_archive(Archive { id: k.as_str().into(), name: k.as_str().into(), icon: k.as_str().into(), kind: *k, format: None, position: i as i64 + 1, pinned: false }).unwrap();
+    }
+}
+
 #[test]
 fn crud_and_query() {
     let (l, _d) = lib();
@@ -93,6 +100,7 @@ fn import_cbz_extracts_cover() {
 #[test]
 fn wishlist_categories_counts_fts() {
     let (l, _d) = lib();
+    kind_archives(&l, &[Kind::Anime, Kind::Game]);
     let mk = |t: &str, k: Kind, list: ListKind| l.create_item(NewItem { title: t.into(), kind: Some(k), list: Some(list), ..Default::default() }).unwrap();
     let a = mk("장송의 프리렌", Kind::Anime, ListKind::Archive);
     let _w = mk("약사의 혼잣말", Kind::Anime, ListKind::Wishlist);
@@ -169,21 +177,22 @@ fn reader_pages_and_watch_folder() {
 #[test]
 fn user_archives_and_pins() {
     let (l, _d) = lib();
-    assert_eq!(l.list_archives().unwrap().len(), 13, "built-in archives seeded");
+    assert_eq!(l.list_archives().unwrap().iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["아카이브 1"], "one plain archive to start");
     let a = Archive { id: "vocaloid".into(), name: "보컬로이드".into(), icon: "headphones".into(), kind: Kind::Music, format: Some("fmt1".into()), position: 20, pinned: true };
     l.save_archive(a).unwrap();
     assert_eq!(l.list_archives().unwrap()[0].id, "vocaloid", "pinned first");
     let x = l.create_item(NewItem { title: "千本桜".into(), kind: Some(Kind::Music), archive_id: Some("vocaloid".into()), ..Default::default() }).unwrap();
     let y = l.create_item(NewItem { title: "Song".into(), kind: Some(Kind::Music), ..Default::default() }).unwrap();
     assert_eq!(x.archive_id.as_deref(), Some("vocaloid"));
-    assert_eq!(y.archive_id.as_deref(), Some("music"), "defaults to kind archive");
+    assert_eq!(y.archive_id, None, "no archive of that kind any more");
     let z = l.create_item(NewItem { title: "Zzz".into(), kind: Some(Kind::Music), ..Default::default() }).unwrap();
     l.update_item(&z.id, serde_json::from_value(serde_json::json!({ "pinned": true })).unwrap()).unwrap();
-    let q = ItemQuery { archive_id: Some("music".into()), sort: Some(Sort { field: SortField::Title, dir: SortDir::Asc }), ..Default::default() };
+    l.update_item(&z.id, serde_json::from_value(serde_json::json!({ "archiveId": "vocaloid" })).unwrap()).unwrap();
+    let q = ItemQuery { archive_id: Some("vocaloid".into()), sort: Some(Sort { field: SortField::Title, dir: SortDir::Asc }), ..Default::default() };
     assert_eq!(l.list_items(&q).unwrap()[0].title, "Zzz", "pinned items come first");
-    assert_eq!(l.delete_archive("vocaloid").unwrap(), 1);
+    assert_eq!(l.delete_archive("vocaloid").unwrap(), 2);
     assert!(l.get_item(&x.id).is_err());
-    assert_eq!(l.list_archives().unwrap().len(), 13);
+    assert_eq!(l.list_archives().unwrap().len(), 1);
 }
 
 #[test]
@@ -222,6 +231,7 @@ fn text_files_read_write_export() {
 #[test]
 fn trash_restore_purge_and_settings() {
     let (l, _d) = lib();
+    kind_archives(&l, &[Kind::Game]);
     let a = l.create_item(NewItem { title: "버릴 것".into(), kind: Some(Kind::Game), ..Default::default() }).unwrap();
     let b = l.create_item(NewItem { title: "영구 삭제".into(), kind: Some(Kind::Game), ..Default::default() }).unwrap();
     l.delete_item(&a.id).unwrap();

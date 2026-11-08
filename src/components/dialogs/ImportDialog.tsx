@@ -57,9 +57,7 @@ export function ImportDialog() {
 
       <div className="mt-3 rounded-xl bg-subtle p-3 text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">
         <div className="mb-1 font-mono text-[length:calc(12px*var(--ts))] text-fg">{COLUMNS.map((c, i) => <span key={c}>{i > 0 && <span className="text-muted"> | </span>}{c === "작가" ? authorLabel : c}</span>)}</div>
-        한 줄에 하나씩, <b className="text-fg">|</b> 또는 <b className="text-fg">Tab</b>(엑셀·구글 시트에서 복사)으로 구분해요. 제목만 필수이고 뒤 칸은 생략해도 돼요.
-        {(kind === "catalog" || kind === "doujin") && <> 링크 칸에 <b className="text-fg">품번</b>을 쓸 수 있어요.</>}
-        <br />자동 검색이 정확하도록 <b className="text-fg">제목은 띄어쓰기까지 정식 명칭 그대로</b> 써 주세요. # 으로 시작하는 줄은 무시해요.
+        한 줄에 하나 · <b className="text-fg">|</b> 또는 <b className="text-fg">Tab</b>으로 구분 · 제목만 필수
       </div>
 
       <textarea

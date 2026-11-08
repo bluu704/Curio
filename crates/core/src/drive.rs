@@ -336,9 +336,9 @@ fn scope_err(e: ureq::Error) -> Error {
         ureq::Error::Status(403, r) => {
             let body = r.into_string().unwrap_or_default();
             Error::Invalid(if ["accessNotConfigured", "SERVICE_DISABLED", "has not been used", "is disabled"].iter().any(|k| body.contains(k)) {
-                "Google Cloud 프로젝트에서 Google Drive API가 꺼져 있어요. 콘솔의 'API 및 서비스 → 라이브러리'에서 Google Drive API를 '사용' 설정한 뒤 다시 해 주세요".into()
+                "Google Cloud에서 Google Drive API를 사용 설정해 주세요".into()
             } else if body.contains("nsufficient") || body.contains("SCOPE_INSUFFICIENT") {
-                "드라이브 권한이 부족해요. 연결 해제 후 다시 연결하면서 드라이브 항목을 모두 체크해 주세요".into()
+                "다시 연결하면서 드라이브 권한을 체크해 주세요".into()
             } else {
                 format!("드라이브에서 거절했어요 (403): {}", body.chars().take(200).collect::<String>())
             })

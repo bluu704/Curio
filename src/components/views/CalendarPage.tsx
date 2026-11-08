@@ -37,7 +37,7 @@ export function CalendarPage() {
   };
   const hide = (it: Item) => {
     setHidden(it, true);
-    s.notify("캘린더에서 숨겼어요 (항목 ⋯ 메뉴에서 다시 표시)", { label: "되돌리기", run: () => setHidden(it, false) });
+    s.notify("캘린더에서 숨겼어요", { label: "되돌리기", run: () => setHidden(it, false) });
   };
   useEffect(() => { void api.getSettings<{ notes: Record<string, string> }>("calendar").then((c) => setNotes(c?.notes ?? {})); }, []);
   const saveNote = (k: string, v: string) => {

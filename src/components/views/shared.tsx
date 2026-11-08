@@ -1,4 +1,4 @@
-import { Inbox, Plus, Upload } from "lucide-react";
+import { Inbox } from "lucide-react";
 import type { Item, Status, TagCategory } from "@/api/types";
 import { STATUS_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
@@ -45,18 +45,11 @@ export function StatusPicker({ item, compact }: { item: Item; compact?: boolean 
 }
 
 export function EmptyState() {
-  const { createItem, search } = useApp();
+  const { search } = useApp();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-subtle"><Inbox size={26} strokeWidth={1.5} /></div>
-      <div>
-        <div className="text-[length:calc(14px*var(--ts))] font-medium text-fg">{search ? "검색 결과가 없어요" : "아직 항목이 없어요"}</div>
-        <div className="mt-1 text-[length:calc(12px*var(--ts))]">파일이나 폴더를 창에 끌어다 놓으면 바로 추가돼요</div>
-      </div>
-      <div className="flex gap-2">
-        <button className="btn btn-primary" onClick={() => void createItem({ title: "제목 없음" })}><Plus size={15} />새 항목</button>
-        <span className="btn pointer-events-none border border-dashed border-line text-muted"><Upload size={15} />끌어다 놓기</span>
-      </div>
+      <div className="text-[length:calc(14px*var(--ts))] font-medium text-fg">{search ? "검색 결과가 없어요" : "아직 항목이 없어요"}</div>
     </div>
   );
 }

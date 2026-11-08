@@ -158,7 +158,6 @@ function Statuses() {
   };
   return (
     <div className="space-y-4">
-      <p className="text-[length:calc(12px*var(--ts))] text-muted">모든 아카이브에서 함께 써요. 아이콘·색을 눌러 바꾸고, 지운 상태의 항목은 첫 번째 상태로 옮겨져요.</p>
       <div className="space-y-1">
         {statuses.map((d) => {
           const I = STATUS_ICONS[d.icon] ?? iconOf(d.icon);
@@ -208,7 +207,7 @@ function Keys() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-[length:calc(12px*var(--ts))] text-muted">
-        <span className="flex-1">단축키를 눌러 바꾼 뒤 새 키를 누르세요. Esc를 누르면 취소돼요.</span>
+        <span className="flex-1">눌러서 새 키 입력 · Esc 취소</span>
         <button className="btn h-7 border border-line" onClick={() => { reset(); setMsg("모두 기본값으로 되돌렸어요"); }}>모두 기본값</button>
       </div>
       {msg && <div className="rounded-lg bg-accent/10 px-3 py-1.5 text-[length:calc(12px*var(--ts))] text-accent">{msg}</div>}
@@ -258,7 +257,6 @@ function Fields() {
   };
   return (
     <div className="space-y-4">
-      <p className="text-[length:calc(12px*var(--ts))] text-muted">모든 항목에 공통으로 붙는 사용자 정의 속성이에요. 상세 패널에 표시돼요.</p>
       <div className="space-y-1">
         {fields.map((f) => {
           const I = FIELD_ICONS[f.type];
@@ -371,7 +369,7 @@ function About() {
       <div className="text-muted">개인 콘텐츠 아카이브 · Tauri + React + SQLite</div>
       <div className="text-muted">백엔드: <code className="rounded bg-subtle px-1">{api.caps.platform}</code></div>
       {api.caps.platform === "mock" && (
-        <button className="btn mt-2 border border-line" onClick={() => { localStorage.removeItem("curio.mock.v3"); location.reload(); }}>
+        <button className="btn mt-2 border border-line" onClick={() => { localStorage.removeItem("curio.mock.v4"); location.reload(); }}>
           샘플 데이터 초기화
         </button>
       )}

@@ -1,6 +1,7 @@
-import { CalendarDays, ChevronDown, GalleryVerticalEnd, Gift, Monitor, Moon, PanelLeft, Pin, Plus, Settings, Sun, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronDown, Gift, Monitor, Moon, PanelLeft, Pin, Plus, Settings, Sun, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useApp } from "@/store/app";
+import { Logo } from "@/components/ui/Logo";
 import { longPress } from "@/store/drag";
 import { useTheme } from "@/store/theme";
 import { iconOf } from "@/lib/icons";
@@ -104,9 +105,7 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
     <aside className={cn("flex h-full shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200",
       drawer ? "w-72 max-w-[85vw] shadow-pop" : wide ? "w-56" : "w-[60px]")}>
       <div className={cn("flex h-12 shrink-0 items-center gap-2 px-3", !wide && "justify-center px-0")}>
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-fg">
-          <GalleryVerticalEnd size={17} />
-        </div>
+        <Logo size={32} />
         {wide && <span className="flex-1 whitespace-nowrap text-[length:calc(15px*var(--ts))] font-semibold tracking-tight">Curio</span>}
       </div>
 

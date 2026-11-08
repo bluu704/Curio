@@ -22,7 +22,7 @@ export function TrashView() {
         <Trash2 size={17} className="text-muted max-md:hidden" />
         <h1 className="text-[length:calc(14px*var(--ts))] font-semibold">휴지통</h1>
         <span className="rounded-md bg-subtle px-1.5 text-[length:calc(11px*var(--ts))] font-medium tabular-nums text-muted">{list?.length ?? 0}</span>
-        <span className="ml-2 text-[length:calc(12px*var(--ts))] text-muted max-sm:hidden">30일이 지나면 자동으로 삭제돼요</span>
+        <span className="ml-2 text-[length:calc(12px*var(--ts))] text-muted max-sm:hidden">30일 뒤 자동 삭제</span>
         <div className="flex-1" />
         {!!list?.length && (confirmEmpty ? (
           <span className="flex items-center gap-1">

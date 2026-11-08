@@ -114,7 +114,7 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
     <div className="mt-5">
       {editing && (
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2 text-[length:calc(12px*var(--ts))] text-accent">
-          <span className="flex-1">눈 아이콘으로 보이기·숨기기 · {s.archives.find((a) => a.id === item.archiveId)?.name ?? "이 아카이브"}의 모든 항목에 적용돼요</span>
+          <span className="flex-1">보이기·숨기기 · {s.archives.find((a) => a.id === item.archiveId)?.name ?? "이 아카이브"} 전체</span>
           <button className="btn btn-primary h-7" onClick={onDone}>완료</button>
         </div>
       )}

@@ -31,7 +31,7 @@ const idb = (() => {
 })();
 
 const LIB = "library.json.gz";
-const ON_PC = "이 파일은 PC에만 있어요. 설정 → 클라우드의 '함께 올릴 파일 크기'보다 크거나, 그 PC에서 아직 동기화하지 않았어요.";
+const ON_PC = "PC에만 있는 파일이에요";
 /** desktop cover "@cache/thumbs/a.jpg" → app-folder file name "cache~thumbs~a.jpg" (same as the desktop) */
 const imageName = (p: string) => `cache~${p.slice("@cache/".length).replace(/\//g, "~")}`;
 const images = new Map<string, string>(); // "@cache/…" → blob: URL
@@ -151,8 +151,8 @@ export function createWebClient(): ApiClient {
     driveLogin: async () => { await g.signIn(); return status(); },
     driveLogout: async () => { await g.signOut(); return status(); },
     driveSync: () => sync(),
-    driveFolder: async () => { throw new Error("드라이브 폴더 가져오기는 데스크톱 앱에서 할 수 있어요"); },
-    driveImport: async () => { throw new Error("드라이브 폴더 가져오기는 데스크톱 앱에서 할 수 있어요"); },
+    driveFolder: async () => { throw new Error("데스크톱 앱에서만 돼요"); },
+    driveImport: async () => { throw new Error("데스크톱 앱에서만 돼요"); },
     fetchLyrics: base.fetchLyrics,
     // PC files: fetched from Drive on first use (when small enough to travel with the library)
     ensureFile,

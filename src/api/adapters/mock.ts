@@ -8,11 +8,24 @@ import type {
 import { DEFAULT_VIEWS } from "@/lib/defaults";
 import { searchAniList } from "@/lib/anilist";
 import { kindFromLink } from "@/lib/links";
-import { ARCHIVE_KINDS, KIND_CONFIG } from "@/lib/kinds";
+import { ARCHIVE_KINDS } from "@/lib/kinds";
 import { DEFAULT_STATUSES } from "@/lib/statuses";
 
-const builtinArchives = (): Archive[] =>
-  ARCHIVE_KINDS.map((k, i) => ({ id: k, name: KIND_CONFIG[k].label, icon: k, kind: k, position: i, pinned: false }));
+/** A library starts with one plain archive (fixed id, so every device makes the same one). */
+const builtinArchives = (): Archive[] => [{ id: "archive1", name: "아카이브 1", icon: "library", kind: "other", position: 0, pinned: false }];
+const OLD_BUILTIN = new Set<string>([...ARCHIVE_KINDS]);
+
+/** Same as the desktop's migration 7: drop the old per-kind archives that hold nothing. */
+export function normalizeArchives(db: DB): DB {
+  const used = new Set([...db.items, ...db.trash].map((i) => i.archiveId));
+  const drop = new Set(db.archives.filter((a) => OLD_BUILTIN.has(a.id) && !used.has(a.id)).map((a) => a.id));
+  if (drop.size) {
+    db.archives = db.archives.filter((a) => !drop.has(a.id));
+    db.views = db.views.filter((v) => !(v.id.startsWith("arc:") && drop.has(v.id.slice(4).replace(/:wish$/, ""))));
+  }
+  if (!db.archives.length) db.archives = builtinArchives();
+  return db;
+}
 
 /**
  * In-browser backend for UI development (`npm run dev` without Tauri).
@@ -20,7 +33,7 @@ const builtinArchives = (): Archive[] =>
  * Uploaded files (browser) live in memory for the session.
  */
 
-const KEY = "curio.mock.v3";
+const KEY = "curio.mock.v4";
 let useAppError: (msg: string) => void = () => {};
 /** Lets the mock report a message through the app's error toast without importing the store (avoids a cycle). */
 export const setMockErrorSink = (fn: (msg: string) => void) => { useAppError = fn; };
@@ -154,7 +167,7 @@ function seed(): DB {
   const fields: FieldDef[] = [
     { id: uid(), name: "보관 위치", type: "select", options: ["NAS", "외장 SSD", "책장"], position: 0 },
   ];
-  items.forEach((it) => { it.archiveId = ARCHIVE_KINDS.includes(it.kind) ? it.kind : null; it.pinned = false; });
+  items.forEach((it) => { it.archiveId = "archive1"; it.pinned = false; });
   return { items, tags, fields, views: clone(DEFAULT_VIEWS), categories, watch: [], archives: builtinArchives(), statuses: clone(DEFAULT_STATUSES), trash: [], settings: {} };
 }
 
@@ -284,13 +297,13 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
   db.categories ??= [];
   db.watch ??= [];
   db.archives ??= builtinArchives();
-  for (const a of builtinArchives()) if (!db.archives.some((x) => x.id === a.id)) db.archives.push(a); // archives added in later versions
+  normalizeArchives(db);
   db.statuses ??= clone(DEFAULT_STATUSES);
   db.trash ??= [];
   db.settings ??= {};
   const commit = () => (opts?.persist ?? save)(db);
   mockDb.get = () => db;
-  mockDb.set = (next) => { db = next; commit(); };
+  mockDb.set = (next) => { db = normalizeArchives(next); commit(); };
   const find = (id: ID) => {
     const it = db.items.find((x) => x.id === id);
     if (!it) throw new Error(`item ${id} not found`);

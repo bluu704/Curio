@@ -23,7 +23,6 @@ export function FormatsTab() {
   };
   return (
     <div className="space-y-3">
-      <p className="text-[length:calc(12px*var(--ts))] text-muted">형식은 아카이브의 카드 모양과 표시할 속성을 정해요. 링크를 넣으면 형식과 관계없이 알맞은 사이트에서 정보를 찾아와요.</p>
       <div className="space-y-1">
         {list.map((f) => <FormatRow key={f.id} f={f} open={open === f.id} onToggle={() => setOpen(open === f.id ? null : f.id)} />)}
       </div>

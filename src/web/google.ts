@@ -31,7 +31,7 @@ function gis(): Promise<Gis> {
     if (w.google?.accounts?.oauth2) return res(w.google);
     const s = Object.assign(document.createElement("script"), { src: "https://accounts.google.com/gsi/client", async: true });
     s.onload = () => (w.google ? res(w.google) : rej(new Error("구글 로그인을 불러오지 못했어요")));
-    s.onerror = () => { gisLoad = null; rej(new Error("구글 로그인을 불러오지 못했어요 (인터넷 연결을 확인해 주세요)")); };
+    s.onerror = () => { gisLoad = null; rej(new Error("구글 로그인을 불러오지 못했어요")); };
     document.head.appendChild(s);
   });
   return gisLoad;
@@ -52,7 +52,7 @@ async function request(prompt: string): Promise<string> {
         if (r.error || !r.access_token) return rej(new Error(r.error === "access_denied" ? "로그인을 취소했어요" : `구글 로그인 오류: ${r.error_description ?? r.error}`));
         // Google lets people untick single permissions on the consent screen
         if (r.scope && !r.scope.includes("drive.appdata")) {
-          return rej(new Error("드라이브 권한이 체크되지 않았어요. 다시 로그인하면서 'Google Drive에서 자체 구성 데이터를 확인, 생성, 삭제' 항목을 체크해 주세요"));
+          return rej(new Error("로그인할 때 드라이브 권한을 체크해 주세요"));
         }
         token = { value: r.access_token, exp: Date.now() + ((r.expires_in ?? 3600) - 60) * 1000 };
         res(r.access_token);
@@ -99,11 +99,11 @@ async function check(r: Response) {
   if (r.status === 403) {
     const body = await r.text().catch(() => "");
     if (/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(body)) {
-      throw new Error("Google Cloud 프로젝트에서 Google Drive API가 꺼져 있어요. 콘솔의 'API 및 서비스 → 라이브러리'에서 Google Drive API를 '사용' 설정한 뒤 몇 분 뒤에 다시 해 주세요");
+      throw new Error("Google Cloud에서 Google Drive API를 사용 설정해 주세요");
     }
     if (/insufficient|SCOPE_INSUFFICIENT/i.test(body)) {
       token = null;
-      throw new Error("드라이브 권한이 없어요. 다시 로그인하면서 드라이브 항목을 체크해 주세요");
+      throw new Error("로그인할 때 드라이브 권한을 체크해 주세요");
     }
     throw new Error(`드라이브에서 거절했어요 (403): ${body.match(/"message":\s*"([^"]+)"/)?.[1] ?? "권한 문제"}`);
   }

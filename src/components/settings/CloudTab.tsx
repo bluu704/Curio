@@ -28,7 +28,7 @@ export function syncLibrary(quiet = false): Promise<SyncReport | null> {
     try {
       const r = await api.driveSync();
       if (r.pulled > 0) await s.reloadAll();
-      if (!quiet) s.notify(r.pulled || r.pushed || r.filesUp || r.filesDown ? `동기화했어요 · 받은 변경 ${r.pulled} · 보낸 변경 ${r.pushed}${r.filesUp ? ` · 올린 파일 ${r.filesUp}` : ""}${r.filesDown ? ` · 받은 파일 ${r.filesDown}` : ""}` : "이미 최신이에요");
+      if (!quiet) s.notify(r.pulled || r.pushed || r.filesUp || r.filesDown ? "동기화했어요" : "이미 최신이에요");
       return r;
     } catch (e) {
       if (!quiet) useApp.setState({ error: e instanceof Error ? e.message : String(e) });
@@ -137,7 +137,7 @@ export function CloudTab() {
           <div className="min-w-0 flex-1">
             <div className="font-medium">구글 드라이브</div>
             <div className="truncate text-[length:calc(12px*var(--ts))] text-muted">
-              {connected ? `${st?.email ?? "계정"} 연결됨` : busy === "login" ? "브라우저에서 로그인을 마쳐 주세요…" : "드라이브 폴더의 파일을 가져올 수 있어요"}
+              {connected ? st?.email ?? "연결됨" : busy === "login" ? "브라우저에서 로그인해 주세요" : "연결 안 됨"}
             </div>
           </div>
           {connected ? (
@@ -148,47 +148,41 @@ export function CloudTab() {
             </button>
           )}
         </div>
-        {!canLogin && <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">구글 계정 연결은 데스크톱 앱이나 웹 버전에서 할 수 있어요.</p>}
+        {!canLogin && <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">미리보기에서는 연결할 수 없어요</p>}
         {web && st && !st.available && <WebClientInput onSaved={() => void api.driveStatus().then(setSt)} />}
         {desktop && st && !st.available && (
-          <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">이 버전에는 구글 연결 정보가 들어 있지 않아요. 아래 <b className="text-fg">고급</b>에서 직접 넣을 수 있어요.</p>
+          <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">구글 연결 정보가 없어요 (아래 고급에서 추가)</p>
         )}
       </div>
 
       {/* library sync */}
       <section className={cn("space-y-2", !connected && "pointer-events-none opacity-50")}>
-        <div className="label">라이브러리 동기화</div>
         <div className="flex items-center gap-3 rounded-xl border border-line p-3">
           <div className="min-w-0 flex-1">
-            <div className="font-medium">여러 기기에서 같은 라이브러리</div>
+            <div className="font-medium">라이브러리 동기화</div>
             <div className="text-[length:calc(12px*var(--ts))] text-muted">
-              {lastSync ? `마지막 동기화 ${new Date(lastSync).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}` : "항목·폴더·색·메모·설정을 드라이브에 맞춰 둬요"}
+              {lastSync ? `마지막 ${new Date(lastSync).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}` : "아직 안 했어요"}
             </div>
           </div>
           <button className="btn btn-primary h-9" disabled={!!busy} onClick={() => void syncNow()}>
-            {busy === "sync" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}지금 동기화
+            {busy === "sync" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}동기화
           </button>
         </div>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={cfg.autoSync !== false} onChange={(e) => save({ ...cfg, autoSync: e.target.checked })} className="h-4 w-4 accent-[rgb(var(--accent))]" />
-          {web ? "자동으로 동기화 (로그인한 동안 3분마다 · 탭을 벗어날 때)" : "자동으로 동기화 (앱을 열 때 · 3분마다 · 창을 내릴 때)"}
+          자동 동기화
         </label>
         <FileSizeLimit value={cfg.fileSyncMb ?? 50} onChange={(mb) => save({ ...cfg, fileSyncMb: mb })} />
-        <p className="text-[length:calc(11px*var(--ts))] text-muted">
-          {web
-            ? "데스크톱 앱과 같은 라이브러리예요. PC 파일은 위 크기 이하인 것만 웹에서 열 수 있고, 이 브라우저에서 올린 파일은 여기에만 있어요."
-            : "드라이브의 숨은 앱 폴더에 저장돼서 내 드라이브 목록에는 보이지 않아요. 표지 이미지와 위 크기 이하의 파일이 함께 올라가 웹 버전에서도 열 수 있어요. 더 큰 파일은 이 PC에만 있어요."}
-        </p>
       </section>
 
       {/* folders (desktop: files are downloaded to this PC) */}
       {desktop && <section className={cn("space-y-2", !connected && "pointer-events-none opacity-50")}>
-        <div className="label">가져올 폴더</div>
+        <div className="label">드라이브 폴더 가져오기</div>
         {cfg.folders.map((f) => (
           <div key={f.id} className="flex items-center gap-2 rounded-xl border border-line p-2 pl-3">
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium">{f.label}</div>
-              <div className="text-[length:calc(11px*var(--ts))] text-muted">{f.lastImport ? `마지막으로 가져온 때 ${new Date(f.lastImport).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}` : "아직 가져오지 않았어요"}</div>
+              <div className="text-[length:calc(11px*var(--ts))] text-muted">{f.lastImport ? `마지막 ${new Date(f.lastImport).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}` : "가져오기 전"}</div>
             </div>
             <select className="input h-8 w-32" value={f.archiveId ?? ""} onChange={(e) => save({ ...cfg, folders: cfg.folders.map((x) => (x.id === f.id ? { ...x, archiveId: e.target.value || null } : x)) })}>
               <option value="">자동 분류</option>
@@ -197,11 +191,11 @@ export function CloudTab() {
             <button className="btn btn-primary h-8" disabled={!!busy} onClick={() => void importOne(f)}>
               {busy === f.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}가져오기
             </button>
-            <button className="btn-icon h-8 w-8 hover:text-danger" onClick={() => save({ ...cfg, folders: cfg.folders.filter((x) => x.id !== f.id) })} data-tip="목록에서 빼기 (가져온 항목은 그대로)"><Trash2 size={14} /></button>
+            <button className="btn-icon h-8 w-8 hover:text-danger" onClick={() => save({ ...cfg, folders: cfg.folders.filter((x) => x.id !== f.id) })} data-tip="목록에서 빼기"><Trash2 size={14} /></button>
           </div>
         ))}
         <div className="flex gap-2">
-          <input className="input flex-1" placeholder="드라이브 폴더 주소를 붙여넣으세요" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => e.key === "Enter" && link.trim() && void addFolder()} />
+          <input className="input flex-1" placeholder="드라이브 폴더 주소" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => e.key === "Enter" && link.trim() && void addFolder()} />
           <select className="input w-32" value={target} onChange={(e) => setTarget(e.target.value)}>
             <option value="">자동 분류</option>
             {archives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -212,9 +206,8 @@ export function CloudTab() {
         </div>
         <label className="flex items-center gap-2 pt-1">
           <input type="checkbox" checked={cfg.autoImport} onChange={(e) => save({ ...cfg, autoImport: e.target.checked })} className="h-4 w-4 accent-[rgb(var(--accent))]" />
-          앱을 열 때 새 파일을 자동으로 가져오기
+          앱을 열 때 새 파일 가져오기
         </label>
-        <p className="text-[length:calc(11px*var(--ts))] text-muted">파일은 이 PC에 내려받아 저장돼요. 하위 폴더 안의 파일도 함께 가져오고, 이미 가져온 파일은 건너뛰어요.</p>
       </section>}
 
       {err && <div className="rounded-lg bg-danger/10 px-3 py-2 text-[length:calc(12px*var(--ts))] text-danger">{err}</div>}
@@ -223,7 +216,7 @@ export function CloudTab() {
       {desktop && !st?.builtin && (
         <section className="border-t border-line pt-4">
           <button className="flex items-center gap-1 text-[length:calc(12px*var(--ts))] text-muted hover:text-fg" onClick={() => setAdvanced(!advanced)}>
-            <ChevronDown size={14} className={cn("transition-transform", !advanced && "-rotate-90")} />고급 · 직접 만든 구글 연결 정보 쓰기
+            <ChevronDown size={14} className={cn("transition-transform", !advanced && "-rotate-90")} />고급
           </button>
           {advanced && (
             <div className="mt-2 space-y-2">
@@ -237,7 +230,7 @@ export function CloudTab() {
                 <button className="btn w-full justify-center border border-dashed border-line" onClick={() => file.current?.click()}><Upload size={14} />OAuth 클라이언트 JSON 올리기</button>
               )}
               <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void loadClient(f); }} />
-              <p className="text-[length:calc(11px*var(--ts))] text-muted">앱을 직접 빌드할 때 프로젝트 폴더에 이 파일을 넣어 두면 앱에 들어가서, 쓰는 사람은 버튼만 누르면 돼요.</p>
+
             </div>
           )}
         </section>
@@ -262,13 +255,13 @@ function FileSizeLimit({ value, onChange }: { value: number; onChange: (mb: numb
   };
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>함께 올릴 파일 크기</span>
+      <span>파일 함께 올리기</span>
       <div className="flex items-center gap-1">
         <input type="number" min={0} max={2000} step={10} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()}
-          className="input h-8 w-20 text-right tabular-nums" aria-label="함께 올릴 파일 크기 (MB)" />
+          className="input h-8 w-20 text-center tabular-nums" aria-label="함께 올릴 파일 크기 (MB)" />
         <span className="text-muted">MB 이하</span>
       </div>
-      <span className="text-[length:calc(11px*var(--ts))] text-muted">{value === 0 ? "· 파일은 올리지 않아요" : "· 0으로 하면 파일은 올리지 않아요"}</span>
+      <span className="text-[length:calc(11px*var(--ts))] text-muted">0이면 안 올려요</span>
     </div>
   );
 }
@@ -278,7 +271,7 @@ function WebClientInput({ onSaved }: { onSaved: () => void }) {
   const [v, setV] = useState("");
   return (
     <div className="mt-3 space-y-1.5">
-      <div className="text-[length:calc(12px*var(--ts))] text-muted">이 웹 버전에는 구글 연결 정보가 없어요. Google Cloud의 <b className="text-fg">웹 애플리케이션</b> 클라이언트 ID를 넣어 주세요.</div>
+      <div className="text-[length:calc(12px*var(--ts))] text-muted">웹 애플리케이션 클라이언트 ID</div>
       <div className="flex gap-2">
         <input className="input h-8 flex-1 font-mono" placeholder="….apps.googleusercontent.com" value={v} onChange={(e) => setV(e.target.value)} />
         <button className="btn btn-primary h-8" disabled={!v.trim().endsWith(".apps.googleusercontent.com")} onClick={() => void import("@/web/google").then((g) => { g.setClientId(v); onSaved(); })}>저장</button>

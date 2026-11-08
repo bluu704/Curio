@@ -61,14 +61,14 @@ export function MetadataDialog() {
         <button className="btn btn-primary" disabled={busy === "search"}>{busy === "search" ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}검색</button>
       </form>
       <div className="mt-2 flex items-center justify-between text-[length:calc(12px*var(--ts))] text-muted">
-        <span>여러 사이트를 동시에 검색해요. 고화질 표지·배너는 내 PC에 저장돼요.</span>
+        <span />
         <label className="flex cursor-pointer items-center gap-1.5">
           <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} className="accent-[rgb(var(--accent))]" />제목도 바꾸기
         </label>
       </div>
 
       {err && <div className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-[length:calc(12px*var(--ts))] text-danger">{err}</div>}
-      {hits && !hits.length && <div className="mt-6 text-center text-[length:calc(13px*var(--ts))] text-muted">결과가 없어요. 정식 제목이나 원제(영어·일본어)로 검색해 보세요.</div>}
+      {hits && !hits.length && <div className="mt-6 text-center text-[length:calc(13px*var(--ts))] text-muted">결과가 없어요</div>}
 
       <div className="mt-3 space-y-1.5">
         {hits?.map((c) => (

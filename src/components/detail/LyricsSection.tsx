@@ -75,7 +75,7 @@ export function LyricsSection({ item }: { item: Item }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) save(); }}
-            placeholder={"가사를 붙여넣거나 입력하세요\n[00:12.30] 처럼 시간을 붙이면 싱크 가사가 돼요"}
+            placeholder="가사 ([00:12.30] 형식이면 싱크 가사)"
             rows={10}
             className="input h-auto min-h-40 resize-y py-2 leading-relaxed"
           />
@@ -153,7 +153,7 @@ function SyncedLyrics({ itemId, lrc, offset, source, onOffset }: { itemId: strin
         <div className="h-16" />
       </div>
       <div className="mt-1.5 flex items-center gap-1 text-[length:calc(11px*var(--ts))] text-muted">
-        <span className="flex-1 truncate">{live ? (playing ? "재생에 맞춰 따라가요 · 줄을 누르면 그 부분으로" : "일시정지됨") : "위에서 노래를 재생하면 가사가 따라가요"}</span>
+        <span className="flex-1 truncate">{live ? (playing ? "줄을 누르면 그 부분으로" : "일시정지됨") : "재생하면 따라가요"}</span>
         <button className="btn-icon h-6 w-6" onClick={() => onOffset(-0.5)} data-tip="가사를 0.5초 늦게"><Minus size={12} /></button>
         <span className="w-12 text-center tabular-nums">{offset > 0 ? "+" : ""}{offset.toFixed(1)}초</span>
         <button className="btn-icon h-6 w-6" onClick={() => onOffset(0.5)} data-tip="가사를 0.5초 빠르게"><Plus size={12} /></button>

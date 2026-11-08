@@ -72,6 +72,10 @@ interface AppState {
   deleteView(id: ID): Promise<void>;
 
   select(id: ID | null): Promise<void>;
+  /** Items opened through links; the detail header's back arrow walks this. */
+  linkBack: ID[];
+  openLinked(id: ID): Promise<void>;
+  linkGoBack(): Promise<void>;
   createItem(input: NewItem): Promise<Item>;
   updateItem(id: ID, patch: ItemPatch): Promise<void>;
   deleteItem(id: ID): Promise<void>;
@@ -289,8 +293,21 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async select(id) {
-      set({ selectedId: id, detail: id ? get().items.find((i) => i.id === id) ?? null : null });
+      set({ selectedId: id, detail: id ? get().items.find((i) => i.id === id) ?? null : null, linkBack: [] });
       if (id) await reloadDetail();
+    },
+    linkBack: [],
+    async openLinked(id) {
+      const from = get().selectedId;
+      set({ selectedId: id, detail: get().items.find((i) => i.id === id) ?? null, linkBack: from ? [...get().linkBack, from] : get().linkBack });
+      await reloadDetail();
+    },
+    async linkGoBack() {
+      const back = [...get().linkBack];
+      const id = back.pop();
+      if (!id) return;
+      set({ selectedId: id, detail: get().items.find((i) => i.id === id) ?? null, linkBack: back });
+      await reloadDetail();
     },
 
     async createItem(input) {

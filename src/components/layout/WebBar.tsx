@@ -7,7 +7,7 @@ import { GoogleMark, syncLibrary } from "@/components/settings/CloudTab";
 
 /**
  * Web version only: one bar to sign in with Google and bring in the library from Drive.
- * Google needs a click for a token, so after a reload the bar offers "드라이브와 맞추기" once.
+ * Google needs a click for a token, so after a reload the bar offers "동기화" once.
  */
 export function WebBar() {
   const [st, setSt] = useState<DriveStatus | null>(null);
@@ -32,11 +32,11 @@ export function WebBar() {
   return (
     <div className="flex shrink-0 items-center gap-3 border-b border-line bg-accent/10 px-4 py-2 text-[length:calc(13px*var(--ts))] max-md:px-3">
       <span className="min-w-0 flex-1 truncate">
-        {st.connected ? <><b>{st.email}</b> · 드라이브의 라이브러리와 맞춰요</> : "구글 계정으로 로그인하면 데스크톱 앱과 같은 라이브러리를 여기서 써요"}
+        {st.connected ? <b>{st.email}</b> : "구글 계정으로 로그인하면 라이브러리를 불러와요"}
       </span>
       <button className="btn btn-primary h-8 shrink-0" disabled={busy} onClick={() => void go()}>
         {busy ? <Loader2 size={14} className="animate-spin" /> : st.connected ? <RefreshCw size={14} /> : <GoogleMark />}
-        {st.connected ? "드라이브와 맞추기" : "구글 계정으로 로그인"}
+        {st.connected ? "동기화" : "구글 계정으로 로그인"}
       </button>
       <button className="btn-icon h-8 w-8 shrink-0" onClick={() => setHidden(true)} data-tip="닫기"><X size={15} /></button>
     </div>

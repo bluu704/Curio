@@ -123,8 +123,7 @@ export default function App() {
         <div className="anim-fade pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-accent/10 p-6 backdrop-blur-[2px]">
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-accent/60 text-accent">
             <Upload size={36} strokeWidth={1.6} />
-            <div className="text-[length:calc(15px*var(--ts))] font-semibold">{drag.attach?.startsWith("memo:") ? "놓으면 메모에 넣어요" : drag.attach ? "놓으면 이 항목에 파일이 연결돼요" : "놓으면 지금 보고 있는 아카이브에 추가돼요"}</div>
-            <div className="text-[length:calc(12px*var(--ts))] text-accent/80">PDF·ZIP은 바로 읽을 수 있고, 원본 파일은 이동·복사되지 않아요</div>
+            <div className="text-[length:calc(15px*var(--ts))] font-semibold">{drag.attach?.startsWith("memo:") ? "메모에 넣기" : drag.attach ? "이 항목에 연결" : "추가하기"}</div>
           </div>
         </div>
       )}

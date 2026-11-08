@@ -1,5 +1,5 @@
 import {
-  type LucideIcon, Film, Archive, CalendarDays, CalendarOff, Cloud, CloudOff, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
+  type LucideIcon, ArrowLeft, Film, Archive, CalendarDays, CalendarOff, Cloud, CloudOff, ChevronsRight, Ellipsis, Maximize2, Minimize2, Gift, ImageMinus, ImagePlus, Pin, Play, SlidersHorizontal, Star, Trash2, Wand2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { LyricsSection } from "./LyricsSection";
 import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, mainFile, withFlag } from "@/lib/itemFlags";
 import { MainContent } from "./MainContent";
+import { LinksSection } from "./LinksSection";
 import { AudioPlayer, YouTubePlayer } from "./Players";
 import { Cover } from "@/components/ui/Cover";
 import { Popover } from "@/components/ui/Popover";
@@ -30,6 +31,7 @@ export function DetailPanel() {
   const [editProps, setEditProps] = useState(false);
   useFormats((f) => f.stored);
   const full = useApp((st) => st.detailFull);
+  const linkBack = useApp((st) => st.linkBack);
   const toggleFull = useApp((st) => st.toggleDetailFull);
 
   useEffect(() => {
@@ -66,6 +68,7 @@ export function DetailPanel() {
         full ? "left-0" : "border-l border-line shadow-pop md:w-[460px]")}>
       <div className="flex h-12 shrink-0 items-center gap-0.5 border-b border-line px-2">
         <button className="btn-icon" onClick={() => void select(null)} data-tip="닫기 (Esc)"><ChevronsRight size={17} /></button>
+        {linkBack.length > 0 && <button className="btn-icon" onClick={() => void useApp.getState().linkGoBack()} data-tip="이전 항목으로"><ArrowLeft size={17} /></button>}
         <button className="btn-icon max-md:hidden" onClick={toggleFull} data-tip={full ? "패널로 보기" : "전체 화면"}>
           {full ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
@@ -91,9 +94,9 @@ export function DetailPanel() {
         <button className={cn("btn-icon", cloud && "text-sky-500 hover:text-sky-500")}
           onClick={() => {
             void updateItem(item.id, { props: cloudProps(item, !cloud) });
-            useApp.getState().notify(cloud ? "이 기기에만 둬요 · 다음 동기화 때 드라이브와 다른 기기에서 빠져요" : "다음 동기화 때 드라이브에 올라가요");
+            useApp.getState().notify(cloud ? "이 기기에만 둬요" : "클라우드에 올려요");
           }}
-          data-tip={cloud ? "클라우드에 올림 (누르면 이 기기에만 두기)" : "이 기기에만 있음 (누르면 클라우드에 올리기)"}>
+          data-tip={cloud ? "클라우드 켜짐" : "클라우드 꺼짐 (이 기기에만)"}>
           {cloud ? <Cloud size={16} /> : <CloudOff size={16} />}
         </button>
         <button className={cn("btn-icon", item.pinned && "text-accent hover:text-accent")} onClick={() => void updateItem(item.id, { pinned: !item.pinned })} data-tip={item.pinned ? "고정 해제 (P)" : "고정 (P)"}>
@@ -152,7 +155,7 @@ export function DetailPanel() {
               <div className="absolute inset-0 flex aspect-video items-center justify-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white shadow-pop transition-transform group-hover:scale-110"><Play size={20} fill="currentColor" /></span>
               </div>
-              <div className="absolute bottom-2 left-3 text-[length:calc(11px*var(--ts))] text-white/80">YouTube에서 재생 · 데스크톱 앱에서는 이 자리에서 바로 재생돼요</div>
+              <div className="absolute bottom-2 left-3 text-[length:calc(11px*var(--ts))] text-white/80">YouTube에서 재생</div>
             </a>
           )}
           {yt && api.caps.platform !== "mock" && <YouTubePlayer itemId={item.id} videoId={yt} title={item.title} />}
@@ -164,6 +167,8 @@ export function DetailPanel() {
           {item.summary && <Summary text={item.summary} />}
 
           <PropertyList item={item} editing={editProps} onDone={() => setEditProps(false)} />
+
+          <LinksSection item={item} />
 
           {item.kind === "music" && <LyricsSection item={item} />}
 
