@@ -9,7 +9,7 @@ const SCOPES = "openid email https://www.googleapis.com/auth/drive.appdata";
 const ACCOUNT_KEY = "curio.web.account";
 const CLIENT_KEY = "curio.web.clientId";
 
-interface TokenResponse { access_token?: string; expires_in?: number; error?: string; error_description?: string }
+interface TokenResponse { access_token?: string; expires_in?: number; scope?: string; error?: string; error_description?: string }
 interface TokenClient { requestAccessToken(o?: { prompt?: string; login_hint?: string }): void }
 interface Gis { accounts: { oauth2: {
   initTokenClient(o: { client_id: string; scope: string; callback: (r: TokenResponse) => void; error_callback?: (e: { type?: string; message?: string }) => void }): TokenClient;
@@ -50,6 +50,10 @@ async function request(prompt: string): Promise<string> {
       scope: SCOPES,
       callback: (r) => {
         if (r.error || !r.access_token) return rej(new Error(r.error === "access_denied" ? "로그인을 취소했어요" : `구글 로그인 오류: ${r.error_description ?? r.error}`));
+        // Google lets people untick single permissions on the consent screen
+        if (r.scope && !r.scope.includes("drive.appdata")) {
+          return rej(new Error("드라이브 권한이 체크되지 않았어요. 다시 로그인하면서 'Google Drive에서 자체 구성 데이터를 확인, 생성, 삭제' 항목을 체크해 주세요"));
+        }
         token = { value: r.access_token, exp: Date.now() + ((r.expires_in ?? 3600) - 60) * 1000 };
         res(r.access_token);
       },
@@ -92,7 +96,17 @@ const auth = async () => ({ Authorization: `Bearer ${await accessToken()}` });
 async function check(r: Response) {
   if (r.ok) return r;
   if (r.status === 401) { token = null; throw new Error("구글 로그인이 만료됐어요. 다시 시도해 주세요"); }
-  if (r.status === 403) throw new Error("드라이브 권한이 없어요. 로그아웃 후 다시 로그인해 주세요");
+  if (r.status === 403) {
+    const body = await r.text().catch(() => "");
+    if (/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(body)) {
+      throw new Error("Google Cloud 프로젝트에서 Google Drive API가 꺼져 있어요. 콘솔의 'API 및 서비스 → 라이브러리'에서 Google Drive API를 '사용' 설정한 뒤 몇 분 뒤에 다시 해 주세요");
+    }
+    if (/insufficient|SCOPE_INSUFFICIENT/i.test(body)) {
+      token = null;
+      throw new Error("드라이브 권한이 없어요. 다시 로그인하면서 드라이브 항목을 체크해 주세요");
+    }
+    throw new Error(`드라이브에서 거절했어요 (403): ${body.match(/"message":\s*"([^"]+)"/)?.[1] ?? "권한 문제"}`);
+  }
   throw new Error(`드라이브 오류 ${r.status}`);
 }
 
