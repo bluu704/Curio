@@ -1,7 +1,7 @@
 import type { ApiClient } from "../client";
 import type { DriveStatus, FileRef, SyncReport } from "../types";
-import { createMockClient, emptyDb, hasMockBlob, mockBlobsReady, mockDb, putMockBlob, type DB } from "./mock";
-import { cacheRefs, changes, fromSnapshot, isBrowserFile, merge, toSnapshot, type Snapshot } from "@/web/snapshot";
+import { createMockClient, emptyDb, getMockBlob, hasMockBlob, mockBlobsReady, mockDb, putMockBlob, type DB } from "./mock";
+import { cacheRefs, changes, cloudUri, fromSnapshot, isBrowserFile, isCloudUri, merge, toSnapshot, type Snapshot } from "@/web/snapshot";
 import * as g from "@/web/google";
 
 /**
@@ -80,6 +80,17 @@ export function createWebClient(): ApiClient {
     const remote: Snapshot | null = lib ? JSON.parse(await g.gunzip(await g.getAppFile(lib.id))) : null;
     const baseSnap = (await idb.get<Snapshot>("kv", "base")) ?? null;
     const db = mockDb.get();
+    // uploads made here, up to the size limit, become shared files (desktop keeps them in its data folder)
+    const limitMb = Number((db.settings.cloud as { fileSyncMb?: number } | undefined)?.fileSyncMb ?? 50);
+    await mockBlobsReady();
+    let converted = false;
+    for (const it of db.items) {
+      if (it.props?._cloud === false) continue;
+      for (const f of it.files) {
+        if (isBrowserFile(f) && limitMb > 0 && (f.size ?? 0) <= limitMb * 1024 * 1024 && hasMockBlob(f.id)) { f.uri = cloudUri(f); converted = true; }
+      }
+    }
+    if (converted) mockDb.set(db);
     const local = toSnapshot(db, baseSnap ?? remote);
     const merged = remote ? merge(local, remote, baseSnap) : local;
     const pulled = changes(local, merged);
@@ -87,6 +98,26 @@ export function createWebClient(): ApiClient {
     const pushed = remote ? changes(remote, merged) : 1;
     if (pushed) await g.putAppFile(LIB, await g.gzip(JSON.stringify(merged)), lib?.id);
     await idb.put("kv", "base", merged);
+
+    // shared uploads from this browser that Drive does not have yet (after the library, so a desktop
+    // that syncs in between only misses the bytes until next time — it never sees bytes without a record)
+    let filesUp = 0;
+    const onDrive = new Set(files.map((f) => f.name.split("~").slice(0, 2).join("~")));
+    for (const r of Object.values(merged.tables.files ?? {})) {
+      const id = String(r.id);
+      if (!isCloudUri(String(r.uri)) || onDrive.has(`file~${id}`)) continue;
+      const blob = getMockBlob(id);
+      if (!blob) continue;
+      await g.putAppFile(`file~${id}~${Math.floor(Date.now() / 1000)}`, blob);
+      filesUp++;
+    }
+    // copies nothing uses any more (item switched off / deleted, file detached, cover replaced)
+    const fileIds = new Set(Object.values(merged.tables.files ?? {}).map((r) => String(r.id)));
+    const coverNames = new Set(cacheRefs(merged).map(imageName));
+    for (const f of files) {
+      const unused = f.name.startsWith("file~") ? !fileIds.has(f.name.split("~")[1]) : f.name.startsWith("cache~") ? !coverNames.has(f.name) : false;
+      if (unused) await g.deleteAppFile(f.id).catch(() => undefined);
+    }
 
     // desktop covers: fetch the ones this browser does not have yet
     const byName = new Map(files.map((f) => [f.name, f.id]));
@@ -104,7 +135,7 @@ export function createWebClient(): ApiClient {
     }
     const at = Date.now();
     await base.setSettings("sync", { lastSync: at });
-    return { pulled, pushed, imagesUp: 0, imagesDown: down, at };
+    return { pulled, pushed, imagesUp: 0, imagesDown: down, filesUp, at };
   }
 
   const web: Partial<ApiClient> = {

@@ -26,6 +26,8 @@ concurrency:
 
 jobs:
   deploy:
+    # skipped (grey, not a red X) until the web client id variable is set — i.e. until Pages is set up
+    if: ${{ vars.CURIO_GOOGLE_WEB_CLIENT_ID != '' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

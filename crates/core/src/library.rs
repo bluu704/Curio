@@ -47,6 +47,8 @@ pub struct SyncReport {
     pub images_down: usize,
     /// attachments uploaded so the web version can open them
     pub files_up: usize,
+    /// files added in the web version, downloaded to this PC
+    pub files_down: usize,
     pub at: i64,
 }
 
@@ -984,10 +986,54 @@ impl Library {
                 _ => {}
             }
         }
+        let files_down = self.sync_cloud_files_down(&token, &merged, &files);
         let files_up = self.sync_small_files(&token, &merged, &files)?;
+        self.sync_cleanup(&token, &merged, &files);
         let at = now();
         self.set_settings("sync", &serde_json::json!({ "lastSync": at }))?;
-        Ok(SyncReport { pulled, pushed, images_up: up, images_down: down, files_up, at })
+        Ok(SyncReport { pulled, pushed, images_up: up, images_down: down, files_up, files_down, at })
+    }
+
+    /// Files uploaded in the web version ("@data/cloud/<id>/<name>") → this PC's data folder.
+    fn sync_cloud_files_down(&self, token: &str, merged: &sync::Snapshot, files: &[drive::AppFile]) -> usize {
+        let mut n = 0;
+        for r in merged.tables.get("files").into_iter().flat_map(|t| t.values()) {
+            let (Some(id), Some(uri)) = (r.get("id").and_then(serde_json::Value::as_str), r.get("uri").and_then(serde_json::Value::as_str)) else { continue };
+            if !uri.starts_with("@data/cloud/") {
+                continue;
+            }
+            let path = PathBuf::from(sync::local_path(uri, &self.cache_dir, &self.data_dir));
+            if path.exists() {
+                continue;
+            }
+            let prefix = format!("file~{id}~");
+            let Some(copy) = files.iter().filter(|f| f.name.starts_with(&prefix)).max_by(|a, b| a.name.cmp(&b.name)) else { continue }; // next sync
+            if let Ok(bytes) = drive::appdata_get(token, &copy.id) {
+                if path.parent().map(std::fs::create_dir_all).transpose().is_ok() && std::fs::write(&path, bytes).is_ok() {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// Remove copies the library no longer uses (item switched off / deleted, file detached, cover
+    /// replaced). Only files that existed before this sync are considered.
+    fn sync_cleanup(&self, token: &str, merged: &sync::Snapshot, files: &[drive::AppFile]) {
+        let file_ids: std::collections::HashSet<&str> = merged.tables.get("files").into_iter().flat_map(|t| t.values()).filter_map(|r| r.get("id").and_then(serde_json::Value::as_str)).collect();
+        let covers: std::collections::HashSet<String> = sync::cache_refs(merged).iter().map(|p| format!("cache~{}", p.trim_start_matches("@cache/").replace('/', "~"))).collect();
+        for f in files {
+            let unused = if let Some(rest) = f.name.strip_prefix("file~") {
+                !file_ids.contains(rest.split('~').next().unwrap_or(""))
+            } else if f.name.starts_with("cache~") {
+                !covers.contains(&f.name)
+            } else {
+                false
+            };
+            if unused {
+                let _ = drive::appdata_delete(token, &f.id);
+            }
+        }
     }
 
     /// Size limit for attachments that travel with the library (Settings → 클라우드; 0 = off).
@@ -1010,6 +1056,9 @@ impl Library {
                 continue;
             }
             let path = PathBuf::from(sync::local_path(uri, &self.cache_dir, &self.data_dir));
+            if uri.starts_with("@data/cloud/") && files.iter().any(|f| f.name.starts_with(&format!("file~{id}~"))) {
+                continue; // came from the web version and is already in Drive
+            }
             let Ok(meta) = std::fs::metadata(&path) else { continue }; // not on this PC
             if !meta.is_file() || meta.len() > limit {
                 continue;

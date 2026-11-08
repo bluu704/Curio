@@ -103,7 +103,29 @@ pub fn export(c: &Connection, cache: &Path, data: &Path) -> Result<Snapshot> {
         }
         snap.tables.insert(t.to_string(), out);
     }
+    drop_local_only(&mut snap);
     Ok(snap)
+}
+
+/// Items whose cloud switch is off (`props._cloud = false`) stay on this device only: they and their
+/// links / files are left out of the snapshot. Because merging and applying both work on this
+/// filtered view, such items are never deleted here — they just disappear from the cloud copy.
+pub fn local_only_ids(s: &Snapshot) -> BTreeSet<String> {
+    s.tables.get("items").into_iter().flat_map(|t| t.values()).filter_map(|r| {
+        let props: Value = r.get("props").and_then(Value::as_str).and_then(|p| serde_json::from_str(p).ok()).unwrap_or(Value::Null);
+        (props.get("_cloud") == Some(&Value::Bool(false))).then(|| r.get("id").and_then(Value::as_str).unwrap_or("").to_string())
+    }).collect()
+}
+fn drop_local_only(s: &mut Snapshot) {
+    let ids = local_only_ids(s);
+    if ids.is_empty() {
+        return;
+    }
+    for (t, col) in [("items", "id"), ("item_tags", "item_id"), ("item_categories", "item_id"), ("files", "item_id")] {
+        if let Some(rows) = s.tables.get_mut(t) {
+            rows.retain(|_, r| !r.get(col).and_then(Value::as_str).is_some_and(|v| ids.contains(v)));
+        }
+    }
 }
 
 /// Same value, where 4 and 4.0 (JavaScript writes numbers without ".0") and true / 1 count as equal.

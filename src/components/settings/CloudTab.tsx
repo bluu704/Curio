@@ -28,7 +28,7 @@ export function syncLibrary(quiet = false): Promise<SyncReport | null> {
     try {
       const r = await api.driveSync();
       if (r.pulled > 0) await s.reloadAll();
-      if (!quiet) s.notify(r.pulled || r.pushed || r.filesUp ? `동기화했어요 · 받은 변경 ${r.pulled} · 보낸 변경 ${r.pushed}${r.filesUp ? ` · 올린 파일 ${r.filesUp}` : ""}` : "이미 최신이에요");
+      if (!quiet) s.notify(r.pulled || r.pushed || r.filesUp || r.filesDown ? `동기화했어요 · 받은 변경 ${r.pulled} · 보낸 변경 ${r.pushed}${r.filesUp ? ` · 올린 파일 ${r.filesUp}` : ""}${r.filesDown ? ` · 받은 파일 ${r.filesDown}` : ""}` : "이미 최신이에요");
       return r;
     } catch (e) {
       if (!quiet) useApp.setState({ error: e instanceof Error ? e.message : String(e) });

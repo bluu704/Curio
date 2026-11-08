@@ -17,8 +17,11 @@ const pkOf = (t: string) => PK[t] ?? ["id"];
 const keyOf = (t: string, row: Row) => pkOf(t).map((k) => (typeof row[k] === "string" ? row[k] : JSON.stringify(row[k]))).join("\u001f");
 /** Columns holding JSON text. */
 const JSON_COLS: Record<string, string[]> = { items: ["props", "blocks", "source"], field_defs: ["options"], views: ["config"], settings: ["value"] };
-/** Files uploaded in this browser stay here (their bytes are not in the cloud). */
+/** Files uploaded in this browser and not shared (too big for the size limit, or before their first sync). */
 export const isBrowserFile = (f: FileRef) => f.uri.startsWith("(업로드)");
+/** Shared uploads live in every desktop's data folder at "@data/cloud/<file id>/<name>". */
+export const cloudUri = (f: FileRef) => `@data/cloud/${f.id}/${f.name.replace(/[\\/:*?"<>|]/g, "_")}`;
+export const isCloudUri = (uri: string) => uri.startsWith("@data/cloud/");
 
 // ---------------------------------------------------------------- equality (same rules as Rust row_eq)
 const canon = (v: unknown): string => {
@@ -119,7 +122,8 @@ export function toSnapshot(db: DB, ref: Snapshot | null): Snapshot {
   db.tags.forEach((t: Tag) => put("tags", { id: t.id, name: t.name, category: t.category, color: t.color ?? null, created_at: created("tags", t.id) }));
   db.categories.forEach((c: Category) => put("categories", { id: c.id, parent_id: c.parentId, kind: c.kind, name: c.name, position: c.position, color: c.color ?? null, created_at: created("categories", c.id) }));
 
-  const items: (Item & { deletedAt?: number })[] = [...db.items, ...db.trash];
+  // items switched off in the cloud icon stay in this browser only
+  const items: (Item & { deletedAt?: number })[] = [...db.items, ...db.trash].filter((it) => it.props?._cloud !== false);
   for (const it of items) {
     put("items", {
       id: it.id, title: it.title, kind: it.kind, status: it.status, rating: it.rating, favorite: it.favorite ? 1 : 0,
@@ -163,6 +167,8 @@ export function fromSnapshot(snap: Snapshot, prev: DB): DB {
     const f: FileRef = { id: String(r.id), itemId: String(r.item_id), provider: r.provider as FileRef["provider"], uri: String(r.uri), name: String(r.name), kind: r.kind as FileRef["kind"], size: num(r.size), mtime: num(r.mtime), createdAt: Number(r.created_at ?? 0) };
     files.set(f.itemId, [...(files.get(f.itemId) ?? []), f]);
   }
+  const inSnap = new Set(Object.keys(snap.tables.items ?? {}));
+  const localOnly = [...prev.items, ...prev.trash].filter((it) => it.props?._cloud === false && !inSnap.has(it.id));
   const browserFiles = new Map<string, FileRef[]>();
   for (const it of [...prev.items, ...prev.trash]) {
     const keep = it.files.filter(isBrowserFile);
@@ -184,6 +190,10 @@ export function fromSnapshot(snap: Snapshot, prev: DB): DB {
     };
     if (r.deleted_at !== null && r.deleted_at !== undefined) trash.push({ ...it, deletedAt: Number(r.deleted_at) });
     else items.push(it);
+  }
+  for (const it of localOnly) {
+    const { deletedAt } = it as Item & { deletedAt?: number };
+    if (deletedAt) trash.push(it as Item & { deletedAt: number }); else items.push(it);
   }
   items.sort((a, b) => b.createdAt - a.createdAt);
   trash.sort((a, b) => b.deletedAt - a.deletedAt);

@@ -81,6 +81,14 @@ VITE_API_URL=http://127.0.0.1:8787 npm run dev
 
 Windows 사전 준비: [Rust](https://rustup.rs), Node 20+, WebView2(윈10/11 기본 포함), VS C++ Build Tools.
 
+### Windows에서 바로 빌드하기 (build.bat)
+
+1. 처음 한 번 설치: [Node.js LTS](https://nodejs.org), [Rust](https://rustup.rs) (설치 중 Visual Studio C++ 빌드 도구도 함께)
+2. 받아 둔 `client_secret_….json`을 이 폴더에 넣기 (구글 드라이브 연결용, 없으면 연결 없이 만들어져요)
+3. `build.bat` 더블클릭 → 끝나면 설치 파일 폴더(`target\release\bundle`)가 열려요
+
+웹 버전은 `build-web.bat`: `dist-web` 폴더에 웹사이트를 만들고 `http://localhost:4173`으로 바로 열어요.
+
 ### 구글 드라이브 연결 넣어서 빌드하기
 
 쓰는 사람이 "구글 계정으로 연결" 버튼만 누르면 되도록, 구글 연결 정보는 빌드할 때 앱 안에 넣어요.

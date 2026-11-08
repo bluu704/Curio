@@ -113,7 +113,14 @@ export async function getAppFile(id: string): Promise<Blob> {
   return (await check(await fetch(`${API}/${id}?alt=media`, { headers: await auth() }))).blob();
 }
 
-export async function putAppFile(name: string, data: Blob, existing?: string): Promise<string> {
+export async function deleteAppFile(id: string) {
+  const r = await fetch(`${API}/${id}`, { method: "DELETE", headers: await auth() });
+  if (!r.ok && r.status !== 404) await check(r);
+}
+
+export async function putAppFile(name: string, file: Blob, existing?: string): Promise<string> {
+  // read the bytes first: a picked file is a reference to the disk, which some browsers send empty after a while
+  const data = new Blob([await file.arrayBuffer()], { type: file.type || "application/octet-stream" });
   if (existing) {
     const r = await check(await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existing}?uploadType=media`, { method: "PATCH", headers: { ...(await auth()), "Content-Type": "application/octet-stream" }, body: data }));
     return ((await r.json()) as { id: string }).id;

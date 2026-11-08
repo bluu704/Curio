@@ -12,7 +12,14 @@ export const mainFile = (it: Item): FileRef | undefined => {
 };
 
 export const isCalendarHidden = (it: Item) => it.props?.[FLAG.calendarHidden] === true;
-export const isCloudSynced = (it: Item) => it.props?.[FLAG.cloud] === true;
+/** In the cloud copy (default). Off = this item stays on this device only and leaves Drive. */
+export const isCloudSynced = (it: Item) => it.props?.[FLAG.cloud] !== false;
+/** props patch for the cloud switch (on = key removed, off = explicit false). */
+export function cloudProps(it: Item, on: boolean): Record<string, unknown> {
+  const p = { ...(it.props ?? {}) };
+  if (on) delete p[FLAG.cloud]; else p[FLAG.cloud] = false;
+  return p;
+}
 
 /** props patch that sets (or clears) one flag. */
 export function withFlag(it: Item, key: string, on: boolean): Record<string, unknown> {

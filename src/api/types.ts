@@ -236,7 +236,7 @@ export interface Archive {
 /** Google Drive connection of this library. */
 export interface DriveStatus { available: boolean; builtin: boolean; connected: boolean; email: string | null }
 export interface DriveImport { items: Item[]; skipped: number }
-export interface SyncReport { pulled: number; pushed: number; imagesUp: number; imagesDown: number; filesUp?: number; at: number }
+export interface SyncReport { pulled: number; pushed: number; imagesUp: number; imagesDown: number; filesUp?: number; filesDown?: number; at: number }
 
 export interface ImportTarget { archiveId?: ID; kind?: Kind; list?: ListKind }
 

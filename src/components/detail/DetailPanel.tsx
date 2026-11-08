@@ -9,7 +9,7 @@ import { KIND_META, TAG_META } from "@/lib/meta";
 import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
 import { cn } from "@/lib/cn";
 import { LyricsSection } from "./LyricsSection";
-import { FLAG, isCalendarHidden, isCloudSynced, mainFile, withFlag } from "@/lib/itemFlags";
+import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, mainFile, withFlag } from "@/lib/itemFlags";
 import { MainContent } from "./MainContent";
 import { AudioPlayer, YouTubePlayer } from "./Players";
 import { Cover } from "@/components/ui/Cover";
@@ -88,8 +88,12 @@ export function DetailPanel() {
         >
           {wish ? <Gift size={16} /> : <Archive size={16} />}
         </button>
-        <button className={cn("btn-icon", cloud && "text-sky-500 hover:text-sky-500")} onClick={() => void updateItem(item.id, { props: withFlag(item, FLAG.cloud, !cloud) })}
-          data-tip={cloud ? "클라우드 연동 켜짐 (누르면 끄기)" : "클라우드 연동 꺼짐 (누르면 켜기)"}>
+        <button className={cn("btn-icon", cloud && "text-sky-500 hover:text-sky-500")}
+          onClick={() => {
+            void updateItem(item.id, { props: cloudProps(item, !cloud) });
+            useApp.getState().notify(cloud ? "이 기기에만 둬요 · 다음 동기화 때 드라이브와 다른 기기에서 빠져요" : "다음 동기화 때 드라이브에 올라가요");
+          }}
+          data-tip={cloud ? "클라우드에 올림 (누르면 이 기기에만 두기)" : "이 기기에만 있음 (누르면 클라우드에 올리기)"}>
           {cloud ? <Cloud size={16} /> : <CloudOff size={16} />}
         </button>
         <button className={cn("btn-icon", item.pinned && "text-accent hover:text-accent")} onClick={() => void updateItem(item.id, { pinned: !item.pinned })} data-tip={item.pinned ? "고정 해제 (P)" : "고정 (P)"}>

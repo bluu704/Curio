@@ -331,3 +331,34 @@ fn file_sync_limit_setting() {
     l.set_settings("cloud", &serde_json::json!({ "fileSyncMb": 0 })).unwrap();
     assert_eq!(l.file_sync_limit(), 0, "0 = files stay on the PC");
 }
+
+/// Cloud switch off: the item leaves the cloud copy (and other devices) but stays on this device.
+#[test]
+fn cloud_switch_off_keeps_item_here() {
+    let (a, _da) = lib();
+    let (b, _db) = lib();
+    let mut cloud: Option<crate::sync::Snapshot> = None;
+    let sync = |l: &Library, cloud: &mut Option<crate::sync::Snapshot>| {
+        let (merged, _) = l.sync_merge(cloud.as_ref()).unwrap();
+        *cloud = Some(merged.clone());
+        l.sync_commit(&merged).unwrap();
+    };
+    let x = a.create_item(NewItem { title: "Private".into(), ..Default::default() }).unwrap();
+    a.create_item(NewItem { title: "Shared".into(), ..Default::default() }).unwrap();
+    sync(&a, &mut cloud);
+    sync(&b, &mut cloud);
+    assert_eq!(b.list_items(&Default::default()).unwrap().len(), 2);
+
+    a.update_item(&x.id, serde_json::from_value(serde_json::json!({ "props": { "_cloud": false } })).unwrap()).unwrap();
+    sync(&a, &mut cloud);
+    sync(&b, &mut cloud);
+    assert!(a.get_item(&x.id).is_ok(), "still on this device");
+    assert!(!serde_json::to_string(cloud.as_ref().unwrap()).unwrap().contains("Private"), "gone from the cloud copy");
+    assert_eq!(b.list_items(&Default::default()).unwrap().iter().map(|i| i.title.as_str()).collect::<Vec<_>>(), ["Shared"]);
+
+    // switched back on → shared again
+    a.update_item(&x.id, serde_json::from_value(serde_json::json!({ "props": {} })).unwrap()).unwrap();
+    sync(&a, &mut cloud);
+    sync(&b, &mut cloud);
+    assert_eq!(b.list_items(&Default::default()).unwrap().len(), 2);
+}
