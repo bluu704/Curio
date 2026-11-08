@@ -1,24 +1,23 @@
 @echo off
-chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title Curio ì›¹ ë²„ì „
+title Curio À¥ ¹öÀü
 
 echo.
 echo  ==============================
-echo    Curio ì›¹ ë²„ì „ ë§Œë“¤ê¸° / ì¼œê¸°
+echo    Curio À¥ ¹öÀü ¸¸µé±â / ÄÑ±â
 echo  ==============================
 echo.
 where node >nul 2>nul
 if errorlevel 1 (
-  echo  [X] Node.jsê°€ ì—†ì–´ìš”. https://nodejs.org ì—ì„œ LTS ë²„ì „ì„ ì„¤ì¹˜í•´ ì£¼ì„¸ìš”.
+  echo  [X] Node.js°¡ ¾ø¾î¿ä. https://nodejs.org ¿¡¼­ LTS ¹öÀüÀ» ¼³Ä¡ÇØ ÁÖ¼¼¿ä.
   pause
   exit /b 1
 )
 
-rem êµ¬ê¸€ ë¡œê·¸ì¸ì„ ì“°ë ¤ë©´ ì•„ëž˜ ì¤„ì˜ = ë’¤ì— "ì›¹ ì• í”Œë¦¬ì¼€ì´ì…˜" í´ë¼ì´ì–¸íŠ¸ IDë¥¼ ë¶™ì—¬ ë„£ìœ¼ì„¸ìš”.
-rem (Google Cloudì—ì„œ ìŠ¹ì¸ëœ ìžë°”ìŠ¤í¬ë¦½íŠ¸ ì›ë³¸ì— http://localhost:4173 ì¶”ê°€)
-rem ë¹„ì›Œ ë‘ë©´ ì›¹ í™”ë©´ì˜ ì„¤ì • - í´ë¼ìš°ë“œì—ì„œ í•œ ë²ˆ ìž…ë ¥í•´ë„ ë¼ìš”.
+rem ±¸±Û ·Î±×ÀÎÀ» ¾²·Á¸é ¾Æ·¡ ÁÙÀÇ = µÚ¿¡ "À¥ ¾ÖÇÃ¸®ÄÉÀÌ¼Ç" Å¬¶óÀÌ¾ðÆ® ID¸¦ ºÙ¿© ³ÖÀ¸¼¼¿ä.
+rem (Google Cloud¿¡¼­ ½ÂÀÎµÈ ÀÚ¹Ù½ºÅ©¸³Æ® ¿øº»¿¡ http://localhost:4173 Ãß°¡)
+rem ºñ¿ö µÎ¸é À¥ È­¸éÀÇ ¼³Á¤ - Å¬¶ó¿ìµå¿¡¼­ ÇÑ ¹ø ÀÔ·ÂÇØµµ µÅ¿ä.
 if not defined VITE_GOOGLE_CLIENT_ID set VITE_GOOGLE_CLIENT_ID=
 set VITE_BASE=/
 
@@ -28,15 +27,15 @@ call npm run build:web
 if errorlevel 1 goto :fail
 
 echo.
-echo  [O] dist-web í´ë”ì— ì›¹ì‚¬ì´íŠ¸ íŒŒì¼ì´ ë§Œë“¤ì–´ì¡Œì–´ìš”.
-echo      ë‹¤ë¥¸ í˜¸ìŠ¤íŒ…ì— ì˜¬ë¦´ ë• ê·¸ í´ë” ì•ˆì˜ íŒŒì¼ì„ ê·¸ëŒ€ë¡œ ì˜¬ë¦¬ë©´ ë¼ìš”.
+echo  [O] dist-web Æú´õ¿¡ À¥»çÀÌÆ® ÆÄÀÏÀÌ ¸¸µé¾îÁ³¾î¿ä.
+echo      ´Ù¸¥ È£½ºÆÃ¿¡ ¿Ã¸± ¶© ±× Æú´õ ¾ÈÀÇ ÆÄÀÏÀ» ±×´ë·Î ¿Ã¸®¸é µÅ¿ä.
 echo.
-echo  ì§€ê¸ˆ ì´ PCì—ì„œ ì—´ì–´ìš”: http://localhost:4173  ^(ë„ë ¤ë©´ ì´ ì°½ì„ ë‹«ìœ¼ì„¸ìš”^)
+echo  Áö±Ý ÀÌ PC¿¡¼­ ¿­¾î¿ä: http://localhost:4173  ^(²ô·Á¸é ÀÌ Ã¢À» ´ÝÀ¸¼¼¿ä^)
 start "" http://localhost:4173
 call npx vite preview -c vite.web.config.ts --port 4173 --strictPort
 exit /b 0
 
 :fail
-echo  [X] ë§Œë“¤ì§€ ëª»í–ˆì–´ìš”. ìœ„ ë©”ì‹œì§€ë¥¼ í™•ì¸í•´ ì£¼ì„¸ìš”.
+echo  [X] ¸¸µéÁö ¸øÇß¾î¿ä. À§ ¸Þ½ÃÁö¸¦ È®ÀÎÇØ ÁÖ¼¼¿ä.
 pause
 exit /b 1

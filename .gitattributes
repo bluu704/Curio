@@ -1,1 +1,3 @@
-*.bat text eol=crlf
+# Windows batch files: stored byte-for-byte (CP949 + CRLF) so they run in a Korean cmd window,
+# also when the repository is downloaded as a ZIP.
+*.bat -text

@@ -1,60 +1,59 @@
 @echo off
-chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-title Curio ë¹Œë“œ
+title Curio ºôµå
 
 echo.
 echo  ==============================
-echo    Curio ë°ìŠ¤í¬í†± ì•± ë§Œë“¤ê¸°
+echo    Curio µ¥½ºÅ©Åé ¾Û ¸¸µé±â
 echo  ==============================
 echo.
 
-rem ---- 1. í•„ìš”í•œ í”„ë¡œê·¸ë¨ í™•ì¸
+rem ---- 1. ÇÊ¿äÇÑ ÇÁ·Î±×·¥ È®ÀÎ
 where node >nul 2>nul
 if errorlevel 1 (
-  echo  [X] Node.jsê°€ ì—†ì–´ìš”.
-  echo      https://nodejs.org ì—ì„œ LTS ë²„ì „ì„ ì„¤ì¹˜í•œ ë’¤ ì´ íŒŒì¼ì„ ë‹¤ì‹œ ì‹¤í–‰í•´ ì£¼ì„¸ìš”.
+  echo  [X] Node.js°¡ ¾ø¾î¿ä.
+  echo      https://nodejs.org ¿¡¼­ LTS ¹öÀüÀ» ¼³Ä¡ÇÑ µÚ ÀÌ ÆÄÀÏÀ» ´Ù½Ã ½ÇÇàÇØ ÁÖ¼¼¿ä.
   goto :fail
 )
 where cargo >nul 2>nul
 if errorlevel 1 (
-  echo  [X] Rustê°€ ì—†ì–´ìš”.
-  echo      https://rustup.rs ì—ì„œ rustup-init.exe ë¥¼ ë°›ì•„ ì„¤ì¹˜í•œ ë’¤ ë‹¤ì‹œ ì‹¤í–‰í•´ ì£¼ì„¸ìš”.
-  echo      ì„¤ì¹˜ ì¤‘ "Visual Studio C++ Build Tools" ì„¤ì¹˜ë¥¼ ë¬¼ì–´ë³´ë©´ ê°™ì´ ì„¤ì¹˜í•´ ì£¼ì„¸ìš”.
+  echo  [X] Rust°¡ ¾ø¾î¿ä.
+  echo      https://rustup.rs ¿¡¼­ rustup-init.exe ¸¦ ¹Ş¾Æ ¼³Ä¡ÇÑ µÚ ´Ù½Ã ½ÇÇàÇØ ÁÖ¼¼¿ä.
+  echo      ¼³Ä¡ Áß "Visual Studio C++ Build Tools" ¼³Ä¡¸¦ ¹°¾îº¸¸é °°ÀÌ ¼³Ä¡ÇØ ÁÖ¼¼¿ä.
   goto :fail
 )
 if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" (
-  echo  [!] Visual Studio C++ ë¹Œë“œ ë„êµ¬ê°€ ì•ˆ ë³´ì—¬ìš”. ë¹Œë“œê°€ ì‹¤íŒ¨í•˜ë©´ ì•„ë˜ì—ì„œ ì„¤ì¹˜í•´ ì£¼ì„¸ìš”.
-  echo      https://visualstudio.microsoft.com/visual-cpp-build-tools/  ^("C++ë¥¼ ì‚¬ìš©í•œ ë°ìŠ¤í¬í†± ê°œë°œ" ì„ íƒ^)
+  echo  [!] Visual Studio C++ ºôµå µµ±¸°¡ ¾È º¸¿©¿ä. ºôµå°¡ ½ÇÆĞÇÏ¸é ¾Æ·¡¿¡¼­ ¼³Ä¡ÇØ ÁÖ¼¼¿ä.
+  echo      https://visualstudio.microsoft.com/visual-cpp-build-tools/  ^("C++¸¦ »ç¿ëÇÑ µ¥½ºÅ©Åé °³¹ß" ¼±ÅÃ^)
   echo.
 )
-echo  [O] Node.js / Rust í™•ì¸
+echo  [O] Node.js / Rust È®ÀÎ
 
-rem ---- 2. êµ¬ê¸€ ì—°ê²° ì •ë³´ (client_secret_....json ì„ ì´ í´ë”ì— ë‘ë©´ ì•±ì— ë“¤ì–´ê°€ìš”)
+rem ---- 2. ±¸±Û ¿¬°á Á¤º¸ (client_secret_....json À» ÀÌ Æú´õ¿¡ µÎ¸é ¾Û¿¡ µé¾î°¡¿ä)
 set FOUND=
 for %%f in (client_secret*.json) do set FOUND=%%f
 if exist google-oauth.json set FOUND=google-oauth.json
 if defined FOUND (
-  echo  [O] êµ¬ê¸€ ì—°ê²° ì •ë³´ %FOUND% ë¥¼ ì•±ì— ë„£ì–´ìš” ^(GitHubì—ëŠ” ì˜¬ë¼ê°€ì§€ ì•Šì•„ìš”^)
+  echo  [O] ±¸±Û ¿¬°á Á¤º¸ %FOUND% ¸¦ ¾Û¿¡ ³Ö¾î¿ä ^(GitHub¿¡´Â ¿Ã¶ó°¡Áö ¾Ê¾Æ¿ä^)
 ) else (
-  echo  [i] client_secret_....json ì´ ì—†ì–´ì„œ êµ¬ê¸€ ë“œë¼ì´ë¸Œ ì—°ê²° ì—†ì´ ë§Œë“¤ì–´ìš”.
-  echo      í•„ìš”í•˜ë©´ ê·¸ íŒŒì¼ì„ ì´ í´ë”ì— ë„£ê³  ë‹¤ì‹œ ì‹¤í–‰í•´ ì£¼ì„¸ìš”.
+  echo  [i] client_secret_....json ÀÌ ¾ø¾î¼­ ±¸±Û µå¶óÀÌºê ¿¬°á ¾øÀÌ ¸¸µé¾î¿ä.
+  echo      ÇÊ¿äÇÏ¸é ±× ÆÄÀÏÀ» ÀÌ Æú´õ¿¡ ³Ö°í ´Ù½Ã ½ÇÇàÇØ ÁÖ¼¼¿ä.
 )
 echo.
 
-rem ---- 3. ë¹Œë“œ
-echo  [1/2] í•„ìš”í•œ íŒŒì¼ ë‚´ë ¤ë°›ëŠ” ì¤‘... ^(ì²˜ìŒì—” ëª‡ ë¶„ ê±¸ë ¤ìš”^)
+rem ---- 3. ºôµå
+echo  [1/2] ÇÊ¿äÇÑ ÆÄÀÏ ³»·Á¹Ş´Â Áß... ^(Ã³À½¿£ ¸î ºĞ °É·Á¿ä^)
 call npm install
 if errorlevel 1 goto :fail
 echo.
-echo  [2/2] ì•± ë§Œë“œëŠ” ì¤‘... ^(ì²˜ìŒì—” 10~20ë¶„ ê±¸ë ¤ìš”^)
+echo  [2/2] ¾Û ¸¸µå´Â Áß... ^(Ã³À½¿£ 10~20ºĞ °É·Á¿ä^)
 call npm run tauri build
 if errorlevel 1 goto :fail
 
 echo.
 echo  ==============================
-echo    ì™„ë£Œ! ì„¤ì¹˜ íŒŒì¼ í´ë”ë¥¼ ì—´ì–´ìš”
+echo    ¿Ï·á! ¼³Ä¡ ÆÄÀÏ Æú´õ¸¦ ¿­¾î¿ä
 echo  ==============================
 echo   msi  : target\release\bundle\msi
 echo   exe  : target\release\bundle\nsis
@@ -64,6 +63,6 @@ exit /b 0
 
 :fail
 echo.
-echo  [X] ë¹Œë“œí•˜ì§€ ëª»í–ˆì–´ìš”. ìœ„ì— ë‚˜ì˜¨ ë©”ì‹œì§€ë¥¼ í™•ì¸í•´ ì£¼ì„¸ìš”.
+echo  [X] ºôµåÇÏÁö ¸øÇß¾î¿ä. À§¿¡ ³ª¿Â ¸Ş½ÃÁö¸¦ È®ÀÎÇØ ÁÖ¼¼¿ä.
 pause
 exit /b 1
