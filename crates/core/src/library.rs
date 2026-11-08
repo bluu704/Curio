@@ -210,7 +210,7 @@ impl Library {
         let col = match sort.field {
             SortField::UpdatedAt => "i.updated_at",
             SortField::CreatedAt => "i.created_at",
-            SortField::Title => "i.title COLLATE NOCASE",
+            SortField::Title => "i.title COLLATE NATSORT",
             SortField::Rating => "COALESCE(i.rating, -1)",
         };
         let dir = match sort.dir { SortDir::Asc => "ASC", SortDir::Desc => "DESC" };
@@ -265,6 +265,8 @@ impl Library {
             "UPDATE items SET deleted_at = ?1, updated_at = ?1, trash_group = ?2 WHERE archive_id = ?3 AND deleted_at IS NULL",
             params![t, group, id],
         )?;
+        // its folders go with it
+        tx.execute("UPDATE categories SET deleted_at = ?1, trash_group = ?2 WHERE archive_id = ?3 AND deleted_at IS NULL", params![t, group, id])?;
         tx.execute("UPDATE archives SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL", params![t, id])?;
         tx.commit()?;
         Ok(n)
@@ -603,8 +605,8 @@ impl Library {
 
     pub fn list_categories(&self) -> Result<Vec<Category>> {
         let c = self.conn();
-        let mut st = c.prepare("SELECT id, parent_id, kind, name, position, color FROM categories WHERE deleted_at IS NULL ORDER BY position, name COLLATE NOCASE")?;
-        let rows = st.query_map([], |r| Ok(Category { id: r.get(0)?, parent_id: r.get(1)?, kind: r.get(2)?, name: r.get(3)?, position: r.get(4)?, color: r.get(5)? }))?;
+        let mut st = c.prepare("SELECT id, parent_id, kind, name, position, color, archive_id FROM categories WHERE deleted_at IS NULL ORDER BY position, name COLLATE NOCASE")?;
+        let rows = st.query_map([], |r| Ok(Category { id: r.get(0)?, parent_id: r.get(1)?, kind: r.get(2)?, name: r.get(3)?, position: r.get(4)?, color: r.get(5)?, archive_id: r.get(6)? }))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
@@ -623,10 +625,10 @@ impl Library {
             }
         }
         c.execute(
-            "INSERT INTO categories (id, parent_id, kind, name, position, created_at, color) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO categories (id, parent_id, kind, name, position, created_at, color, archive_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, kind = excluded.kind, name = excluded.name, position = excluded.position,
-               color = excluded.color",
-            params![cat.id, cat.parent_id, cat.kind, cat.name.trim(), cat.position, now(), cat.color],
+               color = excluded.color, archive_id = excluded.archive_id",
+            params![cat.id, cat.parent_id, cat.kind, cat.name.trim(), cat.position, now(), cat.color, cat.archive_id],
         )?;
         Ok(cat)
     }

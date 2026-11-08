@@ -120,10 +120,11 @@ export function toSnapshot(db: DB, ref: Snapshot | null): Snapshot {
   db.fields.forEach((f: FieldDef) => put("field_defs", { id: f.id, name: f.name, type: f.type, options: JSON.stringify(f.options ?? []), position: f.position }));
   db.views.forEach((v: View) => put("views", { id: v.id, name: v.name, icon: v.icon, position: v.position, config: JSON.stringify({ layout: v.layout, query: v.query, card: v.card, columns: v.columns }) }));
   db.tags.forEach((t: Tag) => put("tags", { id: t.id, name: t.name, category: t.category, color: t.color ?? null, created_at: created("tags", t.id) }));
-  db.categories.forEach((c: Category) => put("categories", { id: c.id, parent_id: c.parentId, kind: c.kind, name: c.name, position: c.position, color: c.color ?? null, deleted_at: c.deletedAt ?? null, trash_group: c.trashGroup ?? null, created_at: created("categories", c.id) }));
+  db.categories.forEach((c: Category) => put("categories", { id: c.id, parent_id: c.parentId, kind: c.kind, name: c.name, position: c.position, color: c.color ?? null, deleted_at: c.deletedAt ?? null, trash_group: c.trashGroup ?? null, archive_id: c.archiveId ?? null, created_at: created("categories", c.id) }));
 
   // items switched off in the cloud icon stay in this browser only
-  const items: (Item & { deletedAt?: number; trashGroup?: string | null })[] = [...db.items, ...db.trash].filter((it) => it.props?._cloud !== false);
+  const off = offArchives(db.settings);
+  const items: (Item & { deletedAt?: number; trashGroup?: string | null })[] = [...db.items, ...db.trash].filter((it) => !isLocalOnly(it, off));
   for (const it of items) {
     put("items", {
       id: it.id, title: it.title, kind: it.kind, status: it.status, rating: it.rating, favorite: it.favorite ? 1 : 0,
@@ -141,6 +142,12 @@ export function toSnapshot(db: DB, ref: Snapshot | null): Snapshot {
   for (const [key, value] of Object.entries(db.settings)) put("settings", { key, value: JSON.stringify(value) });
   return { format: 1, tables };
 }
+
+/** Archives switched off as a whole (Settings "cloud".offArchives). */
+export const offArchives = (settings: Record<string, unknown>): Set<string> =>
+  new Set(((settings.cloud as { offArchives?: string[] } | undefined)?.offArchives ?? []).filter((x) => typeof x === "string"));
+/** Stays in this browser only: its own cloud switch is off, or its whole archive is. */
+export const isLocalOnly = (it: Item, off: Set<string>) => it.props?._cloud === false || (!!it.archiveId && off.has(it.archiveId));
 
 // ---------------------------------------------------------------- snapshot → browser data
 
@@ -168,7 +175,8 @@ export function fromSnapshot(snap: Snapshot, prev: DB): DB {
     files.set(f.itemId, [...(files.get(f.itemId) ?? []), f]);
   }
   const inSnap = new Set(Object.keys(snap.tables.items ?? {}));
-  const localOnly = [...prev.items, ...prev.trash].filter((it) => it.props?._cloud === false && !inSnap.has(it.id));
+  const off = offArchives(prev.settings);
+  const localOnly = [...prev.items, ...prev.trash].filter((it) => isLocalOnly(it, off) && !inSnap.has(it.id));
   const browserFiles = new Map<string, FileRef[]>();
   for (const it of [...prev.items, ...prev.trash]) {
     const keep = it.files.filter(isBrowserFile);
@@ -212,7 +220,7 @@ export function fromSnapshot(snap: Snapshot, prev: DB): DB {
     archives: T("archives").map((r): Archive => ({ id: String(r.id), name: String(r.name), icon: String(r.icon), kind: r.kind as Archive["kind"], position: Number(r.position), pinned: !!Number(r.pinned), format: (r.format as string) ?? null, deletedAt: num(r.deleted_at) })).sort((a, b) => a.position - b.position),
     statuses: T("statuses").map((r): StatusDef => ({ id: String(r.id), label: String(r.label), icon: String(r.icon), color: String(r.color), position: Number(r.position) })).sort((a, b) => a.position - b.position),
     fields: T("field_defs").map((r): FieldDef => ({ id: String(r.id), name: String(r.name), type: r.type as FieldDef["type"], options: parse(r.options, []), position: Number(r.position) })).sort((a, b) => a.position - b.position),
-    categories: T("categories").map((r): Category => ({ id: String(r.id), parentId: (r.parent_id as string) ?? null, kind: (r.kind as Category["kind"]) ?? null, name: String(r.name), position: Number(r.position), color: (r.color as string) ?? null, deletedAt: num(r.deleted_at), trashGroup: (r.trash_group as string) ?? null })),
+    categories: T("categories").map((r): Category => ({ id: String(r.id), parentId: (r.parent_id as string) ?? null, kind: (r.kind as Category["kind"]) ?? null, name: String(r.name), position: Number(r.position), color: (r.color as string) ?? null, deletedAt: num(r.deleted_at), trashGroup: (r.trash_group as string) ?? null, archiveId: (r.archive_id as string) ?? null })),
     settings: Object.fromEntries(T("settings").map((r) => [String(r.key), parse(r.value, null)])),
   };
 }

@@ -15,6 +15,8 @@ export function WebBar() {
   const [done, setDone] = useState(false);
   const [hidden, setHidden] = useState(false);
   useEffect(() => { void api.driveStatus().then(setSt); }, []);
+  // signed in / out elsewhere (Settings → 클라우드): show the bar again with the new state
+  useEffect(() => api.onLibraryChanged(() => { setDone(false); setHidden(false); void api.driveStatus().then(setSt); }), []);
   if (api.caps.platform !== "web" || !st || done || hidden) return null;
 
   const go = async () => {

@@ -1,6 +1,6 @@
 import { Archive, CheckSquare, CircleDot, Folder, FolderInput, Gift, Star, Trash2, X } from "lucide-react";
 import { useEffect } from "react";
-import { useApp } from "@/store/app";
+import { activeView, useApp, viewContext } from "@/store/app";
 import { bulkCategory, bulkFavorite, bulkPatch, bulkTrash, usePick } from "@/store/pick";
 import { STATUS_META } from "@/lib/meta";
 import { folderColor } from "@/lib/statuses";
@@ -35,7 +35,8 @@ export function BulkBar() {
   if (!n) return null;
   const btn = "flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[length:calc(13px*var(--ts))] hover:bg-subtle max-sm:px-2";
   const label = "max-sm:hidden";
-  const cats = s.categories;
+  const arcId = viewContext(activeView(s)).archiveId;
+  const cats = arcId ? s.categories.filter((c) => c.archiveId === arcId) : s.categories;
 
   return (
     <div className="anim-pop pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-3">

@@ -256,6 +256,9 @@ pub struct Category {
     /// Folder color (tone key). None = default.
     #[serde(default)]
     pub color: Option<String>,
+    /// The archive this folder belongs to.
+    #[serde(default)]
+    pub archive_id: Option<String>,
 }
 
 /// An item in the trash, with when it was deleted.

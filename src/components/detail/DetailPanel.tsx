@@ -8,7 +8,7 @@ import { useApp } from "@/store/app";
 import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import { LyricsSection } from "./LyricsSection";
-import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, mainFile, withFlag } from "@/lib/itemFlags";
+import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, mainFile, orderedFiles, withFlag } from "@/lib/itemFlags";
 import { MainContent } from "./MainContent";
 import { LinksSection } from "./LinksSection";
 import { AudioPlayer, YouTubePlayer } from "./Players";
@@ -44,7 +44,8 @@ export function DetailPanel() {
   if (!item) return null;
   const aspect = useApp.getState().views.find((v) => v.id === (item.archiveId ? `arc:${item.archiveId}` : "sys:all"))?.card.aspect ?? "2/3";
   // primary file action: read (pdf/zip/images) › play (video/audio) › view (text) › open with the OS
-  const primary = item.files.find(isReadable) ?? item.files.find(isViewable) ?? item.files[0];
+  const files = orderedFiles(item);
+  const primary = files.find(isReadable) ?? files.find(isViewable) ?? files[0];
   const act = primary ? fileAction(primary) : null;
   // the item's own file / its song already play inline → no extra open button for them
   const inlineSong = item.kind === "music" ? item.files.find((f) => f.kind === "audio") : undefined;
@@ -56,7 +57,8 @@ export function DetailPanel() {
 
   const main = mainFile(item);
   const song = item.files.find((f) => f.kind === "audio");
-  const cloud = isCloudSynced(item);
+  const archiveOff = !!item.archiveId && useApp.getState().cloudOff.includes(item.archiveId);
+  const cloud = isCloudSynced(item) && !archiveOff;
   const calHidden = isCalendarHidden(item);
   return (
     <aside key={item.id} data-drop-attach={item.id}
@@ -88,12 +90,12 @@ export function DetailPanel() {
         >
           {wish ? <Gift size={16} /> : <Archive size={16} />}
         </button>
-        <button className={cn("btn-icon", cloud && "text-sky-500 hover:text-sky-500")}
+        <button className={cn("btn-icon", cloud && "text-sky-500 hover:text-sky-500")} disabled={archiveOff}
           onClick={() => {
             void updateItem(item.id, { props: cloudProps(item, !cloud) });
             useApp.getState().notify(cloud ? "이 기기에만 둬요" : "클라우드에 올려요");
           }}
-          data-tip={cloud ? "클라우드 켜짐" : "클라우드 꺼짐 (이 기기에만)"}>
+          data-tip={archiveOff ? "아카이브 동기화 꺼짐" : cloud ? "클라우드 켜짐" : "클라우드 꺼짐 (이 기기에만)"}>
           {cloud ? <Cloud size={16} /> : <CloudOff size={16} />}
         </button>
         <button className={cn("btn-icon", item.pinned && "text-accent hover:text-accent")} onClick={() => void updateItem(item.id, { pinned: !item.pinned })} data-tip={item.pinned ? "고정 해제 (P)" : "고정 (P)"}>
@@ -132,7 +134,7 @@ export function DetailPanel() {
         </div>
 
         <div className={cn("relative flex gap-4 px-7", banner && "-mt-16", full && "mx-auto w-full max-w-3xl")}>
-          {main?.kind !== "image" && <CoverPicker item={item} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", aspect === "1/1" ? "aspect-square w-28" : aspect === "16/9" ? "aspect-video w-40" : "aspect-[2/3] w-28")} />}
+          {main?.kind !== "image" && <CoverPicker item={item} style={{ aspectRatio: aspect }} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", aspect === "4/3" || aspect === "16/9" ? "w-40" : aspect === "9/16" ? "w-24" : "w-28")} />}
           <div className="flex min-w-0 flex-1 flex-col pt-1">
             <div className={cn(banner && "pt-10")}><TitleInput item={item} /></div>
             {/* rating right under the title, then the key facts as pills */}
@@ -209,7 +211,7 @@ function Pill({ icon: Icon, children }: { icon: LucideIcon; children: React.Reac
 }
 
 /** Cover with a hover button to replace it: desktop picks a file, browser uploads an image. */
-function CoverPicker({ item, className }: { item: Item; className: string }) {
+function CoverPicker({ item, className, style }: { item: Item; className: string; style?: React.CSSProperties }) {
   const update = useApp((s) => s.updateItem);
   const setDialog = useApp((s) => s.setDialog);
   const input = useRef<HTMLInputElement>(null);
@@ -231,7 +233,7 @@ function CoverPicker({ item, className }: { item: Item; className: string }) {
   const video = item.files.find((f) => f.kind === "video");
   const bar = "touch-show absolute inset-x-0 bottom-0 flex h-8 items-center justify-center gap-1 bg-black/55 text-[length:calc(11px*var(--ts))] text-white opacity-0 transition-opacity group-hover/cover:opacity-100";
   return (
-    <div className={cn("group/cover relative overflow-hidden", className)}>
+    <div className={cn("group/cover relative overflow-hidden", className)} style={style}>
       <Cover item={item} className="absolute inset-0" />
       {video ? (
         // videos: choose a moment of the video, or upload a picture

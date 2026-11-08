@@ -1,12 +1,13 @@
-import { BookOpen, Download, ExternalLink, Eye, FilePlus, FolderOpen, FolderPlus, ImageUp, Link2Off, Play } from "lucide-react";
-import { useRef } from "react";
+import { BookOpen, Download, ExternalLink, Eye, FilePlus, FolderOpen, FolderPlus, GripVertical, ImageUp, Link2Off, Play } from "lucide-react";
+import { useRef, useState } from "react";
 import { isReadable } from "@/components/reader/source";
 import { isAudio, isText, isVideo } from "@/components/viewer/files";
 import { api } from "@/api";
 import type { FileRef, Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { FILE_META } from "@/lib/meta";
-import { mainFile } from "@/lib/itemFlags";
+import { FLAG, mainFile, orderedFiles } from "@/lib/itemFlags";
+import { cn } from "@/lib/cn";
 import { bytes } from "@/lib/format";
 
 /** Main action for a file: play (video/audio), view/edit (text), read (pdf/zip/images). */
@@ -22,7 +23,35 @@ export function FileList({ item }: { item: Item }) {
   const input = useRef<HTMLInputElement>(null);
   const desktop = api.caps.localFiles;
   const mainId = mainFile(item)?.id;
-  const files = item.files.filter((f) => f.id !== mainId); // the item's own picture/text/video is shown above
+  const files = orderedFiles(item).filter((f) => f.id !== mainId); // the item's own picture/text/video is shown above
+  const list = useRef<HTMLDivElement>(null);
+  /** Dragging a row by its handle: `to` = index it would land at. */
+  const [drag, setDrag] = useState<{ id: string; to: number } | null>(null);
+  const startDrag = (e: React.PointerEvent, id: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const from = files.findIndex((f) => f.id === id);
+    let to = from;
+    const slot = (y: number) => {
+      const rows = [...(list.current?.children ?? [])] as HTMLElement[];
+      const i = rows.findIndex((r) => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2; });
+      return i < 0 ? rows.length : i;
+    };
+    setDrag({ id, to });
+    const move = (ev: PointerEvent) => { to = slot(ev.clientY); setDrag({ id, to }); };
+    const up = () => {
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+      setDrag(null);
+      const dest = to > from ? to - 1 : to;
+      if (dest === from) return;
+      const ids = files.map((f) => f.id);
+      ids.splice(dest, 0, ...ids.splice(from, 1));
+      void updateItem(item.id, { props: { ...item.props, [FLAG.fileOrder]: mainId ? [mainId, ...ids] : ids } });
+    };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  };
   const fail = (e: unknown) => useApp.setState({ error: e instanceof Error ? e.message : String(e) });
 
   // Any file type: desktop links the original path, the browser uploads the file.
@@ -62,13 +91,21 @@ export function FileList({ item }: { item: Item }) {
           파일을 끌어다 놓거나 눌러서 추가
         </button>
       )}
-      <div className="space-y-0.5">
-        {files.map((f) => {
+      <div ref={list} className={cn("space-y-0.5", drag && "select-none")}>
+        {files.map((f, i) => {
           const Icon = FILE_META[f.kind];
           const act = fileAction(f);
+          const line = drag && drag.id !== f.id ? (drag.to === i ? "before" : drag.to === files.length && i === files.length - 1 ? "after" : null) : null;
           return (
-            <div key={f.id} className="group flex h-9 items-center gap-2 rounded-lg px-1.5 hover:bg-subtle" title={f.uri}>
-              <Icon size={16} className="shrink-0 text-muted" />
+            <div key={f.id} title={f.uri}
+              className={cn("group relative flex h-9 items-center gap-2 rounded-lg px-1.5 hover:bg-subtle", drag?.id === f.id && "bg-subtle opacity-60")}>
+              {line && <span className={cn("pointer-events-none absolute inset-x-1 h-0.5 rounded bg-accent", line === "before" ? "-top-px" : "-bottom-px")} />}
+              {files.length > 1 ? (
+                <span onPointerDown={(e) => startDrag(e, f.id)} className="relative flex h-5 w-4 shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing" data-tip="끌어서 순서 바꾸기">
+                  <Icon size={16} className="text-muted group-hover:invisible" />
+                  <GripVertical size={14} className="invisible absolute text-muted group-hover:visible" />
+                </span>
+              ) : <Icon size={16} className="shrink-0 text-muted" />}
               <button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openReader(item, f)}>{f.name}</button>
               <span className="touch-hide text-[length:calc(11px*var(--ts))] tabular-nums text-muted group-hover:hidden">{bytes(f.size)}</span>
               <div className="touch-flex hidden items-center group-hover:flex">

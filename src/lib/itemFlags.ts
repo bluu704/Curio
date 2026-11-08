@@ -1,7 +1,15 @@
 import type { FileRef, Item } from "@/api/types";
 
 /** Per-item switches kept in `item.props` under reserved keys (never shown as properties). */
-export const FLAG = { calendarHidden: "_calendarHidden", cloud: "_cloud", main: "_main" } as const;
+export const FLAG = { calendarHidden: "_calendarHidden", cloud: "_cloud", main: "_main", fileOrder: "_fileOrder" } as const;
+
+/** The item's files in the order the user arranged them (new files go last). */
+export function orderedFiles(it: Item): FileRef[] {
+  const order = it.props?.[FLAG.fileOrder];
+  if (!Array.isArray(order) || !order.length) return it.files;
+  const rank = new Map(order.map((id, i) => [String(id), i]));
+  return [...it.files].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+}
 
 /** Files that can be an item by themselves: pictures, text/markdown, videos. */
 export const isMainKind = (f: FileRef) => f.kind === "image" || f.kind === "text" || f.kind === "video";

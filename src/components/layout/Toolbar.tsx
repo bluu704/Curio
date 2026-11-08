@@ -314,7 +314,7 @@ function DisplayPanel() {
           </Row>
           {view.layout === "gallery" && <Row label="비율">
             <Segmented<CardAspect> value={c.aspect} onChange={(aspect) => setCard({ aspect })}
-              options={[{ value: "2/3", label: "2:3" }, { value: "3/4", label: "3:4" }, { value: "1/1", label: "1:1" }, { value: "16/9", label: "16:9" }]} />
+              options={[{ value: "9/16", label: "9:16" }, { value: "2/3", label: "2:3" }, { value: "3/4", label: "3:4" }, { value: "1/1", label: "1:1" }, { value: "4/3", label: "4:3" }, { value: "16/9", label: "16:9" }]} />
           </Row>}
           {view.layout === "gallery" && <Row label="이미지">
             <Segmented value={c.fit} onChange={(fit) => setCard({ fit })}

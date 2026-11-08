@@ -1,3 +1,4 @@
+import { orderedFiles } from "@/lib/itemFlags";
 import { useEffect } from "react";
 import { create } from "zustand";
 import { useApp, activeView } from "@/store/app";
@@ -124,7 +125,7 @@ export function useShortcuts() {
         case "favorite": return void s.updateItem(item.id, { favorite: !item.favorite });
         case "pin": s.notify(item.pinned ? "고정 해제" : "고정했어요"); return void s.updateItem(item.id, { pinned: !item.pinned });
         case "wishlist": return void s.updateItem(item.id, { list: item.list === "wishlist" ? "archive" : "wishlist" });
-        case "read": { const f = item.files.find(isReadable); if (f) s.openReader(item, f); return; }
+        case "read": { const f = orderedFiles(item).find(isReadable); if (f) s.openReader(item, f); return; }
         case "delete": return void s.deleteItem(item.id);
       }
     };

@@ -110,7 +110,8 @@ export function Sidebar({ drawer }: { drawer?: boolean }) {
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2.5 py-2">
-        <Row v={byId("sys:all")} n={total} trailing={null} />
+        <Row v={byId("sys:all")} n={total} trailing={null}
+          onMenu={(e) => { e.preventDefault(); openMenu({ x: e.clientX, y: e.clientY, target: { type: "all" } }); }} />
         <Row v={byId("sys:fav")} trailing={null} />
         <button
           onClick={() => setView("sys:calendar")}

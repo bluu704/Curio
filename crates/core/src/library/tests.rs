@@ -113,8 +113,8 @@ fn wishlist_categories_counts_fts() {
     assert_eq!(get(Kind::Game, ListKind::Wishlist), 0);
 
     // folder tree: 팬아트 > 프리렌
-    let root = Category { id: "c1".into(), parent_id: None, kind: Some(Kind::Anime), name: "팬아트".into(), position: 0, color: Some("pink".into()) };
-    let child = Category { id: "c2".into(), parent_id: Some("c1".into()), kind: Some(Kind::Anime), name: "프리렌".into(), position: 0, color: None };
+    let root = Category { id: "c1".into(), parent_id: None, kind: Some(Kind::Anime), name: "팬아트".into(), position: 0, color: Some("pink".into()), archive_id: None };
+    let child = Category { id: "c2".into(), parent_id: Some("c1".into()), kind: Some(Kind::Anime), name: "프리렌".into(), position: 0, color: None, archive_id: None };
     l.save_category(root.clone()).unwrap();
     l.save_category(child).unwrap();
     assert!(l.save_category(Category { parent_id: Some("c2".into()), ..root }).is_err(), "cycle rejected");
@@ -203,8 +203,10 @@ fn user_archives_and_pins() {
     l.update_item(&z.id, serde_json::from_value(serde_json::json!({ "archiveId": "vocaloid" })).unwrap()).unwrap();
     let q = ItemQuery { archive_id: Some("vocaloid".into()), sort: Some(Sort { field: SortField::Title, dir: SortDir::Asc }), ..Default::default() };
     assert_eq!(l.list_items(&q).unwrap()[0].title, "Zzz", "pinned items come first");
+    l.save_category(Category { id: "vf".into(), parent_id: None, kind: None, name: "보카로 폴더".into(), position: 0, color: None, archive_id: Some("vocaloid".into()) }).unwrap();
     assert_eq!(l.delete_archive("vocaloid").unwrap(), 2);
     assert!(l.get_item(&x.id).is_err());
+    assert!(l.list_categories().unwrap().is_empty(), "its folders go with it");
     assert_eq!(l.list_archives().unwrap().len(), 1);
     assert_eq!(l.trash_count().unwrap(), 1, "the archive (its two items inside it)");
     let g = &l.list_trash_groups().unwrap()[0];
@@ -212,6 +214,7 @@ fn user_archives_and_pins() {
     assert_eq!(l.restore_group("arc:vocaloid").unwrap(), 2);
     assert_eq!(l.get_item(&x.id).unwrap().archive_id.as_deref(), Some("vocaloid"));
     assert_eq!(l.list_archives().unwrap().len(), 2);
+    assert_eq!(l.list_categories().unwrap()[0].archive_id.as_deref(), Some("vocaloid"), "folders come back");
     l.delete_archive("vocaloid").unwrap();
     l.empty_trash(None).unwrap();
     assert_eq!(l.trash_count().unwrap(), 0);
@@ -269,7 +272,7 @@ fn trash_restore_purge_and_settings() {
     l.set_settings("formats", &serde_json::json!([{ "id": "fmt1", "name": "굿즈" }])).unwrap();
     assert_eq!(l.get_settings("formats").unwrap().unwrap()[0]["name"], "굿즈");
     assert_eq!(l.list_categories().unwrap().len(), 0);
-    l.save_category(Category { id: "x".into(), parent_id: None, kind: None, name: "폴더".into(), position: 0, color: Some("teal".into()) }).unwrap();
+    l.save_category(Category { id: "x".into(), parent_id: None, kind: None, name: "폴더".into(), position: 0, color: Some("teal".into()), archive_id: None }).unwrap();
     assert_eq!(l.list_categories().unwrap()[0].color.as_deref(), Some("teal"));
 }
 
@@ -293,7 +296,7 @@ fn sync_between_two_devices() {
 
     // A starts the cloud copy
     let x = a.create_item(NewItem { title: "Frieren".into(), kind: Some(Kind::Anime), ..Default::default() }).unwrap();
-    let mut folder = a.save_category(Category { id: "c1".into(), parent_id: None, kind: None, name: "팬아트".into(), position: 0, color: Some("red".into()) }).unwrap();
+    let mut folder = a.save_category(Category { id: "c1".into(), parent_id: None, kind: None, name: "팬아트".into(), position: 0, color: Some("red".into()), archive_id: None }).unwrap();
     sync(&a, &mut cloud);
 
     // B joins: gets A's item and folder (and keeps its own item)
@@ -342,7 +345,7 @@ fn web_fixture() {
     }
     let a = l.create_item(NewItem { title: "Frieren".into(), kind: Some(Kind::Anime), tags: vec![NewTag { name: "Madhouse".into(), category: TagCategory::Studio }], ..Default::default() }).unwrap();
     l.update_item(&a.id, serde_json::from_value(serde_json::json!({ "rating": 4.0, "favorite": true, "props": {"_lyrics": {"plain": "a", "synced": "", "source": "x"}}, "blocks": [{"id": "1", "type": "paragraph", "text": "메모"}] })).unwrap()).unwrap();
-    let c = l.save_category(Category { id: "c1".into(), parent_id: None, kind: None, name: "팬아트".into(), position: 0, color: Some("#0ea5e9".into()) }).unwrap();
+    let c = l.save_category(Category { id: "c1".into(), parent_id: None, kind: None, name: "팬아트".into(), position: 0, color: Some("#0ea5e9".into()), archive_id: None }).unwrap();
     l.add_to_category(std::slice::from_ref(&a.id), &c.id).unwrap();
     let b = l.create_item(NewItem { title: "Trashed".into(), ..Default::default() }).unwrap();
     l.delete_item(&b.id).unwrap();
@@ -376,8 +379,8 @@ fn cloud_switch_off_keeps_item_here() {
         *cloud = Some(merged.clone());
         l.sync_commit(&merged).unwrap();
     };
-    let x = a.create_item(NewItem { title: "Private".into(), ..Default::default() }).unwrap();
-    a.create_item(NewItem { title: "Shared".into(), ..Default::default() }).unwrap();
+    let x = a.create_item(NewItem { title: "Private".into(), archive_id: Some("archive1".into()), ..Default::default() }).unwrap();
+    a.create_item(NewItem { title: "Shared".into(), archive_id: Some("archive1".into()), ..Default::default() }).unwrap();
     sync(&a, &mut cloud);
     sync(&b, &mut cloud);
     assert_eq!(b.list_items(&Default::default()).unwrap().len(), 2);
@@ -394,4 +397,15 @@ fn cloud_switch_off_keeps_item_here() {
     sync(&a, &mut cloud);
     sync(&b, &mut cloud);
     assert_eq!(b.list_items(&Default::default()).unwrap().len(), 2);
+
+    // a whole archive switched off (the "cloud" setting) → its items stay on A only
+    a.set_settings("cloud", &serde_json::json!({ "offArchives": ["archive1"] })).unwrap();
+    sync(&a, &mut cloud);
+    sync(&b, &mut cloud);
+    assert_eq!(a.list_items(&Default::default()).unwrap().len(), 2, "kept here");
+    assert!(b.list_items(&Default::default()).unwrap().is_empty(), "left the cloud copy");
+    a.set_settings("cloud", &serde_json::json!({ "offArchives": [] })).unwrap();
+    sync(&a, &mut cloud);
+    sync(&b, &mut cloud);
+    assert_eq!(b.list_items(&Default::default()).unwrap().len(), 2, "back on");
 }

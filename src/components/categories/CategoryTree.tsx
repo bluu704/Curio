@@ -3,7 +3,10 @@ import { CustomSwatches } from "@/components/ui/CustomSwatches";
 import { FOLDER_COLORS, FOLDER_NAMES, folderColor } from "@/lib/statuses";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOnScreen } from "@/lib/onScreen";
-import type { Category, ID, Kind } from "@/api/types";
+import type { Archive, Category, ID } from "@/api/types";
+import { iconOf } from "@/lib/icons";
+import { dropItems } from "@/components/views/dragDrop";
+import { CloudRow } from "@/components/menus/ContextMenu";
 import { useApp, activeView, viewContext } from "@/store/app";
 import { useDrag, startItemDrag, consumeDragClick } from "@/store/drag";
 import { cn } from "@/lib/cn";
@@ -11,11 +14,17 @@ import { cn } from "@/lib/cn";
 const LS_OPEN = "curio.catOpen";
 const loadOpen = (): Set<string> => { try { return new Set(JSON.parse(localStorage.getItem(LS_OPEN) ?? "[]")); } catch { return new Set(); } };
 
-/** Folder-like category tree for the current archive. Drop cards on a folder to file them. */
+/**
+ * Folder tree. In an archive: that archive's folders. Elsewhere (전체, 즐겨찾기): every archive as a
+ * top-level node with its folders inside. Drop cards on a folder to file them, on an archive to move them.
+ */
 export function CategoryTree() {
   const s = useApp();
-  const kind: Kind | null = viewContext(activeView(s)).kind ?? null;
-  const cats = useMemo(() => s.categories.filter((c) => !kind || c.kind === kind || c.kind === null), [s.categories, kind]);
+  const arcId: ID | null = viewContext(activeView(s)).archiveId ?? null;
+  const cats = useMemo(() => (arcId ? s.categories.filter((c) => c.archiveId === arcId) : s.categories), [s.categories, arcId]);
+  const live = new Set(s.archives.map((a) => a.id));
+  /** folders whose archive is gone / unknown sit at the top level of the overview */
+  const orphan = (c: Category) => !c.archiveId || !live.has(c.archiveId);
   const [open, setOpen] = useState<Set<string>>(loadOpen);
   const [editing, setEditing] = useState<ID | null>(null);
   const [menu, setMenu] = useState<{ id: ID; x: number; y: number } | null>(null);
@@ -28,22 +37,63 @@ export function CategoryTree() {
     setOpen(n);
     try { localStorage.setItem(LS_OPEN, JSON.stringify([...n])); } catch { /* ignore */ }
   };
-  const children = (pid: ID | null) => cats.filter((c) => c.parentId === pid).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, "ko"));
+  const sorted = (l: Category[]) => l.sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, "ko", { numeric: true }));
+  const children = (pid: ID | null) => sorted(cats.filter((c) => c.parentId === pid && (pid || arcId || orphan(c))));
+  const archiveRoots = (a: Archive) => sorted(cats.filter((c) => c.parentId === null && c.archiveId === a.id));
 
-  const add = async (parentId: ID | null) => {
-    const c = await s.addCategory("새 폴더", parentId, kind);
+  const add = async (parentId: ID | null, archiveId: ID | null = arcId) => {
+    const c = await s.addCategory("새 폴더", parentId, archiveId);
     if (parentId) toggle(parentId, true);
+    else if (archiveId && !arcId) toggle(`arc:${archiveId}:closed`, false);
     setEditing(c.id);
   };
 
-  /** Drop handler shared by cards and folders. Target "root" = top level. */
+  /** Drop handler shared by cards and folders. Target "root" = top level, "arc:<id>" = an archive node. */
   const onDrop = (ids: string[], target: string) => {
+    const toArchive = target.startsWith("arc:") ? target.slice(4) : null;
     if (ids[0]?.startsWith("cat:")) {
-      const c = cats.find((x) => `cat:${x.id}` === ids[0]);
-      if (c && c.id !== target) void s.saveCategory({ ...c, parentId: target === "root" ? null : target });
+      const c = s.categories.find((x) => `cat:${x.id}` === ids[0]);
+      if (!c || c.id === target) return;
+      if (toArchive) void s.moveCategory(c.id, null, toArchive);
+      else if (target === "root") void s.moveCategory(c.id, null, arcId ?? c.archiveId ?? null);
+      else { const t = s.categories.find((x) => x.id === target); if (t) void s.moveCategory(c.id, t.id, t.archiveId ?? null); }
       return;
     }
-    if (target !== "root") void s.addToCategory(ids, target);
+    dropItems(ids, target);
+  };
+
+  const ArchiveNode = ({ a }: { a: Archive }) => {
+    const key = `arc:${a.id}`;
+    const kids = archiveRoots(a);
+    const isOpen = !open.has(`${key}:closed`); // archives start unfolded
+    const Icon = iconOf(a.icon);
+    return (
+      <>
+        <div
+          data-drop-category={key}
+          onClick={() => s.setView(key)}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); s.openMenu({ x: e.clientX, y: e.clientY, target: { type: "archive", id: a.id } }); }}
+          className={cn(
+            "group/node flex h-8 cursor-pointer items-center gap-1 rounded-lg pr-1 text-[length:calc(13px*var(--ts))] font-medium text-fg/90 transition-colors hover:bg-subtle",
+            dragging && overId === key && "bg-accent/20 ring-1 ring-accent",
+          )}
+          style={{ paddingLeft: 6 }}
+        >
+          <button
+            className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-line/60", !kids.length && "invisible")}
+            onClick={(e) => { e.stopPropagation(); toggle(`${key}:closed`); }}
+          >
+            <ChevronRight size={13} className={cn("transition-transform", isOpen && "rotate-90")} />
+          </button>
+          <Icon size={15} className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate pl-0.5">{a.name}</span>
+          <div className="hidden shrink-0 items-center group-hover/node:flex">
+            <button className="btn-icon h-6 w-6" data-tip="폴더 만들기" onClick={(e) => { e.stopPropagation(); void add(null, a.id); }}><FolderPlus size={13} /></button>
+          </div>
+        </div>
+        {isOpen && kids.map((k) => <Node key={k.id} c={k} depth={1} />)}
+      </>
+    );
   };
 
   const Node = ({ c, depth }: { c: Category; depth: number }) => {
@@ -106,7 +156,7 @@ export function CategoryTree() {
     <div className="flex h-full w-56 shrink-0 flex-col border-r border-line bg-bg">
       <div className="flex h-10 shrink-0 items-center px-3">
         <span className="label flex-1">폴더</span>
-        <button className="btn-icon h-7 w-7" data-tip="새 폴더" onClick={() => void add(null)}><FolderPlus size={15} /></button>
+        {arcId && <button className="btn-icon h-7 w-7" data-tip="새 폴더" onClick={() => void add(null)}><FolderPlus size={15} /></button>}
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         <div
@@ -120,6 +170,7 @@ export function CategoryTree() {
         >
           <Layers size={15} />전체
         </div>
+        {!arcId && s.archives.map((a) => <ArchiveNode key={a.id} a={a} />)}
         {children(null).map((c) => <Node key={c.id} c={c} depth={0} />)}
         {menu && (() => {
           const c = cats.find((x) => x.id === menu.id);
@@ -181,6 +232,8 @@ function FolderMenu({ c, at, onClose, onRename, onAdd }: {
       <div className="mx-1 my-1 h-px bg-line" />
       <div className="px-2 pt-1 text-[length:calc(11px*var(--ts))] text-muted">색</div>
       <FolderColorPanel c={c} onDone={onClose} />
+      <div className="mx-1 my-1 h-px bg-line" />
+      <CloudRow onSet={(on) => { void s.setItemsCloud({ categoryId: c.id }, on, `"${c.name}" 폴더`); onClose(); }} />
       <div className="mx-1 my-1 h-px bg-line" />
       <button className={cn(row, "text-danger")} onClick={() => { void s.deleteCategory(c.id); onClose(); }}><Trash2 size={14} />폴더 삭제</button>
     </div>

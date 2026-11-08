@@ -1,5 +1,5 @@
 import {
-  Archive as ArchiveIcon, BookOpen, FolderInput, Gift, PanelRightOpen, Pin, PinOff, Star, Trash2, Wand2,
+  Archive as ArchiveIcon, BookOpen, Cloud, CloudOff, FolderInput, Gift, PanelRightOpen, Pin, PinOff, Star, Trash2, Wand2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useOnScreen } from "@/lib/onScreen";
@@ -40,6 +40,7 @@ export function ContextMenu() {
       {menu.target.type === "archive" && <ArchiveMenu id={menu.target.id} close={close} />}
       {menu.target.type === "view" && <ViewMenu id={menu.target.id} close={close} />}
       {menu.target.type === "item" && <ItemMenu id={menu.target.id} close={close} />}
+      {menu.target.type === "all" && <AllMenu close={close} />}
     </div>,
     document.body,
   );
@@ -59,7 +60,7 @@ function NameField({ value, onSave }: { value: string; onSave: (v: string) => vo
 }
 
 function ArchiveMenu({ id, close }: { id: string; close: () => void }) {
-  const { archives, saveArchive, deleteArchive } = useApp();
+  const { archives, saveArchive, deleteArchive, cloudOff, setArchiveCloud } = useApp();
   const a = archives.find((x) => x.id === id);
   if (!a) return null;
   return (
@@ -70,7 +71,32 @@ function ArchiveMenu({ id, close }: { id: string; close: () => void }) {
       <div className="px-1 pb-1"><IconGrid compact value={a.icon} onChange={(icon) => void saveArchive({ ...a, icon })} /></div>
       <MenuSep />
       <MenuItem icon={a.pinned ? PinOff : Pin} onClick={() => { void saveArchive({ ...a, pinned: !a.pinned }); close(); }}>{a.pinned ? "고정 해제" : "고정"}</MenuItem>
+      {cloudOff.includes(a.id)
+        ? <MenuItem icon={Cloud} onClick={() => { void setArchiveCloud(a.id, true); close(); }}>동기화 켜기</MenuItem>
+        : <MenuItem icon={CloudOff} onClick={() => { void setArchiveCloud(a.id, false); close(); }}>동기화 끄기</MenuItem>}
       <MenuItem icon={Trash2} danger onClick={() => { void deleteArchive(a.id); close(); }}>아카이브 삭제</MenuItem>
+    </div>
+  );
+}
+
+/** "동기화  [켜기] [끄기]" for everything in a folder / the whole library. */
+export function CloudRow({ onSet }: { onSet: (on: boolean) => void }) {
+  const b = "flex h-7 flex-1 items-center justify-center gap-1 rounded-md text-[length:calc(12px*var(--ts))] hover:bg-subtle";
+  return (
+    <div className="flex items-center gap-1 px-2 py-0.5">
+      <span className="w-14 shrink-0 text-[length:calc(12px*var(--ts))] text-muted">동기화</span>
+      <button className={b} onClick={() => onSet(true)}><Cloud size={13} className="text-sky-500" />켜기</button>
+      <button className={b} onClick={() => onSet(false)}><CloudOff size={13} className="text-muted" />끄기</button>
+    </div>
+  );
+}
+
+function AllMenu({ close }: { close: () => void }) {
+  const set = useApp((s) => s.setItemsCloud);
+  return (
+    <div className="p-1">
+      <MenuLabel>전체 항목</MenuLabel>
+      <CloudRow onSet={(on) => { void set({}, on, "전체"); close(); }} />
     </div>
   );
 }

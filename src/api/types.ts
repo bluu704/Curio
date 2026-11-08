@@ -170,7 +170,7 @@ export interface ItemPatch {
 
 export type Layout = "gallery" | "masonry" | "table" | "list";
 export type CardSize = "s" | "m" | "l";
-export type CardAspect = "2/3" | "3/4" | "1/1" | "16/9";
+export type CardAspect = "9/16" | "2/3" | "3/4" | "1/1" | "4/3" | "16/9";
 export type CardField = "kind" | "status" | "rating" | "author" | "tags" | "files";
 
 export interface CardConfig {
@@ -219,6 +219,8 @@ export interface Category {
   /** In the trash (with its items) since this time. */
   deletedAt?: number | null;
   trashGroup?: string | null;
+  /** The archive this folder belongs to (its folder panel shows only its own folders). */
+  archiveId?: ID | null;
 }
 
 /** `trashGroup` = "arc:<id>" / "cat:<id>" when it went to the trash with its archive / folder. */

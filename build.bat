@@ -60,35 +60,47 @@ call npm install
 if errorlevel 1 goto :fail
 echo.
 echo  [2/2] Building the app ^(first time: 10-20 minutes^)
-rem only the .exe installer: the .msi one needs a large extra download (WiX) that often times out
+rem Only the .exe installer (the .msi one needs a large extra download that often times out).
+rem The installer step downloads a small tool once; retry it a few times on a slow connection.
+set TRY=0
+:bundle
+set /a TRY+=1
 call npm run tauri build -- --bundles nsis
-if errorlevel 1 (
-  if exist "target\release\curio.exe" goto :app_only
-  goto :fail
-)
+if not errorlevel 1 goto :installer
+if not exist "target\release\curio.exe" goto :fail
+if %TRY% GEQ 3 goto :no_installer
+echo.
+echo  [..] The installer step failed ^(download timeout?^). Retrying %TRY%/3...
+timeout /t 5 /nobreak >nul
+goto :bundle
 
+:installer
+set SETUP=
+for %%f in ("target\release\bundle\nsis\*-setup.exe") do set SETUP=%%~f
+if not defined SETUP goto :no_installer
+copy /y "%SETUP%" "%~dp0" >nul
+for %%f in ("%SETUP%") do set SETUPNAME=%%~nxf
 echo.
 echo  ==============================
-echo    Done! Opening the installer folder
+echo    Done! Installer: %SETUPNAME%
 echo  ==============================
-echo   installer : %CD%\target\release\bundle\nsis
-if exist "target\release\bundle\nsis" start "" explorer "target\release\bundle\nsis"
+echo   It was copied next to build.bat:
+echo     %~dp0%SETUPNAME%
+echo   Double-click it to install Curio ^(it is added to the Start menu^).
+echo   Share this file to give Curio to someone else.
+start "" explorer /select,"%~dp0%SETUPNAME%"
 pause
 exit /b 0
 
-:app_only
+:no_installer
 echo.
 echo  ==============================
-echo    The app is built, but the installer step failed
+echo    The app is built, but the installer could not be made
 echo  ==============================
-echo   The installer tool download probably timed out. Run build.bat again to retry
-echo   ^(the app is not rebuilt, so it is quick^).
-echo.
-echo   You can use the app right now without installing:
-echo     %CD%\target\release\curio.exe
-start "" explorer /select,"%CD%\target\release\curio.exe"
+echo   The installer tool could not be downloaded ^(network timeout^).
+echo   Run build.bat again later - the app is not rebuilt, so it is quick.
 pause
-exit /b 0
+exit /b 1
 
 :fail
 echo.

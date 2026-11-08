@@ -24,7 +24,31 @@ export function normalizeArchives(db: DB): DB {
     db.views = db.views.filter((v) => !(v.id.startsWith("arc:") && drop.has(v.id.slice(4).replace(/:wish$/, ""))));
   }
   if (!db.archives.length) db.archives = builtinArchives();
+  folderArchives(db);
   return db;
+}
+
+/** Same as the desktop's migration 9: a folder without an archive goes to the one most of its items are in. */
+function folderArchives(db: DB) {
+  if (!db.categories?.some((c) => c.archiveId === undefined || c.archiveId === null)) return;
+  const byId = new Map(db.categories.map((c) => [c.id, c]));
+  const root = (c: Category) => { let r = c; for (let i = 0; r.parentId && byId.has(r.parentId) && i < 50; i++) r = byId.get(r.parentId)!; return r; };
+  const votes = new Map<string, Map<string, number>>();
+  for (const it of [...db.items, ...db.trash]) {
+    if (!it.archiveId) continue;
+    for (const cid of it.categoryIds) {
+      const c = byId.get(cid); if (!c) continue;
+      const v = votes.get(root(c).id) ?? new Map<string, number>();
+      v.set(it.archiveId, (v.get(it.archiveId) ?? 0) + 1); votes.set(root(c).id, v);
+    }
+  }
+  const first = [...db.archives].filter((a) => !a.deletedAt).sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.position - b.position)[0]?.id ?? null;
+  for (const c of db.categories) {
+    if (c.parentId || c.archiveId) continue;
+    const v = [...(votes.get(c.id) ?? new Map<string, number>())].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    c.archiveId = v[0]?.[0] ?? first;
+  }
+  for (const c of db.categories) if (c.parentId) c.archiveId = root(c).archiveId ?? null;
 }
 
 /**
@@ -220,7 +244,8 @@ export function applyQuery(items: Item[], q: ItemQuery, cats: Category[] = []): 
   out = out.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
     const av = a[field] ?? -1, bv = b[field] ?? -1;
-    if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv, "ko") * m;
+    // numbers inside titles compare as numbers: 3화 < 10화 < 113화
+    if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv, "ko", { numeric: true, sensitivity: "base" }) * m;
     return ((av as number) - (bv as number)) * m;
   });
   return out;
@@ -406,6 +431,7 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       db.trash.unshift(...gone.map((it) => ({ ...it, updatedAt: t, deletedAt: t, trashGroup: `arc:${id}` })));
       db.items = db.items.filter((it) => it.archiveId !== id);
       db.archives.forEach((a) => { if (a.id === id && !a.deletedAt) a.deletedAt = t; });
+      db.categories.forEach((c) => { if (c.archiveId === id && !c.deletedAt) { c.deletedAt = t; c.trashGroup = `arc:${id}`; } }); // its folders go with it
       commit(); return gone.length;
     },
     async bulkCreate(inputs) {

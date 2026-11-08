@@ -8,7 +8,8 @@ import { folderColor } from "@/lib/statuses";
 /** Chips of the item's folders + a tree popover to toggle membership. */
 export function CategoryPicker({ item }: { item: Item }) {
   const { categories, updateItem } = useApp();
-  const pool = categories.filter((c) => c.kind === item.kind || c.kind === null);
+  // the folders of the item's own archive
+  const pool = categories.filter((c) => !item.archiveId || !c.archiveId || c.archiveId === item.archiveId);
   const path = (c: Category): string => {
     const p = c.parentId ? categories.find((x) => x.id === c.parentId) : null;
     return p ? `${path(p)} / ${c.name}` : c.name;

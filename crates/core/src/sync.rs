@@ -110,10 +110,18 @@ pub fn export(c: &Connection, cache: &Path, data: &Path) -> Result<Snapshot> {
 /// Items whose cloud switch is off (`props._cloud = false`) stay on this device only: they and their
 /// links / files are left out of the snapshot. Because merging and applying both work on this
 /// filtered view, such items are never deleted here — they just disappear from the cloud copy.
+/// Archives switched off as a whole are listed in the "cloud" setting (`offArchives`).
 pub fn local_only_ids(s: &Snapshot) -> BTreeSet<String> {
+    let off: BTreeSet<String> = s.tables.get("settings")
+        .and_then(|t| t.values().find(|r| r.get("key").and_then(Value::as_str) == Some("cloud")))
+        .and_then(|r| r.get("value").and_then(Value::as_str))
+        .and_then(|v| serde_json::from_str::<Value>(v).ok())
+        .and_then(|v| v.get("offArchives").and_then(Value::as_array).cloned())
+        .into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect();
     s.tables.get("items").into_iter().flat_map(|t| t.values()).filter_map(|r| {
         let props: Value = r.get("props").and_then(Value::as_str).and_then(|p| serde_json::from_str(p).ok()).unwrap_or(Value::Null);
-        (props.get("_cloud") == Some(&Value::Bool(false))).then(|| r.get("id").and_then(Value::as_str).unwrap_or("").to_string())
+        let archive_off = r.get("archive_id").and_then(Value::as_str).is_some_and(|a| off.contains(a));
+        (props.get("_cloud") == Some(&Value::Bool(false)) || archive_off).then(|| r.get("id").and_then(Value::as_str).unwrap_or("").to_string())
     }).collect()
 }
 fn drop_local_only(s: &mut Snapshot) {

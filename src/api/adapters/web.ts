@@ -1,7 +1,7 @@
 import type { ApiClient } from "../client";
 import type { DriveStatus, FileRef, SyncReport } from "../types";
 import { createMockClient, emptyDb, getMockBlob, hasMockBlob, mockBlobsReady, mockDb, putMockBlob, type DB } from "./mock";
-import { cacheRefs, changes, cloudUri, fromSnapshot, isBrowserFile, isCloudUri, merge, toSnapshot, type Snapshot } from "@/web/snapshot";
+import { cacheRefs, changes, cloudUri, fromSnapshot, isBrowserFile, isCloudUri, isLocalOnly, merge, offArchives, toSnapshot, type Snapshot } from "@/web/snapshot";
 import * as g from "@/web/google";
 
 /**
@@ -37,24 +37,77 @@ const imageName = (p: string) => `cache~${p.slice("@cache/".length).replace(/\//
 const images = new Map<string, string>(); // "@cache/…" → blob: URL
 
 export function createWebClient(): ApiClient {
-  let saveTimer: ReturnType<typeof setTimeout> | undefined;
-  const persist = (db: DB) => { clearTimeout(saveTimer); saveTimer = setTimeout(() => void idb.put("kv", "db", db), 300); };
-  const base = createMockClient({ db: emptyDb(), persist });
+  /**
+   * Each Google account has its own library in this browser ("guest" = not signed in), so signing out
+   * or switching accounts never shows someone else's items.
+   */
+  const profileOf = () => (g.account() ?? "").trim().toLowerCase() || "guest";
+  let profile = profileOf();
+  const key = (k: string, p = profile) => `${k}:${p}`;
+  const imgKey = (path: string, p = profile) => `${p}|${path}`;
 
-  // load this browser's library (and cached covers) before the first call is answered
-  const ready = (async () => {
-    const saved = await idb.get<DB>("kv", "db").catch(() => undefined);
-    if (saved) mockDb.set({ ...emptyDb(), ...saved });
-    for (const k of await idb.keys("images").catch(() => [] as IDBValidKey[])) {
-      const b = await idb.get<Blob>("images", String(k));
-      if (b) images.set(String(k), URL.createObjectURL(b));
-    }
-  })();
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  const persist = (db: DB) => { clearTimeout(saveTimer); const p = profile; saveTimer = setTimeout(() => void idb.put("kv", key("db", p), db), 300); };
+  const flush = async () => { clearTimeout(saveTimer); await idb.put("kv", key("db"), mockDb.get()); };
+  const base = createMockClient({ db: emptyDb(), persist });
 
   // app-folder files by name (refreshed on every sync, remembered between visits)
   let appFiles = new Map<string, string>();
-  void idb.get<[string, string][]>("kv", "appfiles").then((v) => { if (v) appFiles = new Map(v); });
-  const rememberFiles = (list: { id: string; name: string }[]) => { appFiles = new Map(list.map((f) => [f.name, f.id])); void idb.put("kv", "appfiles", [...appFiles]); };
+  const rememberFiles = (list: { id: string; name: string }[]) => { appFiles = new Map(list.map((f) => [f.name, f.id])); void idb.put("kv", key("appfiles"), [...appFiles]); };
+
+  /** Show the library (and cached covers) of the current profile. */
+  async function loadProfile() {
+    const saved = await idb.get<DB>("kv", key("db")).catch(() => undefined);
+    mockDb.set(saved ? { ...emptyDb(), ...saved } : emptyDb());
+    images.forEach((u) => URL.revokeObjectURL(u));
+    images.clear();
+    for (const k of await idb.keys("images").catch(() => [] as IDBValidKey[])) {
+      const [p, path] = String(k).split(/\|(.*)/s);
+      if (p !== profile || !path) continue;
+      const b = await idb.get<Blob>("images", String(k));
+      if (b) images.set(path, URL.createObjectURL(b));
+    }
+    appFiles = new Map((await idb.get<[string, string][]>("kv", key("appfiles")).catch(() => undefined)) ?? []);
+  }
+
+  /** Libraries saved before accounts were kept apart belong to whoever is signed in now. */
+  async function migrateOld() {
+    const old = await idb.get<DB>("kv", "db").catch(() => undefined);
+    if (!old) return;
+    if (!(await idb.get("kv", key("db")))) await idb.put("kv", key("db"), old);
+    for (const k of ["base", "appfiles"]) {
+      const v = await idb.get("kv", k);
+      if (v !== undefined) { await idb.put("kv", key(k), v); await idb.del("kv", k); }
+    }
+    for (const k of await idb.keys("images").catch(() => [] as IDBValidKey[])) {
+      const s = String(k);
+      if (s.includes("|")) continue;
+      const b = await idb.get<Blob>("images", s);
+      if (b) await idb.put("images", imgKey(s), b);
+      await idb.del("images", s);
+    }
+    await idb.del("kv", "db");
+  }
+
+  // load this browser's library before the first call is answered
+  const ready = (async () => { await migrateOld().catch(() => undefined); await loadProfile(); })();
+
+  const listeners = new Set<() => void>();
+  /** Signed in / out: switch to that account's library. What was made before signing in joins the account. */
+  async function switchProfile() {
+    const next = profileOf();
+    if (next === profile) return;
+    await flush();
+    const prev = profile;
+    const guest = prev === "guest" ? mockDb.get() : null;
+    profile = next;
+    if (guest && (guest.items.length || guest.trash.length) && !(await idb.get("kv", key("db")))) {
+      await idb.put("kv", key("db"), guest); // first sign-in: keep what was made while signed out
+      await idb.put("kv", key("db", "guest"), emptyDb());
+    }
+    await loadProfile();
+    listeners.forEach((f) => f());
+  }
   const driveCopy = (fileId: string) => [...appFiles.keys()].filter((n) => n.startsWith(`file~${fileId}~`)).sort().pop();
 
   /** Bytes of a PC file that travels with the library: from this browser's cache, else from Drive. */
@@ -78,14 +131,15 @@ export function createWebClient(): ApiClient {
     rememberFiles(files);
     const lib = files.find((f) => f.name === LIB);
     const remote: Snapshot | null = lib ? JSON.parse(await g.gunzip(await g.getAppFile(lib.id))) : null;
-    const baseSnap = (await idb.get<Snapshot>("kv", "base")) ?? null;
+    const baseSnap = (await idb.get<Snapshot>("kv", key("base"))) ?? null;
     const db = mockDb.get();
     // uploads made here, up to the size limit, become shared files (desktop keeps them in its data folder)
     const limitMb = Number((db.settings.cloud as { fileSyncMb?: number } | undefined)?.fileSyncMb ?? 50);
     await mockBlobsReady();
     let converted = false;
+    const off = offArchives(db.settings);
     for (const it of db.items) {
-      if (it.props?._cloud === false) continue;
+      if (isLocalOnly(it, off)) continue;
       for (const f of it.files) {
         if (isBrowserFile(f) && limitMb > 0 && (f.size ?? 0) <= limitMb * 1024 * 1024 && hasMockBlob(f.id)) { f.uri = cloudUri(f); converted = true; }
       }
@@ -97,7 +151,7 @@ export function createWebClient(): ApiClient {
     if (pulled) mockDb.set(fromSnapshot(merged, db));
     const pushed = remote ? changes(remote, merged) : 1;
     if (pushed) await g.putAppFile(LIB, await g.gzip(JSON.stringify(merged)), lib?.id);
-    await idb.put("kv", "base", merged);
+    await idb.put("kv", key("base"), merged);
 
     // shared uploads from this browser that Drive does not have yet (after the library, so a desktop
     // that syncs in between only misses the bytes until next time — it never sees bytes without a record)
@@ -127,7 +181,7 @@ export function createWebClient(): ApiClient {
       await Promise.all(want.slice(i, i + 6).map(async (p) => {
         try {
           const b = await g.getAppFile(byName.get(imageName(p))!);
-          await idb.put("images", p, b);
+          await idb.put("images", imgKey(p), b);
           images.set(p, URL.createObjectURL(b));
           down++;
         } catch { /* try again next time */ }
@@ -148,8 +202,9 @@ export function createWebClient(): ApiClient {
       return null;
     },
     driveStatus: async () => status(),
-    driveLogin: async () => { await g.signIn(); return status(); },
-    driveLogout: async () => { await g.signOut(); return status(); },
+    driveLogin: async () => { await g.signIn(); await switchProfile(); return status(); },
+    driveLogout: async () => { await g.signOut(); await switchProfile(); return status(); },
+    onLibraryChanged: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
     driveSync: () => sync(),
     driveFolder: async () => { throw new Error("데스크톱 앱에서만 돼요"); },
     driveImport: async () => { throw new Error("데스크톱 앱에서만 돼요"); },

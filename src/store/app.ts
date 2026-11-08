@@ -1,10 +1,10 @@
-import { FLAG, isMainKind } from "@/lib/itemFlags";
+import { cloudProps, FLAG, isCloudSynced, isMainKind } from "@/lib/itemFlags";
 import { particle } from "@/lib/josa";
 import { autoCovers } from "@/lib/autoCover";
 import { create } from "zustand";
 import { api } from "@/api";
 import type {
-  Archive, ArchiveCount, Candidate, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, Kind, NewItem, StatusDef, Tag,
+  Archive, ArchiveCount, Candidate, Category, FieldDef, FileRef, ID, ImportTarget, Item, ItemPatch, ItemQuery, NewItem, StatusDef, Tag,
   TagCategory, View,
 } from "@/api/types";
 import { DEFAULT_VIEWS, archiveViews } from "@/lib/defaults";
@@ -23,7 +23,7 @@ export type Dialog =
   | { type: "videoCover"; itemId: ID; fileId: ID };
 
 /** Right-click menu target. */
-export type ContextMenu = null | { x: number; y: number; target: { type: "archive"; id: ID } | { type: "view"; id: ID } | { type: "item"; id: ID } };
+export type ContextMenu = null | { x: number; y: number; target: { type: "archive"; id: ID } | { type: "view"; id: ID } | { type: "item"; id: ID } | { type: "folder"; id: ID } | { type: "all" } };
 
 interface AppState {
   ready: boolean;
@@ -35,6 +35,11 @@ interface AppState {
   items: Item[];
   counts: ArchiveCount[];
   archives: Archive[];
+  /** Archives kept out of the cloud copy as a whole (Settings "cloud".offArchives). */
+  cloudOff: ID[];
+  setArchiveCloud(id: ID, on: boolean): Promise<void>;
+  /** Cloud switch of every item a query finds (a folder's items, or all of them). */
+  setItemsCloud(q: ItemQuery, on: boolean, label: string): Promise<void>;
   statuses: StatusDef[];
   /** Archives whose wishlist row is folded in the sidebar. */
   folded: Set<ID>;
@@ -110,7 +115,11 @@ interface AppState {
 
   setCategory(id: ID | null): void;
   toggleCategories(): void;
-  addCategory(name: string, parentId: ID | null, kind: Kind | null): Promise<Category>;
+  addCategory(name: string, parentId: ID | null, archiveId: ID | null): Promise<Category>;
+  /** Move a folder (with its sub-folders) under another folder and/or into another archive. */
+  moveCategory(id: ID, parentId: ID | null, archiveId: ID | null): Promise<void>;
+  /** Move items into an archive (dropped on it in the folder panel). */
+  moveToArchive(itemIds: ID[], archiveId: ID): Promise<void>;
   saveCategory(c: Category): Promise<void>;
   deleteCategory(id: ID): Promise<void>;
   addToCategory(itemIds: ID[], categoryId: ID): Promise<void>;
@@ -175,6 +184,10 @@ export const useApp = create<AppState>((set, get) => {
   };
   /** After a restore: archives / folders may have come back too. */
   const reloadContainers = () => get().reloadAll();
+  const loadCloudOff = async () => {
+    const cfg = (await api.getSettings<{ offArchives?: string[] }>("cloud").catch(() => null)) ?? {};
+    set({ cloudOff: (cfg.offArchives ?? []).filter((x) => typeof x === "string") });
+  };
   const reloadDetail = async () => {
     const id = get().selectedId;
     if (!id) return;
@@ -191,6 +204,7 @@ export const useApp = create<AppState>((set, get) => {
     items: [],
     counts: [],
     archives: [],
+    cloudOff: [],
     statuses: [],
     folded: new Set<ID>((() => { try { return JSON.parse(localStorage.getItem(LS_FOLD) ?? "[]") as ID[]; } catch { return []; } })()),
     menu: null,
@@ -230,9 +244,10 @@ export const useApp = create<AppState>((set, get) => {
         await useProps.getState().load();
         const activeViewId = views.some((v) => v.id === get().activeViewId) ? get().activeViewId : views[0].id;
         set({ views, tags, fields, categories, activeViewId });
+        await loadCloudOff();
         await get().refresh();
         set({ ready: true });
-        api.onLibraryChanged(() => { void get().refresh(); void api.listTags().then((tags) => set({ tags })); });
+        api.onLibraryChanged(() => void get().reloadAll()); // archives, folders, views may have changed too
       } catch (e) {
         fail(e);
         set({ ready: true });
@@ -240,6 +255,23 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     /** Re-read everything (after another device's changes arrived through sync). */
+    async setArchiveCloud(id, on) {
+      const cfg = ((await api.getSettings<Record<string, unknown>>("cloud")) ?? {}) as { offArchives?: string[] };
+      const offArchives = [...new Set((cfg.offArchives ?? []).filter((x) => x !== id).concat(on ? [] : [id]))];
+      await api.setSettings("cloud", { ...cfg, offArchives });
+      set({ cloudOff: offArchives });
+      const name = get().archives.find((a) => a.id === id)?.name ?? "";
+      get().notify(on ? `"${name}" 동기화를 켰어요` : `"${name}"${particle(name, "은/는")} 이 기기에만 둬요`);
+    },
+    async setItemsCloud(q, on, label) {
+      const items = await api.listItems(q);
+      const change = items.filter((it) => isCloudSynced(it) !== on);
+      await Promise.all(change.map((it) => api.updateItem(it.id, { props: cloudProps(it, on) })));
+      await get().refresh();
+      await reloadDetail();
+      get().notify(`${label} 항목 ${items.length}개 동기화를 ${on ? "켰어요" : "껐어요"}`);
+    },
+
     async reloadAll() {
       const [archives, statuses, tags, fields, categories] = await Promise.all([
         api.listArchives(), api.listStatuses(), api.listTags(), api.listFields(), api.listCategories(),
@@ -250,10 +282,11 @@ export const useApp = create<AppState>((set, get) => {
       if (missing.length) { await Promise.all(missing.map((v) => api.saveView(v))); views = await api.listViews(); }
       const activeViewId = views.some((v) => v.id === get().activeViewId) ? get().activeViewId : views[0]?.id ?? get().activeViewId;
       set({ views, archives, statuses, tags, fields, categories, activeViewId });
+      await loadCloudOff();
       await useProps.getState().load();
       await get().refresh();
       const id = get().selectedId;
-      if (id) set({ detail: await api.getItem(id).catch(() => null) });
+      if (id) { const d = await api.getItem(id).catch(() => null); set(d ? { detail: d } : { detail: null, selectedId: null }); }
     },
 
     async refresh() {
@@ -518,9 +551,11 @@ export const useApp = create<AppState>((set, get) => {
       lsSet(LS_CATS, v ? "1" : "0");
       set({ showCategories: v });
     },
-    async addCategory(name, parentId, kind) {
-      const siblings = get().categories.filter((c) => c.parentId === parentId);
-      const c: Category = { id: uid(), parentId, kind, name: name.trim() || "새 폴더", position: siblings.length };
+    async addCategory(name, parentId, archiveId) {
+      const parent = parentId ? get().categories.find((c) => c.id === parentId) : undefined;
+      const arc = parent?.archiveId ?? archiveId;
+      const siblings = get().categories.filter((c) => c.parentId === parentId && (parentId || c.archiveId === arc));
+      const c: Category = { id: uid(), parentId, kind: null, name: name.trim() || "새 폴더", position: siblings.length, archiveId: arc };
       await api.saveCategory(c);
       set((s) => ({ categories: [...s.categories, c] }));
       return c;
@@ -540,6 +575,26 @@ export const useApp = create<AppState>((set, get) => {
       await get().refresh();
       if (sel && !get().items.some((i) => i.id === sel)) set({ selectedId: null, detail: null });
       get().notify(`"${name}" 폴더를 휴지통으로 옮겼어요`, { label: "되돌리기", run: () => void get().restoreGroup(`cat:${id}`) });
+    },
+    async moveCategory(id, parentId, archiveId) {
+      const all = get().categories;
+      const sub = new Set([id]);
+      for (let grew = true; grew;) { grew = false; for (const c of all) if (c.parentId && sub.has(c.parentId) && !sub.has(c.id)) { sub.add(c.id); grew = true; } }
+      if (parentId && sub.has(parentId)) return; // not into itself
+      const next = all.map((c) => (c.id === id ? { ...c, parentId, archiveId } : sub.has(c.id) ? { ...c, archiveId } : c));
+      try {
+        await Promise.all(next.filter((c) => sub.has(c.id)).map((c) => api.saveCategory(c)));
+        set({ categories: next });
+      } catch (e) { fail(e); }
+    },
+    async moveToArchive(itemIds, archiveId) {
+      const a = get().archives.find((x) => x.id === archiveId);
+      if (!a) return;
+      const ids = itemIds.filter((id) => (get().items.find((i) => i.id === id)?.archiveId ?? null) !== archiveId);
+      if (!ids.length) return;
+      await Promise.all(ids.map((id) => api.updateItem(id, { archiveId, kind: a.kind })));
+      await get().refresh();
+      get().notify(`${ids.length}개를 "${a.name}"${particle(a.name, "으로/로")} 옮겼어요`);
     },
     async addToCategory(itemIds, categoryId) {
       await api.addToCategory(itemIds, categoryId);
