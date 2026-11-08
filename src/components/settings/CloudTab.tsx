@@ -261,7 +261,6 @@ function FileSizeLimit({ value, onChange }: { value: number; onChange: (mb: numb
           className="input h-8 w-20 text-center tabular-nums" aria-label="함께 올릴 파일 크기 (MB)" />
         <span className="text-muted">MB 이하</span>
       </div>
-      <span className="text-[length:calc(11px*var(--ts))] text-muted">0이면 안 올려요</span>
     </div>
   );
 }

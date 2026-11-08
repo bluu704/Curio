@@ -1,31 +1,28 @@
-import { CircleDot, LayoutTemplate, Cloud, Database, FolderSearch, HardDrive, Info, Keyboard, Monitor, Moon, Palette, Plus, RefreshCw, Server, Shapes, Sun, Trash2, Type, type LucideIcon } from "lucide-react";
+import { CircleDot, Cloud, Database, FolderSearch, HardDrive, Info, Keyboard, Monitor, Moon, Palette, Plus, RefreshCw, Server, Shapes, Sun, Trash2, Type, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/api";
-import type { FieldDef, FieldType, Kind, ListKind, WatchFolder } from "@/api/types";
-import { KINDS } from "@/api/types";
-import { KIND_CONFIG } from "@/lib/kinds";
+import type { FieldType, Kind, ListKind, WatchFolder } from "@/api/types";
 import { date } from "@/lib/format";
 import { useApp } from "@/store/app";
 import { ACCENTS, FONTS, useTheme, type ThemeMode, type Weight } from "@/store/theme";
 import { STATUS_ICONS, TONES, TONE_HEX } from "@/lib/statuses";
-import { ICON_CHOICES, iconOf } from "@/lib/icons";
+import { ICON_CHOICES, iconOf, suggestIcons } from "@/lib/icons";
+import { bindingFor, iconForBinding, useProps } from "@/lib/properties";
 import { Popover } from "@/components/ui/Popover";
 import { CustomSwatches } from "@/components/ui/CustomSwatches";
-import { FormatsTab } from "./FormatsTab";
 import { CloudTab } from "./CloudTab";
 import { IconGrid } from "@/components/ui/IconGrid";
 import { ACTIONS, FIXED, comboOf, prettyCombo, recording, useKeymap, type ActionId } from "@/hooks/useShortcuts";
 import { uid } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
-import { FIELD_ICONS, FIELD_LABELS } from "./fieldIcons";
+import { FIELD_LABELS } from "./fieldIcons";
 
 type Tab = "general" | "text" | "status" | "formats" | "fields" | "watch" | "cloud" | "keys" | "storage" | "about";
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "일반", icon: Palette },
   { id: "text", label: "글자", icon: Type },
   { id: "status", label: "상태", icon: CircleDot },
-  { id: "formats", label: "형식", icon: LayoutTemplate },
   { id: "fields", label: "속성", icon: Shapes },
   { id: "watch", label: "감시 폴더", icon: FolderSearch },
   { id: "cloud", label: "클라우드", icon: Cloud },
@@ -52,7 +49,6 @@ export function SettingsModal() {
           {tab === "general" && <General />}
           {tab === "text" && <TextSettings />}
           {tab === "status" && <Statuses />}
-          {tab === "formats" && <FormatsTab />}
           {tab === "keys" && <Keys />}
           {tab === "fields" && <Fields />}
           {tab === "watch" && <Watch />}
@@ -246,52 +242,66 @@ function Keys() {
 }
 
 function Fields() {
-  const { fields, saveField, deleteField } = useApp();
+  const { fields, saveField } = useApp();
+  const { list, update, remove, add } = useProps();
   const [name, setName] = useState("");
   const [type, setType] = useState<FieldType>("text");
-  const add = async () => {
-    if (!name.trim()) return;
-    const f: FieldDef = { id: uid(), name: name.trim(), type, options: [], position: fields.length };
-    await saveField(f);
-    setName("");
-  };
+  const known = bindingFor(name);
+  const go = async () => { if (await add(name, type, (known ? iconForBinding(known) : suggestIcons(name)[0]) ?? "tag")) setName(""); };
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        {fields.map((f) => {
-          const I = FIELD_ICONS[f.type];
-          const hasOptions = f.type === "select" || f.type === "multi_select";
+        {list.map((p) => {
+          const f = fields.find((x) => `field:${x.id}` === p.key);
+          const I = iconOf(p.icon);
+          const hasOptions = f && (f.type === "select" || f.type === "multi_select");
           return (
-            <div key={f.id} className="rounded-lg border border-line p-2">
-              <div className="flex items-center gap-2">
-                <I size={15} className="text-muted" />
-                <input className="input h-7 flex-1 border-transparent bg-transparent hover:border-line" defaultValue={f.name}
-                  onBlur={(e) => e.target.value.trim() && e.target.value !== f.name && void saveField({ ...f, name: e.target.value.trim() })} />
-                <span className="text-[length:calc(11px*var(--ts))] text-muted">{FIELD_LABELS[f.type]}</span>
-                <button className="btn-icon h-7 w-7 hover:text-danger" onClick={() => void deleteField(f.id)} data-tip="삭제"><Trash2 size={14} /></button>
+            <div key={p.key} className="rounded-lg border border-line p-1.5">
+              <div className="flex items-center gap-1.5">
+                <Popover width={260} trigger={({ toggle }) => (
+                  <button className="btn-icon h-7 w-7" onClick={toggle} data-tip="아이콘"><I size={15} /></button>
+                )}>
+                  {(close) => <div className="p-2"><IconGrid value={p.icon} suggested={suggestIcons(p.name)} onChange={(icon) => { void update(p.key, { icon }); close(); }} /></div>}
+                </Popover>
+                <input className="input h-7 flex-1 border-transparent bg-transparent hover:border-line" defaultValue={p.name} key={p.name}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== p.name) void update(p.key, { name: v }); }}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+                {f && <span className="text-[length:calc(11px*var(--ts))] text-muted">{FIELD_LABELS[f.type]}</span>}
+                <ConfirmDelete onDelete={() => void remove(p.key)} />
               </div>
               {hasOptions && (
-                <input className="input mt-1.5 h-7 text-[length:calc(12px*var(--ts))]" placeholder="옵션 (쉼표로 구분)" defaultValue={f.options.join(", ")}
-                  onBlur={(e) => void saveField({ ...f, options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
+                <input className="input mt-1.5 h-7 text-[length:calc(12px*var(--ts))]" placeholder="옵션 (쉼표로 구분)" defaultValue={f!.options.join(", ")}
+                  onBlur={(e) => void saveField({ ...f!, options: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
               )}
             </div>
           );
         })}
       </div>
       <div className="flex gap-2">
-        <input className="input flex-1" placeholder="새 속성 이름" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void add()} />
-        <select className="input w-32" value={type} onChange={(e) => setType(e.target.value as FieldType)}>
-          {(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => <option key={t} value={t}>{FIELD_LABELS[t]}</option>)}
-        </select>
-        <button className="btn btn-primary" onClick={() => void add()}><Plus size={15} />추가</button>
+        <input className="input flex-1" placeholder="새 속성 이름" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void go()} />
+        {!known && (
+          <select className="input w-32" value={type} onChange={(e) => setType(e.target.value as FieldType)}>
+            {(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => <option key={t} value={t}>{FIELD_LABELS[t]}</option>)}
+          </select>
+        )}
+        <button className="btn btn-primary" disabled={!name.trim()} onClick={() => void go()}><Plus size={15} />추가</button>
       </div>
     </div>
   );
 }
 
+function ConfirmDelete({ onDelete }: { onDelete: () => void }) {
+  const [sure, setSure] = useState(false);
+  return sure ? (
+    <button className="btn h-7 shrink-0 bg-danger/10 px-2 text-[length:calc(12px*var(--ts))] text-danger" onClick={onDelete} onMouseLeave={() => setSure(false)}>삭제</button>
+  ) : (
+    <button className="btn-icon h-7 w-7 shrink-0 hover:text-danger" onClick={() => setSure(true)} data-tip="삭제"><Trash2 size={14} /></button>
+  );
+}
+
 function Watch() {
   const [list, setList] = useState<WatchFolder[]>([]);
-  const [kind, setKind] = useState<Kind>("illust");
+  const kind: Kind = "other";
   const [lk, setLk] = useState<ListKind>("archive");
   const [busy, setBusy] = useState(false);
   const { refresh, notify } = useApp();
@@ -309,27 +319,19 @@ function Watch() {
   };
   return (
     <div className="space-y-4">
-      <p className="text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">
-        지정한 폴더 <b className="text-fg">바로 아래</b>에 파일·폴더가 생기면 자동으로 항목이 추가돼요 (하나당 한 항목).
-        앱이 켜져 있는 동안 실시간으로 감시하고, 시작할 때도 한 번 확인해요.
-      </p>
       <div className="space-y-1">
         {list.map((w) => (
           <div key={w.id} className="flex items-center gap-2 rounded-lg border border-line p-2">
             <FolderSearch size={15} className="shrink-0 text-muted" />
             <div className="min-w-0 flex-1">
               <div className="truncate font-mono text-[length:calc(12px*var(--ts))]">{w.path}</div>
-              <div className="text-[length:calc(11px*var(--ts))] text-muted">{KIND_CONFIG[w.kind].label} · {w.list === "wishlist" ? "위시리스트" : "아카이브"}{w.lastScan ? ` · ${date(w.lastScan)} 확인` : ""}</div>
+              <div className="text-[length:calc(11px*var(--ts))] text-muted">{w.list === "wishlist" ? "위시리스트" : "아카이브"}{w.lastScan ? ` · ${date(w.lastScan)} 확인` : ""}</div>
             </div>
             <button className="btn-icon h-7 w-7 hover:text-danger" onClick={async () => { await api.removeWatchFolder(w.id); load(); }} data-tip="감시 해제"><Trash2 size={14} /></button>
           </div>
         ))}
-        {!list.length && <div className="rounded-lg border border-dashed border-line p-4 text-center text-[length:calc(12px*var(--ts))] text-muted">감시 중인 폴더가 없어요</div>}
       </div>
       <div className="flex gap-2">
-        <select className="input w-36" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-          {KINDS.map((k) => <option key={k} value={k}>{KIND_CONFIG[k].label}</option>)}
-        </select>
         <select className="input w-32" value={lk} onChange={(e) => setLk(e.target.value as ListKind)}>
           <option value="archive">아카이브</option><option value="wishlist">위시리스트</option>
         </select>

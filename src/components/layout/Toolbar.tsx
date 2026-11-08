@@ -2,13 +2,13 @@ import {
   ArrowDown, ArrowUp, ArrowUpDown, ClipboardPaste, Menu, FileUp, FolderPlus, FolderTree, LayoutDashboard,
   LayoutGrid, Link2, List, ListFilter, Plus, Search, SlidersHorizontal, Star, Table2, X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
-import { KINDS, type CardAspect, type CardField, type CardSize, type Layout, type SortField } from "@/api/types";
+import { type CardAspect, type FileKind, type CardField, type CardSize, type Layout, type SortField } from "@/api/types";
 import { activeView, useApp } from "@/store/app";
 import { allColumns, normalizeColumn } from "@/components/views/columns";
-import { formatOfArchive } from "@/lib/formats";
-import { KIND_META, STATUS_META, TAG_META } from "@/lib/meta";
+import { propLabels } from "@/lib/properties";
+import { FILE_META, STATUS_META, TAG_META } from "@/lib/meta";
 import { iconOf } from "@/lib/icons";
 import { useNarrow } from "@/hooks/useNarrow";
 import { cn } from "@/lib/cn";
@@ -24,6 +24,7 @@ export function Toolbar() {
   const Icon = iconOf(archive && view.query.list !== "wishlist" ? archive.icon : view.icon);
   const searchRef = useRef<HTMLInputElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const narrow = useNarrow();
   const [renaming, setRenaming] = useState(false);
 
@@ -33,7 +34,7 @@ export function Toolbar() {
   // Filters beyond what the archive itself implies (sys views already fix kind/list).
   const baseKinds: string[] = [];
   const filterCount =
-    (q.kinds ?? []).filter((k) => !baseKinds.includes(k)).length + (q.statuses?.length ?? 0) + (q.tagIds?.length ?? 0) + (q.favorite && view.id !== "sys:fav" ? 1 : 0) + (q.minRating ? 1 : 0);
+    (q.kinds ?? []).filter((k) => !baseKinds.includes(k)).length + (q.fileKinds?.length ?? 0) + (q.statuses?.length ?? 0) + (q.tagIds?.length ?? 0) + (q.favorite && view.id !== "sys:fav" ? 1 : 0) + (q.minRating ? 1 : 0);
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-bg/80 px-4 backdrop-blur max-md:px-3">
@@ -178,20 +179,38 @@ export function Toolbar() {
                 const p = await api.pickPaths({ multiple: true });
                 if (p) await s.importPaths(p);
               }}>파일 올리기</MenuItem>
-              <MenuItem icon={FolderPlus} onClick={async () => { close(); const p = await api.pickPaths({ directory: true, multiple: true }); if (p) await s.importPaths(p); }}>폴더에서 가져오기</MenuItem>
+              <MenuItem icon={FolderPlus} onClick={async () => {
+                close();
+                if (api.importBlobs) return folderRef.current?.click(); // browser: pick a folder, one item per folder
+                const p = await api.pickPaths({ directory: true, multiple: true });
+                if (p) await s.importPaths(p);
+              }}>폴더에서 가져오기</MenuItem>
             </>
           )}
         </Popover>
       </div>
       <input ref={uploadRef} type="file" multiple hidden onChange={(e) => { void s.importBlobs([...(e.target.files ?? [])]); e.target.value = ""; }} />
+      <input ref={folderRef} type="file" multiple hidden {...{ webkitdirectory: "", directory: "" }} onChange={(e) => { void s.importFolders([...(e.target.files ?? [])]); e.target.value = ""; }} />
     </header>
   );
 }
+
+const FILE_LABEL: Record<FileKind, string> = { image: "이미지", video: "동영상", audio: "음악", document: "문서", archive: "압축", text: "텍스트", folder: "폴더", other: "기타" };
+const FILE_ORDER: FileKind[] = ["image", "video", "audio", "document", "archive", "text", "folder", "other"];
 
 function FilterPanel() {
   const s = useApp();
   const view = activeView(s);
   const q = view.query;
+  // formats that exist in this view (looked up without the format filter itself)
+  const [present, setPresent] = useState<FileKind[]>([]);
+  useEffect(() => {
+    void api.listItems({ ...q, fileKinds: undefined, categoryId: s.categoryId ?? undefined }).then((items) => {
+      const have = new Set(items.flatMap((i) => i.files.map((f) => f.kind)));
+      setPresent(FILE_ORDER.filter((k) => have.has(k)));
+    });
+  }, [view.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const formats = FILE_ORDER.filter((k) => present.includes(k) || q.fileKinds?.includes(k));
   const set = (patch: Partial<typeof q>) => s.patchView({ query: { ...q, ...patch } });
   const toggle = <T,>(arr: T[] | undefined, v: T) => (arr?.includes(v) ? arr.filter((x) => x !== v) : [...(arr ?? []), v]);
   const [tagSearch, setTagSearch] = useState("");
@@ -199,21 +218,23 @@ function FilterPanel() {
 
   return (
     <div className="space-y-3 p-2">
-      <section>
-        <div className="label mb-1.5">종류</div>
-        <div className="flex flex-wrap gap-1">
-          {KINDS.map((k) => {
-            const M = KIND_META[k];
-            const on = q.kinds?.includes(k);
-            return (
-              <button key={k} data-tip={M.label} onClick={() => set({ kinds: toggle(q.kinds, k) })}
-                className={cn("btn-icon h-8 w-8 border", on ? "border-accent/50 bg-accent/10 text-accent" : "border-line")}>
-                <M.icon size={16} />
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      {formats.length > 0 && (
+        <section>
+          <div className="label mb-1.5">형식</div>
+          <div className="flex flex-wrap gap-1">
+            {formats.map((k) => {
+              const I = FILE_META[k];
+              const on = q.fileKinds?.includes(k);
+              return (
+                <button key={k} onClick={() => set({ fileKinds: toggle(q.fileKinds, k) })}
+                  className={cn("chip h-7 cursor-pointer gap-1 border px-2", on ? "border-accent/50 bg-accent/10 text-accent" : "border-line bg-transparent")}>
+                  <I size={13} />{FILE_LABEL[k]}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
       <section>
         <div className="label mb-1.5">상태</div>
         <div className="flex flex-wrap gap-1">
@@ -269,8 +290,7 @@ function DisplayPanel() {
   const setCard = (patch: Partial<typeof c>) => s.patchView({ card: { ...c, ...patch } });
 
   if (view.layout === "table") {
-    const arc = s.archives.find((a) => a.id === view.query.archiveId);
-    const all = allColumns(s.fields, arc ? formatOfArchive(arc).tagCats : undefined);
+    const all = allColumns(s.fields, propLabels());
     const cur = [...new Set(view.columns.map(normalizeColumn))];
     const toggleCol = (k: string) => s.patchView({ columns: cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k] });
     return (
@@ -283,7 +303,7 @@ function DisplayPanel() {
     );
   }
 
-  const fields: [CardField, string][] = [["kind", "종류"], ["status", "상태"], ["rating", "평점"], ["author", "작가"], ["tags", "태그"], ["files", "파일 수"]];
+  const fields: [CardField, string][] = [["status", "상태"], ["rating", "평점"], ["author", "작가"], ["tags", "태그"], ["files", "파일 수"]];
   return (
     <div className="space-y-3 p-2">
       {(view.layout === "gallery" || view.layout === "masonry") && (

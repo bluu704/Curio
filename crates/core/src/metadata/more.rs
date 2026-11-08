@@ -45,26 +45,36 @@ pub fn kitsu(q: &str, manga: bool) -> Result<Vec<Candidate>> {
 }
 
 // ---------------------------------------------------------------- TVmaze
+fn tvmaze_show(sh: &Value) -> Candidate {
+    let net = s(&sh["network"]["name"]).or_else(|| s(&sh["webChannel"]["name"]));
+    Candidate {
+        provider: "tvmaze".into(),
+        id: sh["id"].as_i64().unwrap_or(0).to_string(),
+        title: s(&sh["name"]).unwrap_or_default(),
+        kind: Some(Kind::Drama),
+        year: year(&sh["premiered"]),
+        cover_url: s(&sh["image"]["original"]).or_else(|| s(&sh["image"]["medium"])),
+        summary: s(&sh["summary"]).map(|t| strip_html(&t)),
+        genres: sh["genres"].as_array().into_iter().flatten().filter_map(s).collect(),
+        people: net.into_iter().map(|n| person(n, TagCategory::Publisher, "Network")).collect(),
+        detail: [s(&sh["type"]), s(&sh["language"]), s(&sh["status"])].into_iter().flatten().collect::<Vec<_>>().join(" · ").into(),
+        url: s(&sh["url"]),
+        ..Default::default()
+    }
+}
+
 pub fn tvmaze(q: &str) -> Result<Vec<Candidate>> {
     let v: Value = agent().get("https://api.tvmaze.com/search/shows").query("q", q).call().map_err(net)?.into_json()?;
-    Ok(v.as_array().into_iter().flatten().take(6).map(|r| {
-        let sh = &r["show"];
-        let net = s(&sh["network"]["name"]).or_else(|| s(&sh["webChannel"]["name"]));
-        Candidate {
-            provider: "tvmaze".into(),
-            id: sh["id"].as_i64().unwrap_or(0).to_string(),
-            title: s(&sh["name"]).unwrap_or_default(),
-            kind: Some(Kind::Drama),
-            year: year(&sh["premiered"]),
-            cover_url: s(&sh["image"]["original"]).or_else(|| s(&sh["image"]["medium"])),
-            summary: s(&sh["summary"]).map(|t| strip_html(&t)),
-            genres: sh["genres"].as_array().into_iter().flatten().filter_map(s).collect(),
-            people: net.into_iter().map(|n| person(n, TagCategory::Publisher, "Network")).collect(),
-            detail: [s(&sh["type"]), s(&sh["language"]), s(&sh["status"])].into_iter().flatten().collect::<Vec<_>>().join(" · ").into(),
-            url: s(&sh["url"]),
-            ..Default::default()
-        }
-    }).collect())
+    Ok(v.as_array().into_iter().flatten().take(6).map(|r| tvmaze_show(&r["show"])).collect())
+}
+
+/// tvmaze.com/shows/<id>/…
+pub fn tvmaze_id(url: &str) -> Option<String> {
+    Regex::new(r"tvmaze\.com/shows/(\d+)").unwrap().captures(url).map(|c| c[1].to_string())
+}
+pub fn tvmaze_fetch(id: &str) -> Result<Candidate> {
+    let v: Value = agent().get(&format!("https://api.tvmaze.com/shows/{id}")).call().map_err(net)?.into_json()?;
+    Ok(tvmaze_show(&v))
 }
 
 // ---------------------------------------------------------------- books
@@ -115,9 +125,19 @@ pub fn google_books(q: &str) -> Result<Vec<Candidate>> {
 }
 
 // ---------------------------------------------------------------- VNDB (visual novels)
+/// vndb.org/v17
+pub fn vndb_id(url: &str) -> Option<String> {
+    Regex::new(r"vndb\.org/(v\d+)").unwrap().captures(url).map(|c| c[1].to_string())
+}
+pub fn vndb_fetch(id: &str) -> Result<Candidate> {
+    vndb_query(json!(["id", "=", id]))?.into_iter().next().ok_or_else(|| crate::Error::NotFound(id.into()))
+}
 pub fn vndb(q: &str) -> Result<Vec<Candidate>> {
+    vndb_query(json!(["search", "=", q]))
+}
+fn vndb_query(filters: Value) -> Result<Vec<Candidate>> {
     let v: Value = agent().post("https://api.vndb.org/kana/vn")
-        .send_json(json!({ "filters": ["search", "=", q], "fields": "title, alttitle, released, image.url, developers.name, description, length_minutes", "results": 5 }))
+        .send_json(json!({ "filters": filters, "fields": "title, alttitle, released, image.url, developers.name, description, length_minutes", "results": 5 }))
         .map_err(net)?.into_json()?;
     Ok(v["results"].as_array().into_iter().flatten().map(|r| Candidate {
         provider: "vndb".into(),
@@ -200,3 +220,21 @@ pub fn opengraph(url: &str) -> Result<Candidate> {
     })
 }
 
+
+#[cfg(test)]
+mod link_tests {
+    use crate::metadata::search;
+    use crate::models::Kind;
+    #[test]
+    #[ignore = "network"]
+    fn live_new_links() {
+        let t = search(Kind::Other, "https://www.tvmaze.com/shows/169/breaking-bad").unwrap();
+        assert_eq!(t[0].title, "Breaking Bad");
+        let v = search(Kind::Other, "https://vndb.org/v17").unwrap();
+        assert!(v[0].title.starts_with("Ever17"), "{:?}", v[0].title);
+        let a = search(Kind::Other, "https://anilist.co/anime/154587/Sousou-no-Frieren/").unwrap();
+        assert!(a[0].title.to_lowercase().contains("frieren") || a[0].title.contains("フリーレン") || a[0].title.contains("프리렌"), "{:?}", a[0].title);
+        let all = search(Kind::Other, "Frieren").unwrap();
+        assert!(all.len() >= 3, "broad search finds several");
+    }
+}

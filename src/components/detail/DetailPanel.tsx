@@ -5,8 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import type { Item } from "@/api/types";
 import { useApp } from "@/store/app";
-import { KIND_META, TAG_META } from "@/lib/meta";
-import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
+import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import { LyricsSection } from "./LyricsSection";
 import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, mainFile, withFlag } from "@/lib/itemFlags";
@@ -29,7 +28,6 @@ const ytId = (url: string | null) => url?.match(/(?:v=|youtu\.be\/|shorts\/|embe
 export function DetailPanel() {
   const { detail: item, select, updateItem, deleteItem, setDialog, openReader } = useApp();
   const [editProps, setEditProps] = useState(false);
-  useFormats((f) => f.stored);
   const full = useApp((st) => st.detailFull);
   const linkBack = useApp((st) => st.linkBack);
   const toggleFull = useApp((st) => st.toggleDetailFull);
@@ -44,8 +42,7 @@ export function DetailPanel() {
   }, [select]);
 
   if (!item) return null;
-  const K = KIND_META[item.kind];
-  const cfg = formatConfig(formatOfItem(item));
+  const aspect = useApp.getState().views.find((v) => v.id === (item.archiveId ? `arc:${item.archiveId}` : "sys:all"))?.card.aspect ?? "2/3";
   // primary file action: read (pdf/zip/images) › play (video/audio) › view (text) › open with the OS
   const primary = item.files.find(isReadable) ?? item.files.find(isViewable) ?? item.files[0];
   const act = primary ? fileAction(primary) : null;
@@ -135,13 +132,12 @@ export function DetailPanel() {
         </div>
 
         <div className={cn("relative flex gap-4 px-7", banner && "-mt-16", full && "mx-auto w-full max-w-3xl")}>
-          {main?.kind !== "image" && <CoverPicker item={item} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", cfg.aspect === "1/1" ? "aspect-square w-28" : cfg.aspect === "16/9" ? "aspect-video w-40" : "aspect-[2/3] w-28")} />}
+          {main?.kind !== "image" && <CoverPicker item={item} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", aspect === "1/1" ? "aspect-square w-28" : aspect === "16/9" ? "aspect-video w-40" : "aspect-[2/3] w-28")} />}
           <div className="flex min-w-0 flex-1 flex-col pt-1">
             <div className={cn(banner && "pt-10")}><TitleInput item={item} /></div>
             {/* rating right under the title, then the key facts as pills */}
             <div className="mt-1.5"><Stars value={item.rating} size={18} onChange={(rating) => void updateItem(item.id, { rating })} /></div>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <Pill icon={K.icon}>{K.label}</Pill>
               {people.map((t) => { const I = TAG_META[t.category].icon; return <Pill key={t.id} icon={I}>{t.name}</Pill>; })}
               {item.year && <Pill icon={CalendarDays}>{item.year}</Pill>}
             </div>

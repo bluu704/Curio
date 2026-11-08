@@ -171,6 +171,10 @@ impl Library {
             sql += &format!(" AND i.status IN ({})", placeholders(sts.len()));
             args.extend(sts.iter().map(|s| Sql::Text(s.as_str().into())));
         }
+        if let Some(fk) = q.file_kinds.as_ref().filter(|k| !k.is_empty()) {
+            sql += &format!(" AND EXISTS (SELECT 1 FROM files f WHERE f.item_id = i.id AND f.kind IN ({}))", placeholders(fk.len()));
+            args.extend(fk.iter().map(|k| Sql::Text(k.as_str().into())));
+        }
         if q.favorite == Some(true) {
             sql += " AND i.favorite = 1";
         }

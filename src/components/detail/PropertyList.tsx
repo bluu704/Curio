@@ -1,95 +1,68 @@
-import { CalendarDays, CalendarPlus, ExternalLink, Eye, EyeOff, Folder, Hash, Link2, ListPlus, Trash2, type LucideIcon } from "lucide-react";
+import { Eye, EyeOff, ListPlus, Pencil, Trash2, type LucideIcon } from "lucide-react";
 import { useState } from "react";
-import { KINDS, TAG_CATEGORIES, type FieldType, type Item, type TagCategory } from "@/api/types";
+import type { FieldType, Item, TagCategory } from "@/api/types";
 import { useApp } from "@/store/app";
 import { useNarrow } from "@/hooks/useNarrow";
-import { KIND_META, STATUS_META, TAG_META } from "@/lib/meta";
-import { formatConfig, formatOfItem, useFormats } from "@/lib/formats";
-import { date, uid } from "@/lib/format";
+import { STATUS_META } from "@/lib/meta";
+import { date } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { iconOf, suggestIcons } from "@/lib/icons";
+import { bindingFor, iconForBinding, isTagKey, useProps, type PropDef, type PropKey } from "@/lib/properties";
 import { Popover } from "@/components/ui/Popover";
-import { MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
-import { FIELD_ICONS, FIELD_LABELS } from "@/components/settings/fieldIcons";
+import { MenuItem } from "@/components/ui/Menu";
+import { IconGrid } from "@/components/ui/IconGrid";
+import { FIELD_LABELS } from "@/components/settings/fieldIcons";
 import { TagInput } from "./TagInput";
 import { FieldInput } from "./FieldInput";
 import { CategoryPicker } from "./CategoryPicker";
 
-/** `wide` rows (links, dates, long text) take the full width; the rest sit two per line. */
-interface Row { key: string; icon: LucideIcon; label: string; node: React.ReactNode; custom?: string; wide?: boolean }
+/** `wide` rows (long text) take the full width; the rest sit two per line. */
+interface Row { key: PropKey; icon: LucideIcon; label: string; node: React.ReactNode; wide?: boolean }
 
 /**
- * The item's properties. Which ones show is decided per archive (saved in the archive's view):
- * in 속성 편집 mode every row gets an eye toggle, custom properties can be deleted, and
- * "속성 추가" adds a tag category / 품번 / 링크 or creates a new custom property.
+ * The item's properties: the library's property list (built-ins + the user's own), with each
+ * archive able to hide some of them in 속성 편집 mode.
  */
 export function PropertyList({ item, editing, onDone }: { item: Item; editing: boolean; onDone: () => void }) {
   const s = useApp();
   const { updateItem, fields } = s;
-  useFormats((f) => f.stored); // re-render when formats are edited
-  const cfg = formatConfig(formatOfItem(item));
+  const props = useProps((p) => p.list);
+  const removeProp = useProps((p) => p.remove);
   const viewId = item.archiveId ? `arc:${item.archiveId}` : "sys:all";
   const layout = s.views.find((v) => v.id === viewId)?.card.props ?? {};
   const hidden = layout.hidden ?? [];
-  const extra = layout.extra ?? [];
-  const K = KIND_META[item.kind];
   const SM = STATUS_META[item.status];
 
-  const tagCats: [TagCategory, string][] = [
-    ...cfg.tagCats,
-    ...extra.filter((k) => k.startsWith("tag:")).map((k) => [k.slice(4) as TagCategory, TAG_META[k.slice(4) as TagCategory].label] as [TagCategory, string])
-      .filter(([c]) => !cfg.tagCats.some(([x]) => x === c)),
-  ];
-  const showCode = cfg.showCode || extra.includes("code");
-  const showUrl = cfg.showUrl || extra.includes("url");
-
-  const rows: Row[] = [
-    {
-      key: "kind", icon: K.icon, label: "종류",
-      node: (
-        <Popover width={170} trigger={({ toggle }) => (
-          <button className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 hover:bg-subtle" onClick={toggle}><K.icon size={14} />{K.label}</button>
-        )}>
-          {(close) => KINDS.map((k) => (
-            <MenuItem key={k} icon={KIND_META[k].icon} checked={item.kind === k} onClick={() => { void updateItem(item.id, { kind: k }); close(); }}>{KIND_META[k].label}</MenuItem>
-          ))}
-        </Popover>
-      ),
-    },
-    {
-      key: "status", icon: SM.icon, label: "상태",
-      node: (
-        <Popover width={170} trigger={({ toggle }) => (
-          <button className={cn("inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[length:calc(12px*var(--ts))] font-medium tone-bg", SM.tone)} onClick={toggle}><SM.icon size={13} />{SM.label}</button>
-        )}>
-          {(close) => s.statuses.map((d) => {
-            const M = STATUS_META[d.id];
-            return (
-              <MenuItem key={d.id} checked={item.status === d.id} onClick={() => { void updateItem(item.id, { status: d.id }); close(); }}>
-                <span className={cn("inline-flex items-center gap-2", M.tone)}><M.icon size={14} className="tone-text" />{M.label}</span>
-              </MenuItem>
-            );
-          })}
-        </Popover>
-      ),
-    },
-    { key: "category", icon: Folder, label: "폴더", node: <CategoryPicker item={item} /> },
-    ...tagCats.map(([c, label]): Row => ({ key: `tag:${c}`, icon: TAG_META[c].icon, label, node: <TagInput item={item} category={c} label={label} />,
-      wide: item.tags.filter((t) => t.category === c).length > 2 })),
-    ...(showCode ? [{ key: "code", icon: Hash, label: "품번", node: <TextProp value={item.code} mono placeholder="ABC-123" onSave={(code) => void updateItem(item.id, { code })} /> }] : []),
-    ...(showUrl ? [{
-      key: "url", icon: Link2, label: "링크", wide: true,
-      node: (
-        <div className="flex items-center">
-          <TextProp value={item.url} placeholder="https://" onSave={(url) => void updateItem(item.id, { url })} />
-          {item.url && <a href={item.url} target="_blank" rel="noreferrer" className="btn-icon h-7 w-7 shrink-0" data-tip="열기"><ExternalLink size={14} /></a>}
-        </div>
-      ),
-    }] : []),
-    { key: "year", icon: CalendarDays, label: "연도", node: <TextProp value={item.year?.toString() ?? null} placeholder="2024" onSave={(v) => void updateItem(item.id, { year: v && /^\d{4}$/.test(v) ? Number(v) : null })} /> },
-    ...fields.map((f): Row => ({ key: `field:${f.id}`, icon: FIELD_ICONS[f.type], label: f.name, node: <FieldInput item={item} field={f} />, custom: f.id,
-      wide: ["text", "url", "date", "multi_select"].includes(f.type) })),
-    { key: "added", icon: CalendarPlus, label: "추가일", wide: true, node: <span className="px-1.5 text-muted">{date(item.createdAt)}</span> },
-  ];
+  const nodeOf = (p: PropDef): Row | null => {
+    const base = { key: p.key, icon: iconOf(p.icon), label: p.name };
+    if (p.key === "status") return { ...base, node: (
+      <Popover width={170} trigger={({ toggle }) => (
+        <button className={cn("inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[length:calc(12px*var(--ts))] font-medium tone-bg", SM.tone)} onClick={toggle}><SM.icon size={13} />{SM.label}</button>
+      )}>
+        {(close) => s.statuses.map((d) => {
+          const M = STATUS_META[d.id];
+          return (
+            <MenuItem key={d.id} checked={item.status === d.id} onClick={() => { void updateItem(item.id, { status: d.id }); close(); }}>
+              <span className={cn("inline-flex items-center gap-2", M.tone)}><M.icon size={14} className="tone-text" />{M.label}</span>
+            </MenuItem>
+          );
+        })}
+      </Popover>
+    ) };
+    if (p.key === "category") return { ...base, node: <CategoryPicker item={item} /> };
+    if (isTagKey(p.key)) {
+      const c = p.key.slice(4) as TagCategory;
+      return { ...base, node: <TagInput item={item} category={c} label={p.name} />, wide: item.tags.filter((t) => t.category === c).length > 2 };
+    }
+    if (p.key === "url") return { ...base, node: <UrlProp value={item.url} onSave={(url) => void updateItem(item.id, { url })} /> };
+    if (p.key === "code") return { ...base, node: <TextProp value={item.code} mono placeholder="ABC-123" onSave={(code) => void updateItem(item.id, { code })} /> };
+    if (p.key === "year") return { ...base, node: <TextProp value={item.year?.toString() ?? null} placeholder="2024" onSave={(v) => void updateItem(item.id, { year: v && /^\d{4}$/.test(v) ? Number(v) : null })} /> };
+    if (p.key === "added") return { ...base, node: <span className="flex h-8 items-center px-1.5 text-muted">{date(item.createdAt)}</span> };
+    const f = fields.find((x) => `field:${x.id}` === p.key);
+    if (!f) return null;
+    return { ...base, node: <FieldInput item={item} field={f} />, wide: ["text", "multi_select"].includes(f.type) };
+  };
+  const rows = props.map(nodeOf).filter((r): r is Row => !!r);
 
   const toggle = (key: string) =>
     s.setPropLayout(item.archiveId, { hidden: hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key] });
@@ -103,18 +76,11 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
     if (col === 0 && nextWide) spans[i] = true; else col = (col + 1) % 2;
   }
 
-  // things that can be added: tag categories not shown yet, 품번/링크, or a brand-new custom property
-  const addable = [
-    ...TAG_CATEGORIES.filter((c) => !tagCats.some(([x]) => x === c)).map((c) => ({ key: `tag:${c}`, label: TAG_META[c].label, icon: TAG_META[c].icon })),
-    ...(!showCode ? [{ key: "code", label: "품번", icon: Hash }] : []),
-    ...(!showUrl ? [{ key: "url", label: "링크", icon: Link2 }] : []),
-  ];
-
   return (
     <div className="mt-5">
       {editing && (
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-accent/10 px-3 py-2 text-[length:calc(12px*var(--ts))] text-accent">
-          <span className="flex-1">보이기·숨기기 · {s.archives.find((a) => a.id === item.archiveId)?.name ?? "이 아카이브"} 전체</span>
+          <span className="flex-1">{s.archives.find((a) => a.id === item.archiveId)?.name ?? "이 아카이브"}에서 보이기</span>
           <button className="btn btn-primary h-7" onClick={onDone}>완료</button>
         </div>
       )}
@@ -136,73 +102,79 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
                 <span className="truncate whitespace-nowrap">{r.label}</span>
               </div>
               <div className={cn("min-w-0 flex-1", editing && "pointer-events-none")}>{r.node}</div>
-              {editing && r.custom && <DeleteField id={r.custom} name={r.label} />}
-              {editing && !r.custom && extra.includes(r.key) && (
-                <button className="btn-icon h-8 w-8 shrink-0 hover:text-danger" data-tip="속성 빼기"
-                  onClick={() => s.setPropLayout(item.archiveId, { extra: extra.filter((k) => k !== r.key) })}><Trash2 size={13} /></button>
-              )}
+              {editing && <DeleteProp name={r.label} onDelete={() => void removeProp(r.key)} />}
             </div>
           );
         })}
       </div>
       {editing && (
-        <Popover width={240} trigger={({ toggle: t }) => (
+        <Popover width={260} trigger={({ toggle: t }) => (
           <button className="btn mt-2 w-full justify-center border border-dashed border-line text-muted" onClick={t}><ListPlus size={15} />속성 추가</button>
         )}>
-          {(close) => (
-            <div className="p-1">
-              {addable.length > 0 && <MenuLabel>기본 속성</MenuLabel>}
-              {addable.map((a) => (
-                <MenuItem key={a.key} icon={a.icon} onClick={() => { s.setPropLayout(item.archiveId, { extra: [...extra, a.key], hidden: hidden.filter((k) => k !== a.key) }); close(); }}>{a.label}</MenuItem>
-              ))}
-              <MenuSep />
-              <MenuLabel>새 속성 만들기 (모든 아카이브)</MenuLabel>
-              <NewField onDone={close} />
-            </div>
-          )}
+          {(close) => <NewProp onDone={close} />}
         </Popover>
       )}
     </div>
   );
 }
 
-function NewField({ onDone }: { onDone: () => void }) {
-  const { saveField, fields } = useApp();
-  const [name, setName] = useState("");
-  const [type, setType] = useState<FieldType>("text");
-  const add = async () => {
-    if (!name.trim()) return;
-    await saveField({ id: uid(), name: name.trim(), type, options: [], position: fields.length });
-    onDone();
-  };
-  return (
-    <div className="space-y-1.5 px-1 pb-1">
-      <input autoFocus className="input h-8" placeholder="속성 이름" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void add()} />
-      <div className="flex gap-1.5">
-        <select className="input h-8 flex-1" value={type} onChange={(e) => setType(e.target.value as FieldType)}>
-          {(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => <option key={t} value={t}>{FIELD_LABELS[t]}</option>)}
-        </select>
-        <button className="btn btn-primary h-8" disabled={!name.trim()} onClick={() => void add()}>추가</button>
+/** Link value: the site name, opening the page; the pencil edits the address. */
+function UrlProp({ value, onSave }: { value: string | null; onSave: (v: string | null) => void }) {
+  const [edit, setEdit] = useState(false);
+  if (!value || edit) {
+    return (
+      <div onBlur={() => setEdit(false)}>
+        <TextProp value={value} placeholder="https://" onSave={(v) => { setEdit(false); onSave(v); }} autoFocus={edit} />
       </div>
+    );
+  }
+  let host = value;
+  try { host = new URL(value).hostname.replace(/^www\./, ""); } catch { /* keep the text */ }
+  return (
+    <div className="group/url flex h-8 min-w-0 items-center">
+      <a href={value} target="_blank" rel="noreferrer" className="min-w-0 truncate rounded-md px-1.5 text-accent hover:underline" data-tip={value}>{host}</a>
+      <button className="btn-icon h-7 w-7 shrink-0 opacity-0 group-hover/url:opacity-100" onClick={() => setEdit(true)} data-tip="주소 바꾸기"><Pencil size={12} /></button>
     </div>
   );
 }
 
-function DeleteField({ id, name }: { id: string; name: string }) {
-  const { deleteField } = useApp();
-  const [sure, setSure] = useState(false);
-  return sure ? (
-    <button className="btn h-8 shrink-0 bg-danger/10 px-2 text-[length:calc(12px*var(--ts))] text-danger" onClick={() => void deleteField(id)} onMouseLeave={() => setSure(false)}>
-      모든 항목에서 삭제
-    </button>
-  ) : (
-    <button className="btn-icon h-8 w-8 shrink-0 hover:text-danger" data-tip={`"${name}" 속성 삭제`} onClick={() => setSure(true)}><Trash2 size={13} /></button>
+/** "속성 추가": name, kind of value and icon (suggested from the name). */
+function NewProp({ onDone }: { onDone: () => void }) {
+  const add = useProps((p) => p.add);
+  const [name, setName] = useState("");
+  const [type, setType] = useState<FieldType>("text");
+  const [icon, setIcon] = useState<string | null>(null);
+  const known = bindingFor(name);
+  const suggested = suggestIcons(name);
+  const shown = icon ?? (known ? iconForBinding(known) : suggested[0] ?? "tag");
+  const go = async () => { if (await add(name, type, shown)) onDone(); };
+  return (
+    <div className="space-y-2 p-2">
+      <input autoFocus className="input h-8" placeholder="속성 이름" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void go()} />
+      {!known && (
+        <select className="input h-8" value={type} onChange={(e) => setType(e.target.value as FieldType)}>
+          {(Object.keys(FIELD_LABELS) as FieldType[]).map((t) => <option key={t} value={t}>{FIELD_LABELS[t]}</option>)}
+        </select>
+      )}
+      <IconGrid value={shown} onChange={setIcon} cols={8} suggested={suggested} compact />
+      <button className="btn btn-primary h-8 w-full justify-center" disabled={!name.trim()} onClick={() => void go()}>추가</button>
+    </div>
   );
 }
 
-export function TextProp({ value, onSave, placeholder, mono }: { value: string | null; onSave: (v: string | null) => void; placeholder?: string; mono?: boolean }) {
+function DeleteProp({ name, onDelete }: { name: string; onDelete: () => void }) {
+  const [sure, setSure] = useState(false);
+  return sure ? (
+    <button className="btn h-8 shrink-0 bg-danger/10 px-2 text-[length:calc(12px*var(--ts))] text-danger" onClick={onDelete} onMouseLeave={() => setSure(false)}>삭제</button>
+  ) : (
+    <button className="btn-icon h-8 w-8 shrink-0 hover:text-danger" data-tip={`"${name}" 삭제`} onClick={() => setSure(true)}><Trash2 size={13} /></button>
+  );
+}
+
+export function TextProp({ value, onSave, placeholder, mono, autoFocus }: { value: string | null; onSave: (v: string | null) => void; placeholder?: string; mono?: boolean; autoFocus?: boolean }) {
   return (
     <input
+      autoFocus={autoFocus}
       key={value ?? ""}
       defaultValue={value ?? ""}
       placeholder={placeholder}

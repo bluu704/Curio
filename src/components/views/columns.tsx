@@ -1,9 +1,9 @@
 import {
-  CalendarClock, CalendarDays, CalendarPlus, CirclePlay, Files, Folder, Gift, Hash, Link2, Shapes, Star, Type, type LucideIcon,
+  CalendarClock, CalendarDays, CalendarPlus, CirclePlay, Files, Folder, Gift, Hash, Link2, Star, Type, type LucideIcon,
 } from "lucide-react";
 import type { ColumnKey, FieldDef, Item, TagCategory } from "@/api/types";
 import { TAG_CATEGORIES } from "@/api/types";
-import { TAG_META, KIND_META } from "@/lib/meta";
+import { TAG_META } from "@/lib/meta";
 import { date, relative } from "@/lib/format";
 import { useApp } from "@/store/app";
 import { folderColor } from "@/lib/statuses";
@@ -27,7 +27,6 @@ export function allColumns(fields: FieldDef[], labels?: [TagCategory, string][])
   const upd = useApp.getState().updateItem;
   const catLabel = (c: TagCategory) => labels?.find(([x]) => x === c)?.[1] || TAG_META[c].label;
   return [
-    { key: "kind", label: "종류", icon: Shapes, width: "110px", render: (it) => { const K = KIND_META[it.kind]; return <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-fg/80"><K.icon size={14} className="text-muted" />{K.label}</span>; } },
     { key: "status", label: "상태", icon: CirclePlay, width: "120px", render: (it) => <StatusPicker item={it} /> },
     { key: "rating", label: "평점", icon: Star, width: "110px", render: (it) => <Stars value={it.rating} size={13} onChange={(rating) => void upd(it.id, { rating })} /> },
     ...TAG_CATEGORIES.map((c): ColumnDef => ({ key: `tag:${c}`, label: catLabel(c), icon: TAG_META[c].icon, width: "minmax(120px, 1fr)", render: (it) => chips(it, c) })),

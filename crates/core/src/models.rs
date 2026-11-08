@@ -136,6 +136,9 @@ pub struct ItemQuery {
     pub kinds: Option<Vec<Kind>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive_id: Option<String>,
+    /// Items with at least one file of these kinds (the filter's "형식").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_kinds: Option<Vec<FileKind>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list: Option<ListKind>,
     /// Includes all descendant categories.

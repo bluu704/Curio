@@ -117,6 +117,8 @@ export interface ItemQuery {
   search?: string;
   kinds?: Kind[];
   archiveId?: ID;
+  /** Items with at least one file of these kinds (filter "형식") */
+  fileKinds?: FileKind[];
   list?: ListKind;
   /** Includes descendant categories */
   categoryId?: ID;

@@ -2,9 +2,7 @@ import { Check, Loader2, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/api";
 import type { Candidate, Kind } from "@/api/types";
-import { KINDS } from "@/api/types";
 import { useApp } from "@/store/app";
-import { KIND_CONFIG } from "@/lib/kinds";
 import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
@@ -38,8 +36,8 @@ export function MetadataDialog() {
   useEffect(() => {
     if (!open || !item) return;
     const query = item.url ?? (item.title === "제목 없음" ? "" : item.title);
-    setKind(item.kind); setQ(query); setHits(null); setErr(null); setOverwrite(item.title === "제목 없음");
-    if (query) void run(item.kind, query);
+    setKind(item.kind === "music" ? "music" : "other"); setQ(query); setHits(null); setErr(null); setOverwrite(item.title === "제목 없음");
+    if (query) void run(item.kind === "music" ? "music" : "other", query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item?.id]);
 
@@ -54,10 +52,7 @@ export function MetadataDialog() {
   return (
     <Modal open onClose={() => setDialog(null)} title="정보 자동 검색" width={720}>
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void run(); }}>
-        <select className="input w-32" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-          {KINDS.filter((k) => k !== "doujin").map((k) => <option key={k} value={k}>{KIND_CONFIG[k].label}</option>)}
-        </select>
-        <input autoFocus className="input flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder={KIND_CONFIG[kind].searchHint ?? "제목"} />
+        <input autoFocus className="input flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="제목 또는 주소" />
         <button className="btn btn-primary" disabled={busy === "search"}>{busy === "search" ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}검색</button>
       </form>
       <div className="mt-2 flex items-center justify-between text-[length:calc(12px*var(--ts))] text-muted">

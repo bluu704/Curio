@@ -204,6 +204,7 @@ export function applyQuery(items: Item[], q: ItemQuery, cats: Category[] = []): 
   const catSet = q.categoryId ? descendants(cats, q.categoryId) : null;
   let out = items.filter((it) => {
     if (q.kinds?.length && !q.kinds.includes(it.kind)) return false;
+    if (q.fileKinds?.length && !it.files.some((f) => q.fileKinds!.includes(f.kind))) return false;
     if (q.archiveId && it.archiveId !== q.archiveId) return false;
     if (q.list && it.list !== q.list) return false;
     if (q.statuses?.length && !q.statuses.includes(it.status)) return false;

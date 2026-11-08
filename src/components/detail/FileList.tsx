@@ -77,7 +77,7 @@ export function FileList({ item }: { item: Item }) {
                 {desktop && <button className="btn-icon h-7 w-7" onClick={() => void api.openFile(f)} data-tip="기본 앱으로 열기"><ExternalLink size={14} /></button>}
                 {desktop && <button className="btn-icon h-7 w-7" onClick={() => void api.revealFile(f)} data-tip="폴더에서 보기"><FolderOpen size={14} /></button>}
                 {f.kind === "image" && <button className="btn-icon h-7 w-7" onClick={() => useAsCover(f)} data-tip="표지로 사용"><ImageUp size={14} /></button>}
-                <button className="btn-icon h-7 w-7 hover:text-danger" onClick={() => void detachFile(item.id, f.id)} data-tip="목록에서 빼기 (원본은 그대로)"><Link2Off size={14} /></button>
+                <button className="btn-icon h-7 w-7 hover:text-danger" onClick={() => void detachFile(item.id, f.id)} data-tip="빼기"><Link2Off size={14} /></button>
               </div>
             </div>
           );

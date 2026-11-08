@@ -1,5 +1,6 @@
 import { FLAG, isMainKind } from "@/lib/itemFlags";
 import { particle } from "@/lib/josa";
+import { autoCovers } from "@/lib/autoCover";
 import { create } from "zustand";
 import { api } from "@/api";
 import type {
@@ -7,7 +8,7 @@ import type {
   TagCategory, View,
 } from "@/api/types";
 import { DEFAULT_VIEWS, archiveViews } from "@/lib/defaults";
-import { useFormats } from "@/lib/formats";
+import { useProps } from "@/lib/properties";
 import { uid } from "@/lib/format";
 import { isViewable } from "@/components/viewer/files";
 import { isReadable } from "@/components/reader/source";
@@ -81,8 +82,10 @@ interface AppState {
   deleteItem(id: ID): Promise<void>;
   importPaths(paths: string[]): Promise<void>;
   importBlobs(files: File[]): Promise<void>;
+  /** Browser folder pick (files with relative paths): one item per folder. */
+  importFolders(files: File[]): Promise<void>;
   saveArchive(a: Archive): Promise<void>;
-  createArchive(name: string, icon: string, formatId: string): Promise<Archive>;
+  createArchive(name: string, icon: string): Promise<Archive>;
   deleteArchive(id: ID): Promise<void>;
   toggleFold(id: ID): void;
   reorderArchives(ids: ID[]): Promise<void>;
@@ -208,7 +211,7 @@ export const useApp = create<AppState>((set, get) => {
     async init() {
       try {
         let views = await api.listViews();
-        const [archives, statuses] = await Promise.all([api.listArchives(), api.listStatuses(), useFormats.getState().load()]);
+        const [archives, statuses] = await Promise.all([api.listArchives(), api.listStatuses()]);
         set({ archives, statuses });
         // Seed / repair built-in views and each archive's two views.
         const wanted = [...DEFAULT_VIEWS, ...archives.flatMap(archiveViews)];
@@ -218,6 +221,8 @@ export const useApp = create<AppState>((set, get) => {
           views = await api.listViews();
         }
         const [tags, fields, categories] = await Promise.all([api.listTags(), api.listFields(), api.listCategories()]);
+        set({ fields });
+        await useProps.getState().load();
         const activeViewId = views.some((v) => v.id === get().activeViewId) ? get().activeViewId : views[0].id;
         set({ views, tags, fields, categories, activeViewId });
         await get().refresh();
@@ -232,7 +237,7 @@ export const useApp = create<AppState>((set, get) => {
     /** Re-read everything (after another device's changes arrived through sync). */
     async reloadAll() {
       const [archives, statuses, tags, fields, categories] = await Promise.all([
-        api.listArchives(), api.listStatuses(), api.listTags(), api.listFields(), api.listCategories(), useFormats.getState().load(),
+        api.listArchives(), api.listStatuses(), api.listTags(), api.listFields(), api.listCategories(),
       ]);
       // views of built-ins / archives another device does not have yet
       let views = await api.listViews();
@@ -240,6 +245,7 @@ export const useApp = create<AppState>((set, get) => {
       if (missing.length) { await Promise.all(missing.map((v) => api.saveView(v))); views = await api.listViews(); }
       const activeViewId = views.some((v) => v.id === get().activeViewId) ? get().activeViewId : views[0]?.id ?? get().activeViewId;
       set({ views, archives, statuses, tags, fields, categories, activeViewId });
+      await useProps.getState().load();
       await get().refresh();
       const id = get().selectedId;
       if (id) set({ detail: await api.getItem(id).catch(() => null) });
@@ -365,6 +371,7 @@ export const useApp = create<AppState>((set, get) => {
       try {
         const created = await api.importPaths(paths, ctx);
         await markMain(created);
+        void autoCovers(created.map((c) => c.id), (id, coverUri) => get().updateItem(id, { coverUri }));
         const cat = get().categoryId;
         if (cat && created.length) await api.addToCategory(created.map((c) => c.id), cat);
         set({ tags: await api.listTags() });
@@ -380,6 +387,7 @@ export const useApp = create<AppState>((set, get) => {
       try {
         const created = await api.importBlobs(files, ctx);
         await markMain(created);
+        void autoCovers(created.map((c) => c.id), (id, coverUri) => get().updateItem(id, { coverUri }));
         const cat = get().categoryId;
         if (cat && created.length) await api.addToCategory(created.map((c) => c.id), cat);
         await get().refresh();
@@ -391,6 +399,7 @@ export const useApp = create<AppState>((set, get) => {
     async attachPaths(itemId, paths) {
       const refs = await api.attachPaths(itemId, paths);
       mapItem(itemId, (it) => ({ ...it, files: [...it.files, ...refs] }));
+      void autoCovers([itemId], (id, coverUri) => get().updateItem(id, { coverUri }));
       return refs;
     },
 
@@ -398,7 +407,30 @@ export const useApp = create<AppState>((set, get) => {
       if (!api.attachBlobs) return [];
       const refs = await api.attachBlobs(itemId, files);
       mapItem(itemId, (it) => ({ ...it, files: [...it.files, ...refs] }));
+      void autoCovers([itemId], (id, coverUri) => get().updateItem(id, { coverUri }));
       return refs;
+    },
+
+    async importFolders(files) {
+      // browser folder pick: files carry "Folder/sub/file" paths → one item per top folder
+      const groups = new Map<string, File[]>();
+      for (const f of files) {
+        const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+        const top = rel.includes("/") ? rel.split("/")[0] : f.name;
+        if (rel.split("/").some((p) => p.startsWith("."))) continue; // hidden files (.DS_Store…)
+        groups.set(top, [...(groups.get(top) ?? []), f]);
+      }
+      if (!groups.size || !api.attachBlobs) return;
+      const ids: string[] = [];
+      for (const [name, list] of groups) {
+        const it = await get().createItem({ title: name });
+        const sorted = [...list].sort((a, b) => ((a as File & { webkitRelativePath?: string }).webkitRelativePath ?? a.name).localeCompare((b as File & { webkitRelativePath?: string }).webkitRelativePath ?? b.name, undefined, { numeric: true }));
+        await api.attachBlobs(it.id, sorted);
+        ids.push(it.id);
+      }
+      await get().refresh();
+      get().notify(`폴더 ${ids.length}개를 가져왔어요`);
+      void autoCovers(ids, (id, coverUri) => get().updateItem(id, { coverUri }));
     },
 
     async detachFile(itemId, fileId) {
@@ -513,9 +545,8 @@ export const useApp = create<AppState>((set, get) => {
       views.filter((v) => v.id.startsWith(`arc:${a.id}`)).forEach((v) => void api.saveView(v));
       set({ archives, views });
     },
-    async createArchive(name, icon, formatId) {
-      const f = useFormats.getState().get(formatId);
-      const a: Archive = { id: uid(), name: name.trim() || f.name, icon, kind: f.base, format: f.custom ? f.id : null, position: get().archives.length + 20, pinned: false };
+    async createArchive(name, icon) {
+      const a: Archive = { id: uid(), name: name.trim() || "새 아카이브", icon, kind: "other", format: null, position: get().archives.length + 20, pinned: false };
       await api.saveArchive(a);
       const vs = archiveViews(a);
       await Promise.all(vs.map((v) => api.saveView(v)));

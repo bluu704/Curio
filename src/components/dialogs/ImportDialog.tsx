@@ -1,9 +1,7 @@
 import { CircleAlert, CircleCheck, ClipboardCopy, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { Kind, ListKind } from "@/api/types";
-import { KINDS } from "@/api/types";
+import type { ListKind } from "@/api/types";
 import { activeView, useApp, viewContext } from "@/store/app";
-import { KIND_CONFIG } from "@/lib/kinds";
 import { COLUMNS, TEMPLATE, parseStrict, statusWords } from "@/lib/strictImport";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
@@ -16,23 +14,26 @@ const EXAMPLE = `${TEMPLATE}
 export function ImportDialog() {
   const s = useApp();
   const ctx = viewContext(activeView(s));
-  const [kind, setKind] = useState<Kind>(ctx.kind ?? "anime");
+  const [arcId, setArcId] = useState<string>("");
   const [list, setList] = useState<ListKind>(ctx.list ?? "archive");
   const [text, setText] = useState("");
   const [fill, setFill] = useState(true);
   const [progress, setProgress] = useState<string | null>(null);
+  const archive = s.archives.find((a) => a.id === arcId) ?? s.archives[0];
+  const kind = archive?.kind ?? "other";
   const rows = useMemo(() => parseStrict(text, kind, list), [text, kind, list]);
   const open = s.dialog?.type === "import";
-  useEffect(() => { if (open) { setKind(ctx.kind ?? "anime"); setList(ctx.list ?? "archive"); } }, [open, ctx.kind, ctx.list]);
+  // the archive being looked at (falls back to the first one)
+  useEffect(() => { if (open) { setArcId(ctx.archiveId ?? s.archives[0]?.id ?? ""); setList(ctx.list ?? "archive"); } }, [open, ctx.archiveId, ctx.list]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!open) return null;
 
   const ok = rows.filter((r) => r.item);
   const bad = rows.filter((r) => !r.item);
-  const authorLabel = KIND_CONFIG[kind].tagCats[0][1];
+  const authorLabel = "작가";
 
   const run = async () => {
     setProgress(`${ok.length}개 추가 중…`);
-    const ids = await s.bulkCreate(ok.map((r) => r.item!));
+    const ids = await s.bulkCreate(ok.map((r) => ({ ...r.item!, archiveId: archive?.id, kind })));
     if (fill && kind !== "doujin") {
       const hit = await s.autofill(ids, (done, h) => setProgress(`정보 검색 중 ${done}/${ids.length} (찾음 ${h})`));
       s.notify(`${ids.length}개 추가 · ${hit}개 정보 자동 입력`);
@@ -45,8 +46,8 @@ export function ImportDialog() {
   return (
     <Modal open onClose={() => !progress && s.setDialog(null)} title="목록 붙여넣기로 가져오기" width={860}>
       <div className="flex flex-wrap items-center gap-2">
-        <select className="input h-8 w-36" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-          {KINDS.map((k) => <option key={k} value={k}>{KIND_CONFIG[k].label}</option>)}
+        <select className="input h-8 w-36" value={archive?.id ?? ""} onChange={(e) => setArcId(e.target.value)}>
+          {s.archives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
         <select className="input h-8 w-32" value={list} onChange={(e) => setList(e.target.value as ListKind)}>
           <option value="archive">아카이브</option>
@@ -63,6 +64,14 @@ export function ImportDialog() {
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Tab types a column separator instead of leaving the box
+          if (e.key !== "Tab" || e.shiftKey) return;
+          e.preventDefault();
+          const el = e.currentTarget, a = el.selectionStart, b = el.selectionEnd;
+          setText(text.slice(0, a) + "\t" + text.slice(b));
+          requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = a + 1; });
+        }}
         spellCheck={false}
         placeholder={EXAMPLE}
         className="mt-3 h-44 w-full resize-y rounded-xl border border-line bg-surface p-3 font-mono text-[length:calc(12px*var(--ts))] leading-relaxed outline-none focus:border-accent/60"

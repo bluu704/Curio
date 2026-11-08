@@ -55,7 +55,17 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
     }
     // Direct links resolve to exactly one candidate.
     if music::youtube_id(q).is_some() {
-        return if kind == Kind::Music { music::from_youtube(q) } else { music::video(q) }.map(|c| vec![c]);
+        // songs: YouTube Music links (and items already marked as music) are read as a track
+        return if kind == Kind::Music || q.contains("music.youtube.com") { music::from_youtube(q) } else { music::video(q) }.map(|c| vec![c]);
+    }
+    if let Some(c) = regex::Regex::new(r"anilist\.co/(?:anime|manga)/(\d+)").unwrap().captures(q) {
+        return anilist::fetch(&c[1]).map(|c| vec![c]);
+    }
+    if let Some(id) = more::tvmaze_id(q) {
+        return more::tvmaze_fetch(&id).map(|c| vec![c]);
+    }
+    if let Some(id) = more::vndb_id(q) {
+        return more::vndb_fetch(&id).map(|c| vec![c]);
     }
     if let Some(id) = regex::Regex::new(r"comic\.naver\.com/webtoon/(?:list|detail)\?(?:.*&)?titleId=(\d+)").unwrap().captures(q) {
         return naver::fetch(&id[1]).map(|c| vec![c]);
@@ -95,11 +105,18 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
         Kind::Game => vec![Box::new(|| steam::search(q)), Box::new(|| googleplay::search(q)), Box::new(|| more::vndb(q)), wiki],
         Kind::Music => vec![Box::new(|| music::search(q)), Box::new(|| music::search_youtube(q, true)), wiki],
         Kind::Movie => vec![wiki, Box::new(|| music::search_youtube(q, false))],
-        // no specific category (custom formats): ask every kind of source and let the user pick
+        // no specific kind (archives don't have one any more): ask every source and let the user pick
         Kind::Other => vec![
             Box::new(|| anilist::search(q, anilist::Scope::Anime)),
+            Box::new(|| anilist::search(q, anilist::Scope::Comic)),
+            Box::new(|| anilist::search(q, anilist::Scope::Novel)),
+            Box::new(|| naver::search(q, naver::Scope::Webtoon)),
+            Box::new(|| naver::search(q, naver::Scope::Novel)),
             Box::new(|| steam::search(q)),
+            Box::new(|| googleplay::search(q)),
+            Box::new(|| more::vndb(q)),
             Box::new(|| more::tvmaze(q)),
+            Box::new(|| more::google_books(q)),
             Box::new(|| more::open_library(q)),
             Box::new(|| music::search(q)),
             Box::new(|| music::search_youtube(q, false)),
@@ -144,7 +161,9 @@ pub fn fetch(provider: &str, id: &str) -> Result<Candidate> {
         "youtube-post" => social::yt_post(id),
         "spotify" | "soundcloud" => social::music_link(id),
         // these sources return full details in search already
-        "kitsu" | "tvmaze" | "openlibrary" | "googlebooks" | "vndb" => Err(Error::Unsupported("use the search result".into())),
+        "tvmaze" => more::tvmaze_fetch(id),
+        "vndb" => more::vndb_fetch(id),
+        "kitsu" | "openlibrary" | "googlebooks" => Err(Error::Unsupported("use the search result".into())),
         "deezer" => music::fetch_deezer(id),
         p => Err(Error::Invalid(format!("unknown provider {p}"))),
     }
