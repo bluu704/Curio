@@ -15,8 +15,13 @@ export function MainContent({ item, file }: { item: Item; file: FileRef }) {
   const openReader = useApp((s) => s.openReader);
   // one URL per file: the preview makes a fresh blob: URL on every call (would reload / restart the video)
   const [fetched, setFetched] = useState(0);
-  // web version: bring a PC file from Drive first (when it travels with the library)
-  useEffect(() => { if (api.ensureFile && !api.fileUrl(file)) void api.ensureFile(file).then(() => setFetched((n) => n + 1), () => undefined); }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** web version: bringing a PC file from Drive (null = not needed / done, string = why it failed) */
+  const [loading, setLoading] = useState<boolean | string>(false);
+  useEffect(() => {
+    if (!api.ensureFile || api.fileUrl(file)) return;
+    setLoading(true);
+    void api.ensureFile(file).then(() => { setLoading(false); setFetched((n) => n + 1); }, (e) => setLoading(e instanceof Error ? e.message : String(e)));
+  }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const url = useMemo(() => api.fileUrl(file), [file.id, fetched]); // eslint-disable-line react-hooks/exhaustive-deps
   if (file.kind === "image" && isAniName(file.name)) return <AniContent item={item} file={file} />;
   if (file.kind === "image") {
@@ -31,7 +36,9 @@ export function MainContent({ item, file }: { item: Item; file: FileRef }) {
   if (file.kind === "video") {
     const src = url;
     return src ? <VideoContent item={item} file={file} src={src} /> : (
-      <div className="mt-4 rounded-xl bg-subtle p-4 text-center text-[length:calc(12px*var(--ts))] text-muted">이 영상을 여기서 재생할 수 없어요</div>
+      <div className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-subtle p-4 text-center text-[length:calc(12px*var(--ts))] text-muted">
+        {loading === true ? <><Loader2 size={14} className="animate-spin" />영상 불러오는 중…</> : typeof loading === "string" ? loading : "이 영상을 여기서 재생할 수 없어요"}
+      </div>
     );
   }
   return <TextContent item={item} file={file} />;
