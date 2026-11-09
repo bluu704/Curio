@@ -16,6 +16,10 @@ fn year(v: &Value) -> Option<i64> {
 fn person(name: String, category: TagCategory, role: &str) -> Person {
     Person { name, category, role: Some(role.into()) }
 }
+/// `extra` from (key, value) pairs, skipping empty values.
+pub(crate) fn extras<const N: usize>(pairs: [(&str, Option<String>); N]) -> std::collections::BTreeMap<String, String> {
+    pairs.into_iter().filter_map(|(k, v)| v.filter(|v| !v.trim().is_empty()).map(|v| (k.to_string(), v))).collect()
+}
 
 // ---------------------------------------------------------------- Kitsu
 pub fn kitsu(q: &str, manga: bool) -> Result<Vec<Candidate>> {
@@ -38,6 +42,11 @@ pub fn kitsu(q: &str, manga: bool) -> Result<Vec<Candidate>> {
             banner_url: s(&a["coverImage"]["original"]).or_else(|| s(&a["coverImage"]["large"])),
             summary: s(&a["synopsis"]),
             detail: Some([Some(sub.to_uppercase()), eps.map(|e| format!("{e}화"))].into_iter().flatten().collect::<Vec<_>>().join(" · ")).filter(|x| !x.is_empty()),
+            extra: extras([
+                ("format", Some(sub.to_uppercase())), ("episodes", a["episodeCount"].as_i64().map(|e| e.to_string())),
+                ("chapters", a["chapterCount"].as_i64().map(|e| e.to_string())), ("volumes", a["volumeCount"].as_i64().map(|e| e.to_string())),
+                ("duration", a["episodeLength"].as_i64().map(|d| format!("{d}분"))), ("release", s(&a["startDate"])),
+            ]),
             url: Some(format!("https://kitsu.io/{kind}/{}", s(&a["slug"]).unwrap_or_default())),
             ..Default::default()
         }
@@ -58,6 +67,12 @@ fn tvmaze_show(sh: &Value) -> Candidate {
         genres: sh["genres"].as_array().into_iter().flatten().filter_map(s).collect(),
         people: net.into_iter().map(|n| person(n, TagCategory::Publisher, "Network")).collect(),
         detail: [s(&sh["type"]), s(&sh["language"]), s(&sh["status"])].into_iter().flatten().collect::<Vec<_>>().join(" · ").into(),
+        extra: extras([
+            ("network", s(&sh["network"]["name"]).or_else(|| s(&sh["webChannel"]["name"]))), ("language", s(&sh["language"])),
+            ("duration", sh["averageRuntime"].as_i64().or(sh["runtime"].as_i64()).map(|d| format!("{d}분"))),
+            ("format", s(&sh["type"])), ("release", s(&sh["premiered"])), ("country", s(&sh["network"]["country"]["name"])),
+            ("airing", s(&sh["status"]).map(|v| match v.as_str() { "Ended" => "완결".into(), "Running" => "방영 중".into(), "To Be Determined" => "미정".into(), _ => v })),
+        ]),
         url: s(&sh["url"]),
         ..Default::default()
     }
@@ -93,6 +108,7 @@ pub fn open_library(q: &str) -> Result<Vec<Candidate>> {
             cover_url: d["cover_i"].as_i64().map(|c| format!("https://covers.openlibrary.org/b/id/{c}-L.jpg")),
             people,
             genres: d["subject"].as_array().into_iter().flatten().filter_map(s).take(4).collect(),
+            extra: extras([("publisher", d["publisher"].as_array().and_then(|p| p.first()).and_then(s))]),
             url: s(&d["key"]).map(|k| format!("https://openlibrary.org{k}")),
             ..Default::default()
         }
@@ -118,6 +134,11 @@ pub fn google_books(q: &str) -> Result<Vec<Candidate>> {
             people,
             genres: b["categories"].as_array().into_iter().flatten().filter_map(s).take(3).collect(),
             detail: b["pageCount"].as_i64().map(|p| format!("{p}쪽")),
+            extra: extras([
+                ("pages", b["pageCount"].as_i64().map(|p| p.to_string())), ("publisher", s(&b["publisher"])), ("release", s(&b["publishedDate"])),
+                ("language", s(&b["language"])),
+                ("isbn", b["industryIdentifiers"].as_array().into_iter().flatten().find(|i| i["type"].as_str() == Some("ISBN_13")).or_else(|| b["industryIdentifiers"].as_array().and_then(|a| a.first())).and_then(|i| s(&i["identifier"]))),
+            ]),
             url: s(&b["infoLink"]),
             ..Default::default()
         }
@@ -150,6 +171,10 @@ fn vndb_query(filters: Value) -> Result<Vec<Candidate>> {
         summary: s(&r["description"]).map(|d| Regex::new(r"\[/?[a-z]+[^\]]*\]").unwrap().replace_all(&d, "").to_string()),
         people: r["developers"].as_array().into_iter().flatten().filter_map(|d| s(&d["name"])).map(|n| person(n, TagCategory::Studio, "Developer")).collect(),
         detail: Some("비주얼 노벨".into()),
+        extra: extras([
+            ("duration", r["length_minutes"].as_i64().map(|m| if m >= 60 { format!("{}시간", (m + 30) / 60) } else { format!("{m}분") })),
+            ("release", s(&r["released"])), ("developer", r["developers"].as_array().map(|d| d.iter().filter_map(|x| x["name"].as_str()).collect::<Vec<_>>().join(", "))),
+        ]),
         url: s(&r["id"]).map(|id| format!("https://vndb.org/{id}")),
         ..Default::default()
     }).collect())

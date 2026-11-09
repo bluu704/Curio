@@ -1,6 +1,7 @@
 import { Link2, Loader2 } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { iconOf } from "@/lib/icons";
+import { archiveKind } from "@/lib/itemFlags";
 import { useEffect, useState } from "react";
 import { api } from "@/api";
 import { activeView, useApp, viewContext } from "@/store/app";
@@ -39,7 +40,7 @@ export function LinkDialog() {
   }, [raw, open, picked]);
   if (!open) return null;
 
-  const k = cur?.kind ?? raw ?? "other";
+  const k = cur ? archiveKind(cur) : raw ?? "other";
   const v = text.trim();
   const isUrl = /^https?:\/\//i.test(v);
   const looksLikeLink = !isUrl && /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(v); // "example.com/…" without scheme

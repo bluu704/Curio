@@ -963,6 +963,19 @@ impl Library {
             url: cand.url.clone().filter(|_| current.url.is_none()).map(Some),
             code: cand.code.clone().map(Some),
             tag_ids: Some(tag_ids),
+            // a song found for a plain item makes it a song (lyrics, player)
+            kind: (current.kind == Kind::Other && cand.kind == Some(Kind::Music)).then_some(Kind::Music),
+            // facts for the user's own properties (album, length, episodes…): kept with the item, so a
+            // property made later can still be filled from them
+            props: (!cand.extra.is_empty()).then(|| {
+                let mut props = current.props.clone();
+                let mut extra = props.get("_extra").and_then(|v| v.as_object().cloned()).unwrap_or_default();
+                for (k, v) in &cand.extra {
+                    extra.insert(k.clone(), Value::String(v.clone()));
+                }
+                props.insert("_extra".into(), Value::Object(extra));
+                props
+            }),
             ..Default::default()
         };
         self.update_item(item_id, patch)?;

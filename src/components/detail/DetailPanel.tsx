@@ -8,7 +8,7 @@ import { useApp } from "@/store/app";
 import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import { LyricsSection } from "./LyricsSection";
-import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, mainFile, orderedFiles, withFlag } from "@/lib/itemFlags";
+import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, isSong, mainFile, orderedFiles, withFlag } from "@/lib/itemFlags";
 import { MainContent } from "./MainContent";
 import { LinksSection } from "./LinksSection";
 import { AudioPlayer, YouTubePlayer } from "./Players";
@@ -48,10 +48,11 @@ export function DetailPanel() {
   const primary = files.find(isReadable) ?? files.find(isViewable) ?? files[0];
   const act = primary ? fileAction(primary) : null;
   // the item's own file / its song already play inline → no extra open button for them
-  const inlineSong = item.kind === "music" ? item.files.find((f) => f.kind === "audio") : undefined;
+  const songItem = isSong(item, useApp.getState().archives.find((a) => a.id === item.archiveId)?.name);
+  const inlineSong = songItem ? item.files.find((f) => f.kind === "audio") : undefined;
   const showOpen = !!primary && primary.id !== mainFile(item)?.id && primary.id !== inlineSong?.id;
   const banner = api.mediaUrl(item.bannerUri);
-  const yt = item.kind === "music" ? ytId(item.url) : null;
+  const yt = songItem ? ytId(item.url) : null;
   const wish = item.list === "wishlist";
   const people = item.tags.filter((t) => ["author", "studio", "circle", "director"].includes(t.category)).slice(0, 3);
 
@@ -158,7 +159,7 @@ export function DetailPanel() {
           )}
           {yt && api.caps.platform !== "mock" && <YouTubePlayer itemId={item.id} videoId={yt} title={item.title} />}
           {/* a song file of the item plays here too (drives synced lyrics) */}
-          {item.kind === "music" && song && <AudioPlayer key={song.id} itemId={item.id} file={song} />}
+          {songItem && song && <AudioPlayer key={song.id} itemId={item.id} file={song} />}
 
           {main && <MainContent item={item} file={main} />}
 
@@ -168,7 +169,7 @@ export function DetailPanel() {
 
           <LinksSection item={item} />
 
-          {item.kind === "music" && <LyricsSection item={item} />}
+          {songItem && <LyricsSection item={item} />}
 
           <div className="mt-6 border-t border-line pt-5"><FileList item={item} /></div>
 

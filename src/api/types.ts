@@ -180,7 +180,7 @@ export interface CardConfig {
   showTitle: boolean;
   fields: CardField[];
   /** Detail-panel properties for this archive: hidden keys and extra (added) keys. */
-  props?: { hidden?: string[]; extra?: string[] };
+  props?: { hidden?: string[]; extra?: string[]; names?: Record<string, string> };
 }
 
 /**
@@ -275,4 +275,6 @@ export interface Candidate {
   code: string | null;
   /** one-line extra info, e.g. "TV · 2023 가을 · 28화", "극장판" */
   detail?: string | null;
+  /** facts for the user's own properties by canonical key (album, duration, episodes, pages…) */
+  extra?: Record<string, string>;
 }

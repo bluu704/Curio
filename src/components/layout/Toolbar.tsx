@@ -5,9 +5,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import { type CardAspect, type FileKind, type CardField, type CardSize, type Layout, type SortField } from "@/api/types";
-import { activeView, useApp } from "@/store/app";
+import { activeView, useApp, viewContext } from "@/store/app";
 import { allColumns, normalizeColumn } from "@/components/views/columns";
-import { propLabels } from "@/lib/properties";
+import { propName } from "@/lib/properties";
 import { FILE_META, STATUS_META, TAG_META } from "@/lib/meta";
 import { iconOf } from "@/lib/icons";
 import { useNarrow } from "@/hooks/useNarrow";
@@ -261,7 +261,7 @@ function FilterPanel() {
         </button>
       </section>
       <section>
-        <div className="label mb-1.5">태그 · 작가 · 장르 (모두 포함)</div>
+        <div className="label mb-1.5">{(["tag:tag", "tag:author", "tag:genre"] as const).map((k) => propName(k, viewContext(view).archiveId)).join(" · ")} (모두 포함)</div>
         <input className="input mb-1.5 h-7" placeholder="찾기…" value={tagSearch} onChange={(e) => setTagSearch(e.target.value)} />
         <div className="flex max-h-36 flex-wrap gap-1 overflow-y-auto">
           {tags.map((t) => {
@@ -290,7 +290,7 @@ function DisplayPanel() {
   const setCard = (patch: Partial<typeof c>) => s.patchView({ card: { ...c, ...patch } });
 
   if (view.layout === "table") {
-    const all = allColumns(s.fields, propLabels());
+    const all = allColumns(s.fields, viewContext(view).archiveId);
     const cur = [...new Set(view.columns.map(normalizeColumn))];
     const toggleCol = (k: string) => s.patchView({ columns: cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k] });
     return (
@@ -303,7 +303,8 @@ function DisplayPanel() {
     );
   }
 
-  const fields: [CardField, string][] = [["status", "상태"], ["rating", "평점"], ["author", "작가"], ["tags", "태그"], ["files", "파일 수"]];
+  const arc = viewContext(view).archiveId;
+  const fields: [CardField, string][] = [["status", propName("status", arc)], ["rating", "평점"], ["author", propName("tag:author", arc)], ["tags", propName("tag:tag", arc)], ["files", "파일 수"]];
   return (
     <div className="space-y-3 p-2">
       {(view.layout === "gallery" || view.layout === "masonry") && (

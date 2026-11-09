@@ -8,7 +8,7 @@ import { useApp } from "@/store/app";
 import { ACCENTS, FONTS, useTheme, type ThemeMode, type Weight } from "@/store/theme";
 import { STATUS_ICONS, TONES, TONE_HEX } from "@/lib/statuses";
 import { ICON_CHOICES, iconOf, suggestIcons } from "@/lib/icons";
-import { bindingFor, iconForBinding, useProps } from "@/lib/properties";
+import { bindingFor, iconForBinding, propName, useProps } from "@/lib/properties";
 import { Popover } from "@/components/ui/Popover";
 import { CustomSwatches } from "@/components/ui/CustomSwatches";
 import { CloudTab } from "./CloudTab";
@@ -138,7 +138,7 @@ function TextSettings() {
       </div>
       <div className="rounded-xl border border-line p-4">
         <div className="text-[length:calc(15px*var(--ts))] font-semibold">제목</div>
-        <div className="mt-1 text-[length:calc(12px*var(--ts))] text-muted">작가</div>
+        <div className="mt-1 text-[length:calc(12px*var(--ts))] text-muted">{propName("tag:author")}</div>
         <p className="mt-2 text-[length:calc(13px*var(--ts))] leading-relaxed">테스트용 문장입니다. Test · テスト · 测试 · Тест</p>
       </div>
     </div>

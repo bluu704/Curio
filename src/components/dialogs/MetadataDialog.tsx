@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/api";
 import type { Candidate, Kind } from "@/api/types";
 import { useApp } from "@/store/app";
+import { isSong } from "@/lib/itemFlags";
 import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
@@ -36,8 +37,9 @@ export function MetadataDialog() {
   useEffect(() => {
     if (!open || !item) return;
     const query = item.url ?? (item.title === "제목 없음" ? "" : item.title);
-    setKind(item.kind === "music" ? "music" : "other"); setQ(query); setHits(null); setErr(null); setOverwrite(item.title === "제목 없음");
-    if (query) void run(item.kind === "music" ? "music" : "other", query);
+    const k = isSong(item, useApp.getState().archives.find((a) => a.id === item.archiveId)?.name) ? "music" : "other";
+    setKind(k); setQ(query); setHits(null); setErr(null); setOverwrite(item.title === "제목 없음");
+    if (query) void run(k, query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item?.id]);
 

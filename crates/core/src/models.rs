@@ -347,4 +347,8 @@ pub struct Candidate {
     pub code: Option<String>,
     /// One-line extra info shown in the picker (e.g. "TV · 2023 가을 · 28화", "극장판").
     pub detail: Option<String>,
+    /// More facts for the user's own properties, by canonical key (album, duration, episodes, pages,
+    /// publisher, language, network, platform, isbn, format…). The app matches them to properties by name.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub extra: std::collections::BTreeMap<String, String>,
 }

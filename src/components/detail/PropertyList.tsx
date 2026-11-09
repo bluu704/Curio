@@ -8,7 +8,7 @@ import { STATUS_META } from "@/lib/meta";
 import { date } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { iconOf, suggestIcons } from "@/lib/icons";
-import { bindingFor, iconForBinding, isTagKey, useProps, type PropDef, type PropKey } from "@/lib/properties";
+import { bindingFor, iconForBinding, isTagKey, propName, useProps, type PropDef, type PropKey } from "@/lib/properties";
 import { Popover } from "@/components/ui/Popover";
 import { MenuItem } from "@/components/ui/Menu";
 import { IconGrid } from "@/components/ui/IconGrid";
@@ -35,7 +35,7 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
   const SM = STATUS_META[item.status];
 
   const nodeOf = (p: PropDef): Row | null => {
-    const base = { key: p.key, icon: iconOf(p.icon), label: p.name };
+    const base = { key: p.key, icon: iconOf(p.icon), label: propName(p.key, item.archiveId) };
     if (p.key === "status") return { ...base, node: (
       <Popover width={170} trigger={({ toggle }) => (
         <button className={cn("inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[length:calc(12px*var(--ts))] font-medium tone-bg", SM.tone)} onClick={toggle}><SM.icon size={13} />{SM.label}</button>
@@ -53,7 +53,7 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
     if (p.key === "category") return { ...base, node: <CategoryPicker item={item} /> };
     if (isTagKey(p.key)) {
       const c = p.key.slice(4) as TagCategory;
-      return { ...base, node: <TagInput item={item} category={c} label={p.name} />, wide: item.tags.filter((t) => t.category === c).length > 2 };
+      return { ...base, node: <TagInput item={item} category={c} label={base.label} />, wide: item.tags.filter((t) => t.category === c).length > 2 };
     }
     if (p.key === "url") return { ...base, node: <UrlProp value={item.url} onSave={(url) => void updateItem(item.id, { url })} /> };
     if (p.key === "code") return { ...base, node: <TextProp value={item.code} mono placeholder="ABC-123" onSave={(code) => void updateItem(item.id, { code })} /> };
@@ -65,6 +65,14 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
   };
   const rows = props.map(nodeOf).filter((r): r is Row => !!r);
 
+  /** 속성 편집: a name typed here is this archive's own name for the property ("" = back to the usual one). */
+  const rename = (key: PropKey, v: string) => {
+    const names = { ...(layout.names ?? {}) };
+    delete names[key];
+    const usual = propName(key, item.archiveId, true);
+    if (v.trim() && v.trim() !== usual) names[key] = v.trim();
+    s.setPropLayout(item.archiveId, { names });
+  };
   const toggle = (key: string) =>
     s.setPropLayout(item.archiveId, { hidden: hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key] });
   const visible = editing ? rows : rows.filter((r) => !hidden.includes(r.key));
@@ -100,7 +108,13 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
                 ) : (
                   <r.icon size={14} className="shrink-0" />
                 )}
-                <span className="truncate whitespace-nowrap">{r.label}</span>
+                {editing ? (
+                  <input key={r.label} defaultValue={r.label} onBlur={(e) => e.target.value !== r.label && rename(r.key, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} data-tip="이 아카이브에서 부를 이름"
+                    className="h-6 min-w-0 flex-1 rounded-md bg-transparent px-1 text-fg outline-none hover:bg-subtle focus:bg-subtle" />
+                ) : (
+                  <span className="truncate whitespace-nowrap">{r.label}</span>
+                )}
               </div>
               <div className={cn("min-w-0 flex-1", editing && "pointer-events-none")}>{r.node}</div>
               {editing && <DeleteProp name={r.label} onDelete={() => void removeProp(r.key)} />}

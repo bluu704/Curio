@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { api } from "@/api";
-import type { FieldDef, TagCategory } from "@/api/types";
+import type { FieldDef, Item, TagCategory } from "@/api/types";
 import { useApp } from "@/store/app";
+import { isMusicName } from "@/lib/itemFlags";
+import { TAG_META } from "@/lib/meta";
 
 /**
  * Properties shown on items: built-in ones bound to data the app fills automatically
@@ -51,6 +53,68 @@ const ALIASES: Record<Binding, string[]> = {
 };
 const norm = (s: string) => s.toLowerCase().replace(/[\s·_\-./]/g, "");
 
+/**
+ * Facts a source may bring besides the built-ins (Candidate.extra), and the property names that ask
+ * for them. A user's own property with one of these names is filled automatically.
+ */
+const EXTRA_ALIASES: Record<string, string[]> = {
+  album: ["앨범", "수록 앨범", "수록앨범", "음반", "album"],
+  duration: ["재생시간", "재생 시간", "길이", "곡 길이", "러닝타임", "러닝 타임", "상영시간", "상영 시간", "플레이타임", "플레이 타임", "분량", "시간", "회당 시간", "runtime", "duration", "length", "playtime"],
+  episodes: ["화수", "총 화수", "총화수", "에피소드", "에피소드 수", "회차", "편수", "episodes"],
+  chapters: ["챕터", "챕터 수", "연재 화수", "chapters"],
+  volumes: ["권수", "권", "단행본", "단행본 수", "volumes"],
+  pages: ["페이지", "페이지 수", "쪽수", "쪽", "pages"],
+  publisher: ["출판사", "퍼블리셔", "레이블", "발행처", "발행사", "publisher", "label"],
+  developer: ["개발사", "개발", "developer"],
+  studio: ["제작사", "스튜디오", "애니메이션 제작", "studio"],
+  language: ["언어", "language"],
+  network: ["방송사", "방송", "채널", "방영 채널", "network"],
+  platform: ["플랫폼", "기종", "지원 기종", "platform"],
+  isbn: ["isbn"],
+  format: ["형식", "포맷", "타입", "유형", "분류", "format", "type"],
+  release: ["발매일", "출시일", "개봉일", "방영일", "공개일", "발행일", "출간일", "release date", "released"],
+  season: ["시즌", "방영 시기", "분기", "season"],
+  source: ["원작 형식", "원작 종류", "원작 매체", "원작 분류", "source"],
+  airing: ["방영 상태", "연재 상태", "완결 여부", "진행 상황", "연재", "방영"],
+  country: ["국가", "나라", "제작 국가", "country"],
+  price: ["가격", "price"],
+  characters: ["캐릭터", "등장인물", "characters"],
+};
+/** The fact a property name asks for (album, duration…), if any. */
+export function extraFor(name: string): string | null {
+  const n = norm(name);
+  for (const [k, names] of Object.entries(EXTRA_ALIASES)) if (names.some((x) => norm(x) === n)) return k;
+  return null;
+}
+
+/**
+ * props patch that fills the item's empty user properties from the facts saved with it (props._extra),
+ * or null when there is nothing to fill.
+ */
+export function extraPatch(it: Item): Record<string, unknown> | null {
+  const extra = it.props?._extra as Record<string, string> | undefined;
+  if (!extra) return null;
+  const fields = useApp.getState().fields;
+  const props = { ...it.props };
+  let changed = false;
+  for (const p of useProps.getState().list) {
+    if (!p.key.startsWith("field:")) continue;
+    const f = fields.find((x) => `field:${x.id}` === p.key);
+    const k = extraFor(p.name) ?? (f ? extraFor(f.name) : null);
+    const raw = k ? extra[k] : undefined;
+    if (!f || !raw || (props[f.id] !== undefined && props[f.id] !== "" && props[f.id] !== null)) continue;
+    let v: unknown = raw;
+    if (f.type === "number") { const m = /\d+(\.\d+)?/.exec(raw); if (!m) continue; v = Number(m[0]); }
+    else if (f.type === "multi_select") v = raw.split(/\s*,\s*/).filter(Boolean);
+    else if (f.type === "select") { if (!f.options.includes(raw)) continue; }
+    else if (f.type === "date") { if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) continue; }
+    else if (f.type === "checkbox") continue;
+    props[f.id] = v;
+    changed = true;
+  }
+  return changed ? props : null;
+}
+
 /** The built-in a property name stands for, if any. */
 export function bindingFor(name: string): Binding | null {
   const n = norm(name);
@@ -58,10 +122,40 @@ export function bindingFor(name: string): Binding | null {
   return null;
 }
 export const iconForBinding = (b: Binding) => BINDING_ICON[b];
-/** Tag properties' current names (for table columns). */
-export const propLabels = (): [TagCategory, string][] =>
-  useProps.getState().list.filter((p) => p.key.startsWith("tag:")).map((p) => [p.key.slice(4) as TagCategory, p.name]);
+/** What a song archive calls a property while the library-wide name is still the default one. */
+const SONG_NAMES: Partial<Record<PropKey, [string, string]>> = { "tag:author": ["작가", "아티스트"], "tag:series": ["시리즈", "앨범"] };
+
+/**
+ * A property's name as shown in an archive: the archive's own name for it (renamed in 속성 편집),
+ * else — in a song archive — 아티스트 / 앨범 for the default 작가 / 시리즈, else the library-wide name.
+ */
+export function propName(key: PropKey, archiveId?: string | null, ignoreOwn = false): string {
+  const s = useApp.getState();
+  const own = ignoreOwn ? undefined : s.views.find((v) => v.id === (archiveId ? `arc:${archiveId}` : "sys:all"))?.card.props?.names?.[key];
+  if (own) return own;
+  const global = useProps.getState().list.find((p) => p.key === key)?.name
+    ?? DEFAULT_PROPS.find((p) => p.key === key)?.name
+    ?? (isTagKey(key) ? TAG_META[key.slice(4) as TagCategory].label : key);
+  const song = SONG_NAMES[key];
+  const arc = archiveId ? s.archives.find((a) => a.id === archiveId) : undefined;
+  if (song && global === song[0] && arc && (arc.kind === "music" || isMusicName(arc.name))) return song[1];
+  return global;
+}
+
+/** Tag properties' current names (for table columns), as the given archive shows them. */
+export const propLabels = (archiveId?: string | null): [TagCategory, string][] =>
+  useProps.getState().list.filter((p) => p.key.startsWith("tag:")).map((p) => [p.key.slice(4) as TagCategory, propName(p.key, archiveId)]);
 export const isTagKey = (k: PropKey): k is `tag:${TagCategory}` => k.startsWith("tag:");
+
+/** Fill a newly made property on every item that has a saved fact for it. */
+async function backfill() {
+  const items = (await api.listItems({}).catch(() => [])).filter((it) => it.props?._extra);
+  for (const it of items) {
+    const props = extraPatch(it);
+    if (props) await api.updateItem(it.id, { props }).catch(() => undefined);
+  }
+  if (items.length) await useApp.getState().refresh();
+}
 
 interface Stored { list: PropDef[] }
 
@@ -89,6 +183,7 @@ export const useProps = create<{
     if (key.startsWith("field:") && patch.name) {
       const f = useApp.getState().fields.find((x) => `field:${x.id}` === key);
       if (f) await useApp.getState().saveField({ ...f, name: patch.name });
+      if (extraFor(patch.name)) void backfill();
     }
   },
   async remove(key) {
@@ -109,6 +204,7 @@ export const useProps = create<{
     await useApp.getState().saveField({ id, name: n, type, options: [], position: useApp.getState().fields.length });
     const p: PropDef = { key: `field:${id}`, name: n, icon: icon ?? "tag" };
     await get().save([...get().list, p]);
+    if (extraFor(n)) void backfill(); // e.g. "앨범": filled on every item whose source told it
     return p;
   },
 }));

@@ -2,6 +2,7 @@ import type { Kind, ListKind, NewItem, NewTag, Status, TagCategory } from "@/api
 import { KIND_CONFIG } from "./kinds";
 import { DEFAULT_STATUSES } from "./statuses";
 import { useApp } from "@/store/app";
+import { propName, type PropKey } from "./properties";
 
 /**
  * Fixed-format paste import. One item per line, columns in this exact order,
@@ -21,6 +22,13 @@ import { useApp } from "@/store/app";
 export const COLUMNS = ["제목", "상태", "평점", "작가", "장르", "태그", "링크", "메모"] as const;
 export const TEMPLATE = COLUMNS.join(" | ");
 
+/** The columns as the archive names its properties (작가 may be 아티스트, 링크 may be 주소…). */
+export function columnNames(archiveId?: string | null): string[] {
+  const key: Partial<Record<(typeof COLUMNS)[number], PropKey>> = { 상태: "status", 작가: "tag:author", 장르: "tag:genre", 태그: "tag:tag", 링크: "url" };
+  return COLUMNS.map((c) => (key[c] ? propName(key[c]!, archiveId) : c));
+}
+export const templateFor = (archiveId?: string | null) => columnNames(archiveId).join(" | ");
+
 /** Status words = the user's status labels without spaces (e.g. "볼 예정" → "볼예정"). */
 export const statusWords = (): Record<string, Status> =>
   Object.fromEntries((useApp.getState().statuses.length ? useApp.getState().statuses : DEFAULT_STATUSES).map((d) => [d.label.replace(/\s/g, ""), d.id]));
@@ -39,7 +47,7 @@ export function parseStrict(text: string, kind: Kind, list: ListKind): StrictRow
     const line = raw.trim();
     if (!line || line.startsWith("#")) return;
     const cells = (raw.includes("\t") ? raw.split("\t") : raw.split("|")).map((c) => c.trim());
-    if (cells[0] === "제목" && cells[1] === "상태") return; // header
+    if (cells[0] === "제목") return; // header line (whatever the other columns are called)
     const [title, status, rating, author, genre, tag, link, memo] = cells;
     const errors: string[] = [];
 

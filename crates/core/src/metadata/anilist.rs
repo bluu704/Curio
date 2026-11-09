@@ -11,10 +11,11 @@ pub enum Scope {
 }
 
 const FIELDS: &str = r#"
-  id siteUrl type format countryOfOrigin season seasonYear episodes chapters volumes
+  id siteUrl type format countryOfOrigin season seasonYear episodes chapters volumes duration source status
+  startDate { year month day }
   title { romaji english native } synonyms
   coverImage { extraLarge large } bannerImage
-  startDate { year } description(asHtml: false) genres
+  description(asHtml: false) genres
   studios(isMain: true) { nodes { name } }
   staff(sort: [RELEVANCE], perPage: 25) { edges { role node { name { full native } } } }
   characters(sort: [ROLE, RELEVANCE], perPage: 6) { edges { voiceActors(language: JAPANESE) { name { full native } } } }
@@ -145,7 +146,7 @@ fn to_candidate(m: &Value) -> Candidate {
     let season = match m["season"].as_str().unwrap_or("") { "WINTER" => "겨울", "SPRING" => "봄", "SUMMER" => "여름", "FALL" => "가을", _ => "" };
     let when = m["seasonYear"].as_i64().map(|y| if season.is_empty() { format!("{y}") } else { format!("{y} {season}") });
     let count = m["episodes"].as_i64().map(|e| format!("{e}화")).or_else(|| m["volumes"].as_i64().map(|v| format!("{v}권")));
-    let detail = [Some(fmt.to_string()).filter(|x| !x.is_empty()), when, count].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+    let detail = [Some(fmt.to_string()).filter(|x| !x.is_empty()), when.clone(), count].into_iter().flatten().collect::<Vec<_>>().join(" · ");
     let series = series_name(s(&t["english"]).or_else(|| s(&t["romaji"])).as_deref().unwrap_or(""));
 
     Candidate {
@@ -164,6 +165,26 @@ fn to_candidate(m: &Value) -> Candidate {
         series,
         url: s(&m["siteUrl"]),
         code: None,
+        extra: {
+            let mut x = std::collections::BTreeMap::new();
+            let mut put = |k: &str, v: Option<String>| { if let Some(v) = v.filter(|v| !v.is_empty()) { x.insert(k.to_string(), v); } };
+            put("format", Some(fmt.to_string()));
+            put("episodes", m["episodes"].as_i64().map(|e| e.to_string()));
+            put("chapters", m["chapters"].as_i64().map(|e| e.to_string()));
+            put("volumes", m["volumes"].as_i64().map(|e| e.to_string()));
+            put("duration", m["duration"].as_i64().map(|d| format!("{d}분")));
+            put("season", when.clone());
+            put("source", m["source"].as_str().map(|v| match v {
+                "ORIGINAL" => "오리지널", "MANGA" => "만화", "LIGHT_NOVEL" => "라이트노벨", "WEB_NOVEL" => "웹소설", "NOVEL" => "소설",
+                "VISUAL_NOVEL" => "비주얼 노벨", "VIDEO_GAME" => "게임", "WEB_MANGA" => "웹툰", "OTHER" => "기타", other => other,
+            }.to_string()));
+            put("airing", m["status"].as_str().map(|v| match v {
+                "FINISHED" => "완결", "RELEASING" => "연재·방영 중", "NOT_YET_RELEASED" => "공개 예정", "CANCELLED" => "중단", "HIATUS" => "휴재", other => other,
+            }.to_string()));
+            put("studio", m["studios"]["nodes"].as_array().map(|a| a.iter().filter_map(|n| n["name"].as_str()).collect::<Vec<_>>().join(", ")));
+            put("release", { let d = &m["startDate"]; d["year"].as_i64().map(|y| match (d["month"].as_i64(), d["day"].as_i64()) { (Some(mo), Some(da)) => format!("{y}-{mo:02}-{da:02}"), _ => y.to_string() }) });
+            x
+        },
     }
 }
 

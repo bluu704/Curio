@@ -409,3 +409,17 @@ fn cloud_switch_off_keeps_item_here() {
     sync(&b, &mut cloud);
     assert_eq!(b.list_items(&Default::default()).unwrap().len(), 2, "back on");
 }
+
+/// Facts beyond the built-ins (album, length…) stay with the item for the user's own properties.
+#[test]
+fn candidate_extras_are_kept() {
+    let (l, _d) = lib();
+    let it = l.create_item(NewItem { title: "밤편지".into(), ..Default::default() }).unwrap();
+    let mut c = Candidate { provider: "test".into(), id: "1".into(), title: "밤편지".into(), kind: Some(Kind::Music), ..Default::default() };
+    c.extra.insert("album".into(), "Palette".into());
+    c.extra.insert("duration".into(), "4:13".into());
+    let saved = l.apply_candidate(&it.id, c, false).unwrap();
+    assert_eq!(saved.kind, Kind::Music, "a plain item that turns out to be a song becomes one");
+    assert_eq!(saved.props["_extra"]["album"], "Palette");
+    assert_eq!(saved.props["_extra"]["duration"], "4:13");
+}

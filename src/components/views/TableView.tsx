@@ -6,15 +6,15 @@ import { dragItem } from "./dragDrop";
 import { PickBox, usePicked } from "./PickBox";
 import { pickClick } from "@/store/pick";
 import type { ColumnKey, Item } from "@/api/types";
-import { useApp } from "@/store/app";
+import { activeView, useApp, viewContext } from "@/store/app";
 import { allColumns, normalizeColumn, TITLE_COL, type ColumnDef } from "./columns";
-import { propLabels } from "@/lib/properties";
 import { cn } from "@/lib/cn";
 import { Cover } from "@/components/ui/Cover";
 
 export function TableView({ items, columns }: { items: Item[]; columns: ColumnKey[] }) {
   const fields = useApp((s) => s.fields);
-  const defs = allColumns(fields, propLabels());
+  const arcId = useApp((s) => viewContext(activeView(s)).archiveId ?? null);
+  const defs = allColumns(fields, arcId);
   const picked = [...new Set(columns.map(normalizeColumn))].map((k) => defs.find((d) => d.key === k)).filter(Boolean) as ColumnDef[];
   const template = [TITLE_COL.width, ...picked.map((c) => c.width)].join(" ");
   const [wrap, setWrap] = useState<HTMLDivElement | null>(null);

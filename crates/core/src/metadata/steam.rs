@@ -79,5 +79,12 @@ pub fn fetch(id: &str) -> Result<Candidate> {
         url: Some(format!("https://store.steampowered.com/app/{id}")),
         code: None,
         detail: None,
+        extra: [
+            ("platform", ["windows", "mac", "linux"].iter().filter(|p| d["platforms"][**p].as_bool() == Some(true)).map(|p| match *p { "windows" => "Windows", "mac" => "macOS", _ => "Linux" }).collect::<Vec<_>>().join(", ")),
+            ("developer", strs("developers").join(", ")),
+            ("publisher", strs("publishers").join(", ")),
+            ("release", d["release_date"]["date"].as_str().unwrap_or("").to_string()),
+            ("price", d["price_overview"]["final_formatted"].as_str().unwrap_or("").to_string()),
+        ].into_iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| (k.to_string(), v)).collect(),
     })
 }

@@ -648,6 +648,8 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       c.people.forEach((p) => add(p.name, p.category));
       c.genres.forEach((g) => add(g, "genre"));
       if (c.series) add(c.series, "series");
+      if (it.kind === "other" && c.kind === "music") it.kind = "music";
+      if (c.extra && Object.keys(c.extra).length) it.props = { ...it.props, _extra: { ...((it.props?._extra as object) ?? {}), ...c.extra } };
       it.updatedAt = now(); commit();
       return delay(it);
     },

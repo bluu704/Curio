@@ -57,6 +57,10 @@ pub fn hitomi(id: &str) -> Result<Candidate> {
         series: parody,
         url: Some(format!("https://hitomi.la/galleries/{id}.html")),
         detail: Some(detail.join(" · ")).filter(|d| !d.is_empty()),
+        extra: super::more::extras([
+            ("language", lang.map(String::from)), ("pages", (pages > 0).then(|| pages.to_string())), ("format", Some(kind.to_string())),
+            ("characters", Some(names(&v["characters"], "character").join(", "))), ("release", v["date"].as_str().map(|d| d.chars().take(10).collect())),
+        ]),
         ..Default::default()
     })
 }

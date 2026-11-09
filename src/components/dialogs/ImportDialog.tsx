@@ -1,14 +1,17 @@
 import { CircleAlert, CircleCheck, ClipboardCopy, Loader2 } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { iconOf } from "@/lib/icons";
+import { archiveKind } from "@/lib/itemFlags";
 import { useEffect, useMemo, useState } from "react";
 import type { ListKind } from "@/api/types";
 import { activeView, useApp, viewContext } from "@/store/app";
-import { COLUMNS, TEMPLATE, parseStrict, statusWords } from "@/lib/strictImport";
+import { columnNames, parseStrict, statusWords, templateFor } from "@/lib/strictImport";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
 
-const EXAMPLE = `${TEMPLATE}
+const example = (header: string, song: boolean) => song ? `${header}
+밤편지 | 완료 | 5 | 아이유 | 발라드 | 최애 | https://music.youtube.com/watch?v=… |
+Supernova | 감상중 | | aespa` : `${header}
 장송의 프리렌 | 완료 | 5 | 야마다 카네히토, 아베 츠카사 | 판타지 | 명작 | | 최애
 약사의 혼잣말 | 감상중`;
 
@@ -22,7 +25,7 @@ export function ImportDialog() {
   const [fill, setFill] = useState(true);
   const [progress, setProgress] = useState<string | null>(null);
   const archive = s.archives.find((a) => a.id === arcId) ?? s.archives[0];
-  const kind = archive?.kind ?? "other";
+  const kind = archiveKind(archive);
   const rows = useMemo(() => parseStrict(text, kind, list), [text, kind, list]);
   const open = s.dialog?.type === "import";
   // the archive being looked at (falls back to the first one)
@@ -31,7 +34,8 @@ export function ImportDialog() {
 
   const ok = rows.filter((r) => r.item);
   const bad = rows.filter((r) => !r.item);
-  const authorLabel = "작가";
+  const cols = columnNames(archive?.id);
+  const template = templateFor(archive?.id);
 
   const run = async () => {
     setProgress(`${ok.length}개 추가 중…`);
@@ -50,11 +54,11 @@ export function ImportDialog() {
       <div className="flex flex-wrap items-center gap-2">
         <Select className="h-8 w-36" value={archive?.id ?? ""} onChange={setArcId} options={s.archives.map((a) => ({ value: a.id, label: a.name, icon: iconOf(a.icon) }))} />
         <Select className="h-8 w-32" value={list} onChange={setList} options={[{ value: "archive", label: "아카이브" }, { value: "wishlist", label: "위시리스트" }]} />
-        <button className="btn ml-auto border border-line" onClick={() => void navigator.clipboard?.writeText(TEMPLATE)}><ClipboardCopy size={14} />템플릿 복사</button>
+        <button className="btn ml-auto border border-line" onClick={() => void navigator.clipboard?.writeText(template)}><ClipboardCopy size={14} />템플릿 복사</button>
       </div>
 
       <div className="mt-3 rounded-xl bg-subtle p-3 text-[length:calc(12px*var(--ts))] leading-relaxed text-muted">
-        <div className="mb-1 font-mono text-[length:calc(12px*var(--ts))] text-fg">{COLUMNS.map((c, i) => <span key={c}>{i > 0 && <span className="text-muted"> | </span>}{c === "작가" ? authorLabel : c}</span>)}</div>
+        <div className="mb-1 font-mono text-[length:calc(12px*var(--ts))] text-fg">{cols.map((c, i) => <span key={i}>{i > 0 && <span className="text-muted"> | </span>}{c}</span>)}</div>
         한 줄에 하나 · <b className="text-fg">|</b> 또는 <b className="text-fg">Tab</b>으로 구분 · 제목만 필수
       </div>
 
@@ -70,7 +74,7 @@ export function ImportDialog() {
           requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = a + 1; });
         }}
         spellCheck={false}
-        placeholder={EXAMPLE}
+        placeholder={example(template, kind === "music")}
         className="mt-3 h-44 w-full resize-y rounded-xl border border-line bg-surface p-3 font-mono text-[length:calc(12px*var(--ts))] leading-relaxed outline-none focus:border-accent/60"
       />
 

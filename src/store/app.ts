@@ -1,4 +1,4 @@
-import { cloudProps, FLAG, isCloudSynced, isMainKind } from "@/lib/itemFlags";
+import { archiveKind, cloudProps, FLAG, isCloudSynced, isMainKind, isSong } from "@/lib/itemFlags";
 import { particle } from "@/lib/josa";
 import { autoCovers } from "@/lib/autoCover";
 import { create } from "zustand";
@@ -8,7 +8,7 @@ import type {
   TagCategory, View,
 } from "@/api/types";
 import { DEFAULT_VIEWS, archiveViews } from "@/lib/defaults";
-import { useProps } from "@/lib/properties";
+import { extraPatch, useProps } from "@/lib/properties";
 import { uid } from "@/lib/format";
 import { isViewable } from "@/components/viewer/files";
 import { isReadable } from "@/components/reader/source";
@@ -98,7 +98,7 @@ interface AppState {
   deleteStatus(id: string, fallback: string): Promise<void>;
   openMenu(m: ContextMenu): void;
   /** Show/hide/add detail-panel properties for an archive (saved in its view). */
-  setPropLayout(archiveId: ID | null, patch: { hidden?: string[]; extra?: string[] }): void;
+  setPropLayout(archiveId: ID | null, patch: { hidden?: string[]; extra?: string[]; names?: Record<string, string> }): void;
   attachPaths(itemId: ID, paths: string[]): Promise<FileRef[]>;
   attachBlobs(itemId: ID, files: File[]): Promise<FileRef[]>;
   detachFile(itemId: ID, fileId: ID): Promise<void>;
@@ -159,7 +159,7 @@ export const viewContext = (v: View): ImportTarget => {
   const a = v.query.archiveId ? useApp.getState().archives.find((x) => x.id === v.query.archiveId) : undefined;
   return {
     archiveId: a?.id,
-    kind: a?.kind ?? (v.query.kinds?.length === 1 ? v.query.kinds[0] : undefined),
+    kind: a ? archiveKind(a) : (v.query.kinds?.length === 1 ? v.query.kinds[0] : undefined),
     list: v.query.list,
   };
 };
@@ -180,6 +180,15 @@ export const useApp = create<AppState>((set, get) => {
     for (const it of created) {
       const f = it.files.length === 1 ? it.files[0] : null;
       if (f && isMainKind(f)) await api.updateItem(it.id, { props: { ...it.props, [FLAG.main]: f.id } }).catch(() => undefined);
+    }
+  };
+  /** Fill the items' empty user properties from the facts their source brought (see extraPatch). */
+  const fillExtras = async (items: Item[]) => {
+    for (const it of items) {
+      const props = extraPatch(it);
+      if (!props) continue;
+      const saved = await api.updateItem(it.id, { props }).catch(() => null);
+      if (saved) mapItem(it.id, () => saved);
     }
   };
   /** After a restore: archives / folders may have come back too. */
@@ -339,6 +348,8 @@ export const useApp = create<AppState>((set, get) => {
     async select(id) {
       set({ selectedId: id, detail: id ? get().items.find((i) => i.id === id) ?? null : null, linkBack: [] });
       if (id) await reloadDetail();
+      const d = get().detail;
+      if (d && d.id === id) { await fillExtras([d]); if (get().selectedId === id) await reloadDetail(); }
       // items added in the background (watched folders) may still lack a cover: make one now
       if (id) void autoCovers([id], (i, coverUri) => get().updateItem(i, { coverUri }));
     },
@@ -492,10 +503,11 @@ export const useApp = create<AppState>((set, get) => {
     async applyMetadata(itemId, c, overwriteTitle) {
       const saved = await api.applyMetadata(itemId, c, overwriteTitle);
       mapItem(itemId, () => saved);
+      await fillExtras([saved]);
       set({ tags: await api.listTags() });
       void get().refresh();
       // songs: look for lyrics in the background
-      if (saved.kind === "music" && !saved.props?._lyrics) void get().fetchLyrics(itemId, true);
+      if ((isSong(saved, get().archives.find((a) => a.id === saved.archiveId)?.name) || c.kind === "music") && !saved.props?._lyrics) void get().fetchLyrics(itemId, true);
     },
 
     async fetchLyrics(itemId, quiet) {
@@ -519,6 +531,7 @@ export const useApp = create<AppState>((set, get) => {
         // be polite to public APIs (AniList allows ~90 req/min)
         if (i < itemIds.length - 1) await new Promise((r) => setTimeout(r, 700));
       }
+      await fillExtras(await Promise.all(itemIds.map((id) => api.getItem(id).catch(() => null))).then((l) => l.filter((x): x is Item => !!x)));
       set({ tags: await api.listTags() });
       await get().refresh();
       await reloadDetail();
