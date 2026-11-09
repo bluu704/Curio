@@ -30,6 +30,45 @@ export function cleanTitle(t: string, artist: string) {
   return s.trim();
 }
 
+/** A cover video's title → the original song (see the desktop's music::parse_cover). */
+export interface Cover { title: string; alts: string[]; artists: string[] }
+const COVER = /cover|커버|歌ってみた|唄ってみた|불러\s*(보았|봤|봄)|翻唱/i;
+function splitOutside(s: string, sep: string): [string, string] | null {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if ("([（【「『".includes(ch)) depth++;
+    else if (")]）】」』".includes(ch)) depth--;
+    else if (depth === 0 && s.startsWith(sep, i)) return [s.slice(0, i), s.slice(i + sep.length)];
+  }
+  return null;
+}
+export function parseCover(raw: string, singer: string): Cover | null {
+  if (!COVER.test(raw)) return null;
+  const tag = /[【[(（][^】\])）]*(cover|커버|歌ってみた|唄ってみた|mv|ver\.?|full|short|live|official)[^】\])）]*[】\])）]/gi;
+  const feat = /\s*[(（]?\s*(?:feat\.|ft\.|feat\s|ft\s|with\s)[^)）]*[)）]?/gi;
+  const n = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
+  const singerN = n(singer);
+  let core = /[『「]([^』」]+)[』」]/.exec(raw)?.[1]
+    ?? raw.split(/[ㅣ|｜]/).map((p) => p.replace(tag, "").trim()).find((p) => { const x = n(p); return !!x && !COVER.test(p) && !(singerN.length >= 2 && (x.includes(singerN) || singerN.includes(x))); })
+    ?? "";
+  core = core.replace(tag, "").replace(new RegExp(COVER.source, "gi"), "");
+  const split = splitOutside(core, " / ");
+  const titlePart = split ? split[0] : core;
+  const artists = split ? [split[1].replace(feat, "").trim()] : [];
+  const alts: string[] = [];
+  for (const m of titlePart.matchAll(/[([（]([^)\]）]+)[)\]）]/g)) {
+    const inner = m[1].trim();
+    if (/^(feat\.?|ft\.?|with)\b/i.test(inner)) continue;
+    const ta = inner.includes(" / ") ? inner.split(" / ") : inner.includes("/") ? inner.split("/") : null;
+    if (ta) { alts.push(ta[0].trim()); artists.push(ta[1].replace(feat, "").trim()); }
+    else { alts.push(inner); artists.push(inner); } // the original title or the original singer: both are tried
+  }
+  const title = titlePart.replace(/[([（][^)\]）]*[)\]）]/g, "").replace(feat, "").trim().replace(/^[-·\s]+|[-·\s]+$/g, "");
+  if (!title) return null;
+  return { title, alts, artists: artists.filter((a) => a && !sameText(a, singer)) };
+}
+
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 
 interface ItunesHit { album: string; year: number | null; genre: string | null; length: string | null; artwork: string | null }
@@ -120,19 +159,25 @@ export async function youtubeSong(url: string): Promise<Candidate | null> {
   const raw = o.title ?? "";
   if (!raw) return null;
   const artist = (o.author_name ?? "").replace(/\s-\sTopic$/, "").trim();
-  const song = cleanTitle(raw, artist) || raw;
-  const hit = await itunesSong(artist, song, [raw]).catch(() => null);
+  const cover = parseCover(raw, artist);
+  const song = cover?.title || cleanTitle(raw, artist) || raw;
+  // a cover is the singer's own take: no album / release of the original
+  const hit = cover ? null : await itunesSong(artist, song, [raw]).catch(() => null);
   const thumb = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
   const extra: Record<string, string> = {};
   if (hit?.album) extra.album = hit.album;
   if (hit?.length) extra.duration = hit.length;
   if (hit?.year) extra.release = String(hit.year);
+  if (cover?.artists.length) extra.original_artist = cover.artists.join(", ");
+  if (cover?.alts.length) extra.alt_titles = cover.alts.join(" | ");
   return {
-    provider: "youtube", id: vid, title: song, altTitles: raw !== song ? [raw] : [], kind: "music",
+    provider: "youtube", id: vid, title: song, altTitles: [...new Set([...(cover?.alts ?? []), ...(raw !== song ? [raw] : [])])], kind: "music",
     year: hit?.year ?? null, coverUrl: hit?.artwork ?? thumb, bannerUrl: thumb, summary: null,
     people: artist ? artist.split(/\s*,\s*/).map((name) => ({ name, category: "author" as const, role: "Artist" })) : [],
     genres: hit?.genre ? [hit.genre] : [], series: hit?.album || null,
-    url: `https://music.youtube.com/watch?v=${vid}`, code: null, // a song links to YouTube Music detail: hit?.album ? `${hit.album}${hit.year ? ` · ${hit.year}` : ""}` : null,
+    url: `https://music.youtube.com/watch?v=${vid}`, code: null, // a song links to YouTube Music
+    // "(…)" may be the original title or its singer: shown as written
+    detail: cover ? ["커버", ...new Set([...cover.alts, ...cover.artists])].join(" · ") : hit?.album ? `${hit.album}${hit.year ? ` · ${hit.year}` : ""}` : null,
     extra,
   };
 }

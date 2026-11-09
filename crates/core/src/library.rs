@@ -1048,9 +1048,34 @@ impl Library {
     /// Returns the updated item, or None when no lyrics were found.
     pub fn fetch_lyrics(&self, item_id: &str) -> Result<Option<Item>> {
         let it = self.get_item(item_id)?;
-        let artist = it.tags.iter().find(|t| t.category == TagCategory::Author).map(|t| t.name.clone()).unwrap_or_default();
+        let authors: Vec<String> = it.tags.iter().filter(|t| t.category == TagCategory::Author).map(|t| t.name.clone()).collect();
         let vid = it.url.as_deref().and_then(metadata::music_video_id);
-        let Some(l) = metadata::lyrics::find_lyrics(&it.title, &artist, vid.as_deref())? else { return Ok(None) };
+        let extra = it.props.get("_extra").cloned().unwrap_or(Value::Null);
+        let ex = |k: &str| extra.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let split = |s: String, sep: &str| s.split(sep).map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect::<Vec<_>>();
+        let mut q = metadata::lyrics::SongQuery {
+            title: it.title.clone(),
+            alts: split(ex("alt_titles"), "|"),
+            // a cover: the original singer first (that is who the song is filed under), then the item's people
+            artists: [split(ex("original_artist"), ","), authors.clone()].concat(),
+            duration: metadata::lyrics::length_secs(&ex("duration")),
+        };
+        if let Some(src) = &it.source {
+            q.alts.extend(src["altTitles"].as_array().into_iter().flatten().filter_map(|x| x.as_str().map(String::from)));
+        }
+        // titles written as a cover ("Surges (Orangestar)ㅣ…【COVER】") — also for items saved before covers were read
+        for raw in [it.title.clone()].into_iter().chain(q.alts.clone()) {
+            if let Some(c) = metadata::parse_cover(&raw, authors.first().map(String::as_str).unwrap_or("")) {
+                if raw == it.title { q.title = c.title.clone(); } else { q.alts.push(c.title.clone()); }
+                q.alts.extend(c.alts);
+                q.artists = [c.artists, q.artists].concat();
+            }
+        }
+        q.artists.dedup();
+        if q.duration == 0 {
+            if let Some(v) = &vid { q.duration = metadata::track_length(v); }
+        }
+        let Some(l) = metadata::lyrics::find_lyrics_q(&q, vid.as_deref())? else { return Ok(None) };
         let mut props = it.props.clone();
         props.insert("_lyrics".into(), serde_json::to_value(l)?);
         Ok(Some(self.update_item(item_id, ItemPatch { props: Some(props), ..Default::default() })?))

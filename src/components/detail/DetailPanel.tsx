@@ -161,7 +161,13 @@ export function DetailPanel() {
               <div className="absolute bottom-2 left-3 text-[length:calc(11px*var(--ts))] text-white/80">YouTube에서 재생</div>
             </a>
           )}
-          {yt && api.caps.platform !== "mock" && <YouTubePlayer itemId={item.id} videoId={yt} title={item.title} />}
+          {yt && api.caps.platform !== "mock" && <YouTubePlayer itemId={item.id} videoId={yt} title={item.title} onDuration={(sec) => {
+            // remember the length once; a song still without lyrics gets another, length-checked try
+            const ex = (item.props?._extra ?? {}) as Record<string, string>;
+            if (ex.duration) return;
+            const props = { ...item.props, _extra: { ...ex, duration: `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}` } };
+            void updateItem(item.id, { props }).then(() => { if (!item.props?._lyrics) void useApp.getState().fetchLyrics(item.id, true); });
+          }} />}
           {/* a song file of the item plays here too (drives synced lyrics) */}
           {songItem && song && <AudioPlayer key={song.id} itemId={item.id} file={song} />}
 

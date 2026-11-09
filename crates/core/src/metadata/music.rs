@@ -32,6 +32,74 @@ fn clean_title(t: &str, artist: &str) -> String {
     s.trim().to_string()
 }
 
+/// A cover video's title, read the way people write them:
+/// "Surges (Orangestar)ㅣ아카네 리제(Akane Lize) 【COVER】" → Surges, by Orangestar
+/// "로스트원의 호곡 [ロストワンの号哭 / Neru]ㅣ…【COVER】" → 로스트원의 호곡 / ロストワンの号哭, by Neru
+/// "『Surges / Orangestar (feat.夏背＆ルワン)』を歌ってみた。【…】" → Surges, by Orangestar
+#[derive(Debug, Default, PartialEq)]
+pub struct Cover { pub title: String, pub alts: Vec<String>, pub artists: Vec<String> }
+
+/// `s` split at the first `sep` that is not inside brackets.
+fn split_outside_brackets<'a>(s: &'a str, sep: &str) -> Option<(&'a str, &'a str)> {
+    let mut depth = 0i32;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' | '[' | '（' | '【' | '「' | '『' => depth += 1,
+            ')' | ']' | '）' | '】' | '」' | '』' => depth -= 1,
+            _ if depth == 0 && s[i..].starts_with(sep) => return Some((&s[..i], &s[i + sep.len()..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+pub fn parse_cover(raw: &str, singer: &str) -> Option<Cover> {
+    let re_cover = regex::Regex::new(r"(?i)cover|커버|歌ってみた|唄ってみた|불러\s*(보았|봤|봄)|翻唱").unwrap();
+    if !re_cover.is_match(raw) {
+        return None;
+    }
+    let tag = regex::Regex::new(r"(?i)[【\[(（][^】\])）]*(cover|커버|歌ってみた|唄ってみた|mv|ver\.?|full|short|live|official)[^】\])）]*[】\])）]").unwrap();
+    let feat = regex::Regex::new(r"(?i)\s*[(（]?\s*(?:feat\.|ft\.|feat\s|ft\s|with\s)[^)）]*[)）]?").unwrap();
+    // 『…』「…」 hold the song when present
+    let core = regex::Regex::new(r"[『「]([^』」]+)[』」]").unwrap().captures(raw).map(|c| c[1].to_string()).unwrap_or_else(|| {
+        let singer_n = super::lyrics::norm_pub(singer);
+        raw.split(['ㅣ', '|', '｜'])
+            .map(|p| tag.replace_all(p, "").trim().to_string())
+            .find(|p| {
+                let n = super::lyrics::norm_pub(p);
+                !n.is_empty() && !re_cover.is_match(p) && !(singer_n.len() >= 2 && (n.contains(&singer_n) || singer_n.contains(&n)))
+            })
+            .unwrap_or_default()
+    });
+    let core = tag.replace_all(&core, "");
+    let core = re_cover.replace_all(&core, "");
+    // "Title / Artist" outside brackets
+    let (title_part, mut artists): (String, Vec<String>) = match split_outside_brackets(&core, " / ") {
+        Some((t, a)) => (t.to_string(), vec![feat.replace_all(a, "").trim().to_string()]),
+        None => (core.to_string(), vec![]),
+    };
+    let mut alts = vec![];
+    let feat_only = regex::Regex::new(r"(?i)^(feat\.?|ft\.?|with)\b").unwrap();
+    for c in regex::Regex::new(r"[(\[（]([^)\]）]+)[)\]）]").unwrap().captures_iter(&title_part) {
+        let inner = c[1].trim();
+        if feat_only.is_match(inner) {
+            continue;
+        }
+        match inner.split_once(" / ").or_else(|| inner.split_once('/')) {
+            Some((t, a)) => { alts.push(t.trim().to_string()); artists.push(feat.replace_all(a, "").trim().to_string()); }
+            // one word in brackets: the original title or the original singer — both are tried
+            None => { alts.push(inner.to_string()); artists.push(inner.to_string()); }
+        }
+    }
+    let title = regex::Regex::new(r"[(\[（][^)\]）]*[)\]）]").unwrap().replace_all(&title_part, "");
+    let title = feat.replace_all(&title, "").trim().trim_matches(|c: char| c == '-' || c == '·' || c.is_whitespace()).to_string();
+    if title.is_empty() {
+        return None;
+    }
+    artists.retain(|a| !a.is_empty() && !title_matches(a, singer));
+    Some(Cover { title, alts, artists })
+}
+
 fn deezer_track(v: &Value) -> Candidate {
     let album = &v["album"];
     let artist = v["artist"]["name"].as_str().unwrap_or("").to_string();
@@ -165,11 +233,19 @@ pub fn fetch_deezer(id: &str) -> Result<Candidate> {
 pub fn from_youtube(input: &str) -> Result<Candidate> {
     let vid = youtube_id(input).or_else(|| (input.len() == 11).then(|| input.to_string())).ok_or_else(|| Error::Invalid("not a YouTube link".into()))?;
     let watch = format!("https://www.youtube.com/watch?v={vid}");
-    let o: Value = agent().get("https://www.youtube.com/oembed").query("url", &watch).query("format", "json").call().map_err(net)?.into_json()?;
+    // oEmbed; videos that refuse embedding answer 404 there → YouTube Music's own title / artist instead
+    let o: Value = match agent().get("https://www.youtube.com/oembed").query("url", &watch).query("format", "json").call() {
+        Ok(r) => r.into_json()?,
+        Err(e) => match ytm_track(&vid) {
+            Some(t) if t.title.is_some() => serde_json::json!({ "title": t.title, "author_name": t.artist.unwrap_or_default() }),
+            _ => return Err(net(e)),
+        },
+    };
     let raw_title = o["title"].as_str().unwrap_or("").to_string();
     let mut channel = o["author_name"].as_str().unwrap_or("").trim_end_matches(" - Topic").trim().to_string();
     let yt_channel = channel.clone(); // YouTube's own spelling (YouTube Music localises artist names)
-    let mut song = clean_title(&raw_title, &channel);
+    let cover = parse_cover(&raw_title, &channel);
+    let mut song = cover.as_ref().map(|c| c.title.clone()).unwrap_or_else(|| clean_title(&raw_title, &channel));
     // YouTube Music's own facts (clean song title, artists, album, year, length)
     let ytm = ytm_track(&vid).unwrap_or_default();
     if let Some(t) = ytm.title.as_ref().filter(|t| !t.is_empty() && ytm.album.is_some()) { song = t.clone(); }
@@ -202,13 +278,16 @@ pub fn from_youtube(input: &str) -> Result<Candidate> {
     // Apple Music: album / first release year / genre / square cover when YouTube Music has none (music videos)
     // YouTube's spelling first (Apple Music rarely knows YouTube Music's localised artist names)
     let also = [raw_title.as_str()];
-    let hit = itunes(&yt_channel, &song, &also).or_else(|| (yt_channel != channel).then(|| itunes(&channel, &song, &also)).flatten());
+    // a cover is the singer's own take: no album / release of the original
+    let hit = if cover.is_some() { None } else { itunes(&yt_channel, &song, &also).or_else(|| (yt_channel != channel).then(|| itunes(&channel, &song, &also)).flatten()) };
     if let Some(h) = hit {
         if c.series.is_none() && !h.album.is_empty() { c.series = Some(h.album.clone()); }
         c.year = c.year.or(h.year);
         length = length.or(h.length);
         if let Some(g) = h.genre { c.genres.push(g); }
         if let Some(a) = h.artwork { c.cover_url = Some(a); } // square album art; the video still is the banner
+    } else if cover.is_some() {
+        // nothing more to look up for a cover
     } else if let Ok(hits) = search(&format!("{channel} {song}")) {
         // Deezer as a last resort, where both artist and title agree
         let best = hits.into_iter().find(|h| {
@@ -224,7 +303,23 @@ pub fn from_youtube(input: &str) -> Result<Candidate> {
             }
         }
     }
-    c.extra = super::more::extras([("album", c.series.clone()), ("duration", length), ("release", c.year.map(|y| y.to_string()))]);
+    c.extra = super::more::extras([
+        ("album", c.series.clone()), ("duration", length), ("release", c.year.map(|y| y.to_string())),
+        // a cover: the original artist and the title's other spellings (for lyrics)
+        ("original_artist", cover.as_ref().map(|x| x.artists.join(", "))),
+        ("alt_titles", cover.as_ref().map(|x| x.alts.join(" | "))),
+    ]);
+    if let Some(cv) = &cover {
+        for a in &cv.alts {
+            if !c.alt_titles.contains(a) { c.alt_titles.push(a.clone()); }
+        }
+        // "(…)" may be the original title or its singer: shown as written
+        let mut parts = vec!["커버".to_string()];
+        for x in cv.alts.iter().chain(&cv.artists) {
+            if !parts.contains(x) { parts.push(x.clone()); }
+        }
+        c.detail = Some(parts.join(" · "));
+    }
     Ok(c)
 }
 
@@ -288,6 +383,23 @@ mod tests {
         assert_eq!(clean_title("YOASOBI「アイドル」 Official Music Video", "YOASOBI"), "アイドル");
         assert_eq!(clean_title("IU - Love wins all (Official MV)", "IU"), "Love wins all");
         assert_eq!(clean_title("Ditto", "NewJeans"), "Ditto");
+    }
+}
+
+#[cfg(test)]
+mod cover_titles {
+    use super::parse_cover;
+    #[test]
+    fn covers() {
+        let c = parse_cover("Surges (Orangestar)ㅣ아카네 리제(Akane Lize) 【COVER】", "아카네 리제 AKANE LIZE").unwrap();
+        assert_eq!((c.title.as_str(), c.artists.contains(&"Orangestar".to_string())), ("Surges", true));
+        let c = parse_cover("로스트원의 호곡 [ロストワンの号哭 / Neru]ㅣ아카네 리제(Akane Lize) 【COVER】", "아카네 리제 AKANE LIZE").unwrap();
+        assert_eq!((c.title.as_str(), c.alts[0].as_str(), c.artists[0].as_str()), ("로스트원의 호곡", "ロストワンの号哭", "Neru"));
+        let c = parse_cover("『Surges / Orangestar (feat.夏背＆ルワン)』を死に物狂いで歌ってみた。【虹色侍 ずま】", "虹色侍").unwrap();
+        assert_eq!((c.title.as_str(), c.artists[0].as_str()), ("Surges", "Orangestar"));
+        let c = parse_cover("내일의 밤하늘 초계반(アスノヨゾラ哨戒班)ㅣ아카네 리제(Akane Lize) 【COVER】", "아카네 리제 AKANE LIZE").unwrap();
+        assert_eq!((c.title.as_str(), c.alts[0].as_str()), ("내일의 밤하늘 초계반", "アスノヨゾラ哨戒班"));
+        assert!(parse_cover("YOASOBI「アイドル」 Official Music Video", "Ayase / YOASOBI").is_none(), "not a cover");
     }
 }
 

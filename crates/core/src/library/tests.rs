@@ -435,3 +435,18 @@ fn autofill_song_gets_youtube_music_link() {
     println!("{:?} {:?}", got.url, got.props.get("_extra"));
     assert!(got.url.as_deref().is_some_and(|u| u.starts_with("https://music.youtube.com/watch?v=")), "{:?}", got.url);
 }
+
+/// The extension's way: a VTuber cover finds the original song's lyrics by title + original singer + length.
+#[test]
+#[ignore = "network"]
+fn cover_lyrics() {
+    let (l, _d) = lib();
+    let it = l.create_item(NewItem { title: "x".into(), kind: Some(Kind::Music), url: Some("https://www.youtube.com/watch?v=fTqvR0U0EC4".into()), ..Default::default() }).unwrap();
+    assert!(l.autofill(&it.id).unwrap());
+    let got = l.get_item(&it.id).unwrap();
+    println!("title {:?} people {:?} extra {:?}", got.title, got.tags.iter().map(|t| &t.name).collect::<Vec<_>>(), got.props.get("_extra"));
+    let ly = l.fetch_lyrics(&it.id).unwrap().expect("lyrics found");
+    let text = ly.props["_lyrics"]["plain"].as_str().unwrap().to_string();
+    println!("{}", text.chars().take(120).collect::<String>());
+    assert!(text.len() > 50);
+}

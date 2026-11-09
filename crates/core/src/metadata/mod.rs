@@ -240,6 +240,13 @@ pub fn youtube_music_link(title: &str, artist: &str) -> Option<String> {
     lyrics::ytmusic_find(title, artist).into_iter().next().map(|v| format!("https://music.youtube.com/watch?v={v}"))
 }
 
+pub use music::{parse_cover, Cover};
+
+/// Length of a YouTube video / song in seconds, from YouTube Music (0 = unknown).
+pub fn track_length(video_id: &str) -> u32 {
+    music::ytm_track(video_id).and_then(|t| t.length).map(|l| lyrics::length_secs(&l)).unwrap_or(0)
+}
+
 pub fn music_video_id(url: &str) -> Option<String> {
     music::youtube_id(url)
 }

@@ -24,6 +24,9 @@ fn norm(s: &str) -> String {
     let no_paren = Regex::new(r"\(.*?\)|\[.*?\]").unwrap().replace_all(s, "");
     no_paren.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
+pub(crate) fn norm_pub(s: &str) -> String {
+    norm(s)
+}
 fn is_cjk(s: &str) -> bool {
     s.chars().any(|c| matches!(c as u32, 0x1100..=0x11FF | 0x3040..=0x30FF | 0x3130..=0x318F | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF))
 }
@@ -124,16 +127,47 @@ pub fn ytmusic_lyrics(video_id: &str) -> Result<Option<Lyrics>> {
     }))
 }
 
+/// What is known about the song whose lyrics are wanted.
+#[derive(Debug, Clone, Default)]
+pub struct SongQuery {
+    pub title: String,
+    /// other spellings of the title (Japanese original, the full video title…)
+    pub alts: Vec<String>,
+    /// who might have sung it first (the original artist of a cover, then the item's people)
+    pub artists: Vec<String>,
+    /// length in seconds (0 = unknown) — decides when the singer cannot be compared
+    pub duration: u32,
+}
+
+fn secs(t: &str) -> u32 {
+    let mut it = t.trim().rsplit(':').filter_map(|x| x.parse::<u32>().ok());
+    let (s, m, h) = (it.next().unwrap_or(0), it.next().unwrap_or(0), it.next().unwrap_or(0));
+    h * 3600 + m * 60 + s
+}
+
 /// Songs (video ids) on YouTube Music matching title + artist, most certain first.
 pub(crate) fn ytmusic_find(title: &str, artist: &str) -> Vec<String> {
-    // "songs" filter first (the songs tab), then the mixed results
+    let q = SongQuery { title: title.into(), artists: if artist.is_empty() { vec![] } else { vec![artist.into()] }, ..Default::default() };
+    ytmusic_search(&q, title)
+}
+
+/// The extension's findSong: YouTube Music search (songs tab, then everything) for one spelling of the title.
+/// - title: the same, a long-enough part, or another script (좋은 날 ↔ Good Day: only top results)
+/// - singer: same → yes; clearly someone else → no; can't compare (아카네 리제 ↔ Orangestar, 아이유 ↔ IU)
+///   → only an identical title whose length is within 3 s
+fn ytmusic_search(q: &SongQuery, title: &str) -> Vec<String> {
+    let want = norm(title);
+    if want.is_empty() {
+        return vec![];
+    }
+    let query = format!("{title} {}", q.artists.first().map(String::as_str).unwrap_or("")).trim().to_string();
     for params in [Some("EgWKAQIIAWoKEAkQBRAKEAMQBA=="), None] {
-        let mut body = json!({ "query": format!("{title} {artist}").trim() });
+        let mut body = json!({ "query": query });
         if let Some(p) = params {
             body["params"] = json!(p);
         }
         let Ok(res) = ytm("search", body) else { continue };
-        let found = ytmusic_hits(&res, title, artist);
+        let found = ytmusic_hits(&res, q, &want, params.is_some());
         if !found.is_empty() {
             return found;
         }
@@ -141,8 +175,7 @@ pub(crate) fn ytmusic_find(title: &str, artist: &str) -> Vec<String> {
     vec![]
 }
 
-fn ytmusic_hits(res: &Value, title: &str, artist: &str) -> Vec<String> {
-    let mut out: Vec<(u8, String)> = vec![];
+fn ytmusic_hits(res: &Value, q: &SongQuery, want: &str, songs_tab: bool) -> Vec<String> {
     fn walk(v: &Value, f: &mut dyn FnMut(&Value)) {
         match v {
             Value::Object(m) => {
@@ -156,34 +189,49 @@ fn ytmusic_hits(res: &Value, title: &str, artist: &str) -> Vec<String> {
             _ => {}
         }
     }
+    let vid_re = Regex::new(r#""videoId":"([\w-]{11})""#).unwrap();
+    let len_re = Regex::new(r"(?:^|\D)(\d{1,2}):(\d{2})(?:\D|$)").unwrap();
+    let long = |x: &str| x.chars().count() >= if is_cjk(x) { 2 } else { 4 };
+    let mut out: Vec<(u8, String)> = vec![];
+    let mut idx = 0usize;
     walk(res, &mut |r| {
         let s = r.to_string();
-        // songs (ATV) and official videos (OMV / official source) only — never fan uploads
-        if !s.contains("MUSIC_VIDEO_TYPE_ATV") && !s.contains("MUSIC_VIDEO_TYPE_OMV") && !s.contains("MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC") {
-            return;
-        }
-        let vid_re = Regex::new(r#""videoId":"([\w-]{11})""#).unwrap();
-        let Some(vid) = r["playlistItemData"]["videoId"].as_str().map(String::from).or_else(|| vid_re.captures(&s).map(|c| c[1].to_string())) else { return };
-        let vid = vid.as_str();
         let col = |i: usize| &r["flexColumns"][i]["musicResponsiveListItemFlexColumnRenderer"]["text"];
-        if !title_ok(title, &runs(col(0))) {
+        let name = runs(col(0));
+        let Some(vid) = r["playlistItemData"]["videoId"].as_str().map(String::from).or_else(|| vid_re.captures(&s).map(|c| c[1].to_string())) else { return };
+        let n = norm(&name);
+        let rank = idx;
+        idx += 1;
+        if n.is_empty() || out.iter().any(|(_, v)| *v == vid) {
             return;
         }
+        let same = n == want;
+        let part = (long(want) && n.contains(want)) || (long(&n) && want.contains(n.as_str()));
+        let other = !same && !part && is_cjk(want) != is_cjk(&n);
+        if !(same || part || other) {
+            return;
+        }
+        // singer = the words that link to an artist page ("노래 • 가수 • 앨범 • 3:10")
         let by: Vec<&str> = col(1)["runs"].as_array().into_iter().flatten()
             .filter(|x| x["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str().is_some_and(|b| b.starts_with("UC")))
             .filter_map(|x| x["text"].as_str())
             .collect();
-        let m = if artist.is_empty() { None } else { artist_ok(artist, &by.join(", ")) };
-        if m == Some(false) {
-            return;
-        }
-        let rank = if m == Some(true) { 0 } else { 1 } + if s.contains("MUSIC_VIDEO_TYPE_ATV") { 0 } else { 2 };
-        if !out.iter().any(|(_, v)| v == vid) {
-            out.push((rank, vid.to_string()));
+        let by = by.join(", ");
+        let verdicts: Vec<Option<bool>> = q.artists.iter().map(|a| artist_ok(a, &by)).collect();
+        let m = if verdicts.contains(&Some(true)) { Some(true) } else if !verdicts.is_empty() && verdicts.iter().all(|v| *v == Some(false)) { Some(false) } else { None };
+        let len = len_re.captures(&runs(col(1))).map(|c| c[1].parse::<u32>().unwrap_or(0) * 60 + c[2].parse::<u32>().unwrap_or(0)).unwrap_or(0);
+        let len_ok = q.duration > 0 && len > 0 && len.abs_diff(q.duration) <= 3;
+        let ok = if other {
+            (m == Some(true) || (m.is_none() && songs_tab && len_ok)) && rank < 2
+        } else {
+            m == Some(true) || (m.is_none() && (q.artists.is_empty() || (same && len_ok)))
+        };
+        if ok {
+            out.push((if m == Some(true) { 0 } else { 1 }, vid));
         }
     });
     out.sort_by_key(|(r, _)| *r);
-    out.into_iter().take(4).map(|(_, v)| v).collect()
+    out.into_iter().take(5).map(|(_, v)| v).collect()
 }
 
 // ---------------------------------------------------------------- LRCLIB
@@ -193,19 +241,31 @@ fn strip_lrc(s: &str) -> String {
 }
 
 pub fn lrclib(title: &str, artist: &str) -> Result<Option<Lyrics>> {
+    let q = SongQuery { title: title.into(), artists: if artist.is_empty() { vec![] } else { vec![artist.into()] }, ..Default::default() };
+    lrclib_q(&q, title)
+}
+
+/// LRCLIB, same rules: the singer agrees, or (can't compare) an identical title whose length is within 3 s.
+fn lrclib_q(q: &SongQuery, title: &str) -> Result<Option<Lyrics>> {
     let mut best: Option<(u8, Value)> = None;
-    for q in [format!("{title} {artist}"), title.to_string()] {
-        let hits: Value = agent().get("https://lrclib.net/api/search").query("q", q.trim()).call().map_err(net)?.into_json()?;
+    let artist = q.artists.first().map(String::as_str).unwrap_or("");
+    for query in [format!("{title} {artist}"), title.to_string()] {
+        let hits: Value = agent().get("https://lrclib.net/api/search").query("q", query.trim()).call().map_err(net)?.into_json()?;
         for h in hits.as_array().into_iter().flatten() {
             let (t, a) = (h["trackName"].as_str().unwrap_or(""), h["artistName"].as_str().unwrap_or(""));
             if h["instrumental"].as_bool() == Some(true) || !title_ok(title, t) {
                 continue;
             }
-            let m = if artist.is_empty() { None } else { artist_ok(artist, a) };
-            let rank = match m {
-                Some(true) => 0,
-                None if title_forms(t).contains(&norm(title)) => 1,
-                _ => continue,
+            let verdicts: Vec<Option<bool>> = q.artists.iter().map(|x| artist_ok(x, a)).collect();
+            let len = h["duration"].as_f64().unwrap_or(0.0) as u32;
+            let len_ok = q.duration > 0 && len > 0 && len.abs_diff(q.duration) <= 3;
+            let someone_else = !verdicts.is_empty() && verdicts.iter().all(|v| *v == Some(false));
+            let rank = if verdicts.contains(&Some(true)) {
+                0
+            } else if !someone_else && title_forms(t).contains(&norm(title)) && len_ok {
+                1 // singer can't be compared (or unknown): identical title and the same length
+            } else {
+                continue;
             } + if h["syncedLyrics"].is_string() { 0 } else { 1 };
             if best.as_ref().is_none_or(|(r, _)| rank < *r) {
                 best = Some((rank, h.clone()));
@@ -223,26 +283,49 @@ pub fn lrclib(title: &str, artist: &str) -> Result<Option<Lyrics>> {
 }
 
 /// Best lyrics for a song: the video's own YouTube Music lyrics, then the same song found on
-/// YouTube Music by title, then LRCLIB.
+/// YouTube Music (each spelling of the title), then LRCLIB.
 pub fn find_lyrics(title: &str, artist: &str, video_id: Option<&str>) -> Result<Option<Lyrics>> {
+    let q = SongQuery { title: title.into(), artists: if artist.is_empty() { vec![] } else { vec![artist.into()] }, ..Default::default() };
+    find_lyrics_q(&q, video_id)
+}
+
+pub fn find_lyrics_q(q: &SongQuery, video_id: Option<&str>) -> Result<Option<Lyrics>> {
     if let Some(v) = video_id {
         if let Ok(Some(l)) = ytmusic_lyrics(v) {
             return Ok(Some(l));
         }
     }
-    // without the singer a title alone ("Watch", "Home"…) finds someone else's song: don't guess
-    if artist.trim().is_empty() {
+    // with neither a singer nor a length, a title alone ("Watch", "Home"…) finds someone else's song
+    if q.artists.is_empty() && q.duration == 0 {
         return Ok(None);
     }
-    for v in ytmusic_find(title, artist) {
-        if Some(v.as_str()) == video_id {
-            continue;
+    let mut titles = vec![q.title.clone()];
+    for a in &q.alts {
+        if !a.trim().is_empty() && !titles.iter().any(|t| norm(t) == norm(a)) {
+            titles.push(a.clone());
         }
-        if let Ok(Some(l)) = ytmusic_lyrics(&v) {
+    }
+    for t in &titles {
+        for v in ytmusic_search(q, t) {
+            if Some(v.as_str()) == video_id {
+                continue;
+            }
+            if let Ok(Some(l)) = ytmusic_lyrics(&v) {
+                return Ok(Some(l));
+            }
+        }
+    }
+    for t in &titles {
+        if let Some(l) = lrclib_q(q, t)? {
             return Ok(Some(l));
         }
     }
-    lrclib(title, artist)
+    Ok(None)
+}
+
+/// "2:27" → 147
+pub fn length_secs(t: &str) -> u32 {
+    secs(t)
 }
 
 #[cfg(test)]

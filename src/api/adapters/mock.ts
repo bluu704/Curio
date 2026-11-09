@@ -9,7 +9,7 @@ import { DEFAULT_VIEWS } from "@/lib/defaults";
 import { searchAniList } from "@/lib/anilist";
 import { kindFromLink } from "@/lib/links";
 import { ARCHIVE_KINDS } from "@/lib/kinds";
-import { itunesSearch, sameText, youtubeId, youtubeSong, youtubeVideo } from "@/lib/webMusic";
+import { itunesSearch, parseCover, sameText, youtubeId, youtubeSong, youtubeVideo } from "@/lib/webMusic";
 import { DEFAULT_STATUSES } from "@/lib/statuses";
 
 /** A library starts with one plain archive (fixed id, so every device makes the same one). */
@@ -676,22 +676,44 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
     async fetchLyrics(itemId) {
       // web: LRCLIB straight from the browser (the desktop app reads YouTube Music's own lyrics first)
       const it = find(itemId);
-      const artist = it.tags.find((t) => t.category === "author")?.name ?? "";
-      // without the singer a title alone ("Watch", "Home"…) finds someone else's song: don't guess
-      if (!artist || !it.title.trim()) return null;
-      const norm = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
-      let hits: { trackName: string; artistName: string; duration?: number; plainLyrics?: string; syncedLyrics?: string; instrumental?: boolean }[];
-      try {
-        hits = await (await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${it.title} ${artist}`.trim())}`, { signal: AbortSignal.timeout(10000) })).json();
-      } catch { throw new Error("가사 사이트에 접속할 수 없어요"); }
-      // length known (from the song's source) → it must agree within 3 s
-      const len = /^(\d+):(\d{2})$/.exec(String((it.props?._extra as Record<string, string> | undefined)?.duration ?? ""));
+      const authors = it.tags.filter((t) => t.category === "author").map((t) => t.name);
+      const ex = (it.props?._extra ?? {}) as Record<string, string>;
+      // what the song is: its title spellings, who sang it first (a cover's original singer), its length
+      let title = it.title;
+      const alts = [...(ex.alt_titles ?? "").split("|"), ...((it.source?.altTitles as string[] | undefined) ?? [])].map((x) => x.trim()).filter(Boolean);
+      let artists = [...(ex.original_artist ?? "").split(",").map((x) => x.trim()).filter(Boolean), ...authors];
+      for (const raw of [it.title, ...alts]) {
+        const c = parseCover(raw, authors[0] ?? "");
+        if (!c) continue;
+        if (raw === it.title) title = c.title; else alts.push(c.title);
+        alts.push(...c.alts);
+        artists = [...c.artists, ...artists];
+      }
+      const len = /^(\d+):(\d{2})$/.exec(ex.duration ?? "");
       const secs = len ? Number(len[1]) * 60 + Number(len[2]) : 0;
-      const t = norm(it.title);
-      const h = hits.find((x) => !x.instrumental
-        && (norm(x.trackName) === t || (t.length >= 3 && norm(x.trackName).includes(t)))
-        && (sameText(x.artistName, artist) || artist.split(/[,/&]/).some((a) => a.trim() && sameText(x.artistName, a.trim())))
-        && (!secs || !x.duration || Math.abs(x.duration - secs) <= 3));
+      // neither a singer nor a length: a title alone ("Watch", "Home"…) finds someone else's song
+      if ((!artists.length && !secs) || !title.trim()) return null;
+      const norm = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
+      const script = (x: string) => /[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(x);
+      type Hit = { trackName: string; artistName: string; duration?: number; plainLyrics?: string; syncedLyrics?: string; instrumental?: boolean };
+      let h: Hit | undefined;
+      for (const t of [...new Set([title, ...alts])]) {
+        let hits: Hit[];
+        try {
+          hits = await (await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${t} ${artists[0] ?? ""}`.trim())}`, { signal: AbortSignal.timeout(10000) })).json();
+        } catch { throw new Error("가사 사이트에 접속할 수 없어요"); }
+        const want = norm(t);
+        const rank = (x: Hit) => {
+          if (x.instrumental || !(norm(x.trackName) === want || (want.length >= 3 && norm(x.trackName).includes(want)))) return -1;
+          // singer: same → yes; someone else → no; can't compare (아카네 리제 ↔ Orangestar) → identical title + length within 3 s
+          if (artists.some((a) => sameText(x.artistName, a))) return 0;
+          const someoneElse = artists.length > 0 && artists.every((a) => script(a) === script(x.artistName));
+          const lenOk = !!secs && !!x.duration && Math.abs(x.duration - secs) <= 3;
+          return !someoneElse && norm(x.trackName) === want && lenOk ? 1 : -1;
+        };
+        const ok = hits.map((x) => [rank(x), x] as const).filter(([r]) => r >= 0).sort((a, b) => a[0] - b[0] || Number(!a[1].syncedLyrics) - Number(!b[1].syncedLyrics));
+        if (ok.length) { h = ok[0][1]; break; }
+      }
       if (!h) return null;
       const synced = h.syncedLyrics ?? "";
       it.props = { ...it.props, _lyrics: { plain: h.plainLyrics || synced.replace(/^\s*(\[[0-9:.]+\]\s*)+/gm, ""), synced, source: "LRCLIB" } };
