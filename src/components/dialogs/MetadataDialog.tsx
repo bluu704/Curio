@@ -4,6 +4,7 @@ import { api } from "@/api";
 import type { Candidate, Kind } from "@/api/types";
 import { useApp } from "@/store/app";
 import { isSong } from "@/lib/itemFlags";
+import { ytKey } from "@/lib/ytApi";
 import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
@@ -17,6 +18,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
 /** Search several sources at once and apply one hit (cover/banner downloaded, people → tags). */
 export function MetadataDialog() {
   const { dialog, setDialog, items, detail, applyMetadata } = useApp();
+  const noYtKey = api.caps.platform === "web" && !ytKey();
   const open = dialog?.type === "metadata";
   const item = open ? (detail?.id === dialog.itemId ? detail : items.find((i) => i.id === dialog.itemId)) : undefined;
   const [kind, setKind] = useState<Kind>("anime");
@@ -66,6 +68,10 @@ export function MetadataDialog() {
 
       {err && <div className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-[length:calc(12px*var(--ts))] text-danger">{err}</div>}
       {hits && !hits.length && <div className="mt-6 text-center text-[length:calc(13px*var(--ts))] text-muted">결과가 없어요</div>}
+      {/* web without a YouTube key: songs come from Apple Music */}
+      {noYtKey && hits?.some((h) => h.provider === "music") && (
+        <div className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">YouTube API 키가 없어 Apple Music에서 찾았어요 · 설정 → 클라우드</div>
+      )}
 
       <div className="mt-3 space-y-1.5">
         {hits?.map((c) => (
