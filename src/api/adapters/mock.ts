@@ -9,7 +9,7 @@ import { DEFAULT_VIEWS } from "@/lib/defaults";
 import { searchAniList } from "@/lib/anilist";
 import { kindFromLink } from "@/lib/links";
 import { ARCHIVE_KINDS } from "@/lib/kinds";
-import { itunesSearch, parseCover, sameText, youtubeId, youtubeSong, youtubeVideo } from "@/lib/webMusic";
+import { itunesSearch, parseCover, sameText, youtubeId, youtubeSong, youtubeVideo, ytmSearchLink } from "@/lib/webMusic";
 import { ytmFind, ytmLyrics, ytmSearch } from "@/lib/ytm";
 import { ytApiSearch } from "@/lib/ytApi";
 import { DEFAULT_STATUSES } from "@/lib/statuses";
@@ -28,7 +28,16 @@ export function normalizeArchives(db: DB): DB {
   }
   if (!db.archives.length) db.archives = builtinArchives();
   folderArchives(db);
+  songLinks(db);
   return db;
+}
+
+/** Songs saved with an Apple Music page as their link get the YouTube Music link (a search for the song). */
+function songLinks(db: DB) {
+  for (const it of [...db.items, ...db.trash]) {
+    if (!it.url || !/music\.apple\.com/.test(it.url)) continue;
+    it.url = ytmSearchLink(it.title, it.tags.find((t) => t.category === "author")?.name ?? "");
+  }
 }
 
 /** Same as the desktop's migration 9: a folder without an archive goes to the one most of its items are in. */
@@ -666,7 +675,9 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       it.summary = c.summary ?? it.summary;
       it.year = c.year ?? it.year;
       // a song found from its YouTube link links to YouTube Music instead
-      if (!it.url || (c.url?.includes("music.youtube.com") && youtubeId(it.url) === youtubeId(c.url))) it.url = c.url ?? it.url;
+      // …and a stand-in link (a YouTube Music search, an old Apple Music page) gives way to the song's own
+      const standIn = !!it.url && (/music\.youtube\.com\/search\?|music\.apple\.com/.test(it.url));
+      if (!it.url || standIn || (c.url?.includes("music.youtube.com") && youtubeId(it.url) === youtubeId(c.url))) it.url = c.url ?? it.url;
       it.source = { provider: c.provider, id: c.id, url: c.url, altTitles: c.altTitles };
       const add = (n: string, cat: TagCategory) => { const t = upsertTag(n, cat); if (!it.tags.some((x) => x.id === t.id)) it.tags.push(t); };
       c.people.forEach((p) => add(p.name, p.category));

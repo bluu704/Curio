@@ -971,6 +971,8 @@ impl Library {
             url: cand.url.clone().filter(|u| {
                 current.url.is_none()
                     || (u.contains("music.youtube.com") && current.url.as_deref().and_then(metadata::music_video_id) == metadata::music_video_id(u))
+                    // the web version's stand-in (a YouTube Music search) becomes the song's own address
+                    || (metadata::music_video_id(u).is_some() && current.url.as_deref().is_some_and(|c| metadata::ytm_search_query(c).is_some() || c.contains("music.apple.com")))
             }).map(Some),
             code: cand.code.clone().map(Some),
             tag_ids: Some(tag_ids),

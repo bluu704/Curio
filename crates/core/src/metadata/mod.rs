@@ -54,6 +54,10 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
     if let Some(id) = sites::hitomi_id(q) {
         return sites::hitomi(&id).map(|c| vec![c]);
     }
+    // a YouTube Music search link (the web version's stand-in link for a song): search YouTube Music
+    if let Some(text) = ytm_search_query(q) {
+        return music::ytm_search(&text);
+    }
     if q.is_empty() || kind == Kind::Doujin {
         return Ok(vec![]);
     }
@@ -253,6 +257,32 @@ pub use music::{parse_cover, Cover};
 /// Length of a YouTube video / song in seconds, from YouTube Music (0 = unknown).
 pub fn track_length(video_id: &str) -> u32 {
     music::ytm_track(video_id).and_then(|t| t.length).map(|l| lyrics::length_secs(&l)).unwrap_or(0)
+}
+
+/// "https://music.youtube.com/search?q=밤편지+아이유" → "밤편지 아이유"
+pub fn ytm_search_query(url: &str) -> Option<String> {
+    let rest = url.split_once("music.youtube.com/search?")?.1;
+    rest.split('&').find_map(|kv| kv.strip_prefix("q="))
+        .map(|v| percent_decode(&v.replace('+', " ")))
+        .filter(|v| !v.trim().is_empty())
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 pub fn music_video_id(url: &str) -> Option<String> {

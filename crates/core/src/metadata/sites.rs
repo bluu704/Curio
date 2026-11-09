@@ -129,6 +129,7 @@ mod tests {
         assert!(is_dcinside("https://gall.dcinside.com/board/view/?id=baseball_new11&no=1"));
         assert!(is_dcinside("https://m.dcinside.com/board/game_dev/234926"));
         assert!(!is_dcinside("https://gall.dcinside.com/mgallery/board/lists/?id=game_dev"));
+        assert_eq!(crate::metadata::ytm_search_query("https://music.youtube.com/search?q=%EB%B0%A4%ED%8E%B8%EC%A7%80+%EC%95%84%EC%9D%B4%EC%9C%A0").as_deref(), Some("밤편지 아이유"));
         assert_eq!(arca_post("https://arca.live/b/genshin/123456789?p=1"), Some(("genshin".into(), "123456789".into())));
     }
 

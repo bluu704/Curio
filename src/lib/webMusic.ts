@@ -130,6 +130,9 @@ export async function youtubeVideo(url: string): Promise<Candidate | null> {
   };
 }
 
+/** YouTube Music's search for a song — its link when the song's own address is not known. */
+export const ytmSearchLink = (title: string, artist: string) => `https://music.youtube.com/search?q=${encodeURIComponent(`${title} ${artist}`.trim())}`;
+
 /** Songs by title (and singer) from Apple Music, as candidates. */
 export async function itunesSearch(query: string): Promise<Candidate[]> {
   type H = { trackId?: number; trackName?: string; artistName?: string; collectionName?: string; releaseDate?: string; primaryGenreName?: string; trackTimeMillis?: number; artworkUrl100?: string; trackViewUrl?: string };
@@ -149,8 +152,9 @@ export async function itunesSearch(query: string): Promise<Candidate[]> {
         provider: "music", id: String(h.trackId), title: h.trackName, altTitles: [], kind: "music", year,
         coverUrl: h.artworkUrl100?.replace("100x100bb", "1000x1000bb") ?? null, bannerUrl: null, summary: null,
         people: h.artistName ? [{ name: h.artistName, category: "author", role: "Artist" }] : [], genres: h.primaryGenreName ? [h.primaryGenreName] : [],
-        // the browser cannot search YouTube Music: the song's Apple Music page is its link here
-        series: album || null, url: h.trackViewUrl?.replace(/[?&]uo=\d+/, "") ?? null, code: null, detail: [h.artistName, album, year].filter(Boolean).join(" · "), extra,
+        // songs link to YouTube Music: the browser cannot look the song up there, so the link opens
+        // YouTube Music's search for it (the desktop app turns it into the song's own address)
+        series: album || null, url: ytmSearchLink(h.trackName, h.artistName ?? ""), code: null, detail: [h.artistName, album, year].filter(Boolean).join(" · "), extra,
       });
     }
     if (out.length) break;
