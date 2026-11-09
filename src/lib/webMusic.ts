@@ -51,13 +51,22 @@ export function parseCover(raw: string, singer: string): Cover | null {
   const n = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
   const singerN = n(singer);
   let core = /[『「]([^』」]+)[』」]/.exec(raw)?.[1]
-    ?? raw.split(/[ㅣ|｜]/).map((p) => p.replace(tag, "").trim()).find((p) => { const x = n(p); return !!x && !COVER.test(p) && !(singerN.length >= 2 && (x.includes(singerN) || singerN.includes(x))); })
+    // the first part that is not the singer (the song usually comes first: "空奏列車 (Orangestar) Coverㅣ 藍璃かんな")
+    ?? raw.split(/[ㅣ|｜]/).map((p) => p.replace(tag, "").replace(new RegExp(COVER.source, "gi"), "").trim().replace(/^[-.\s]+|[-.\s]+$/g, ""))
+      .find((p) => { const x = n(p); return !!x && !(singerN.length >= 2 && (x.includes(singerN) || singerN.includes(x))); })
     ?? "";
   core = core.replace(tag, "").replace(new RegExp(COVER.source, "gi"), "");
+  // "Title / Artist" outside brackets — or "Singer / Artist - Title" (the singer written first)
   const split = splitOutside(core, " / ");
-  const titlePart = split ? split[0] : core;
-  const artists = split ? [split[1].replace(feat, "").trim()] : [];
+  let titlePart = split ? split[0] : core;
+  let artists = split ? [split[1].replace(feat, "").trim()] : [];
+  if (split && sameText(split[0].trim(), singer)) {
+    const [who, song] = split[1].split(" - ");
+    if (song) { titlePart = song; artists = [who.replace(feat, "").trim()]; } else { titlePart = split[1]; artists = []; }
+  }
   const alts: string[] = [];
+  // "공주열차 / Orangestar - 空奏列車": the original title after the artist
+  artists = artists.map((a) => { const [who, song] = a.split(" - "); const t = song?.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N})\]）]+$/gu, ""); if (t) { alts.push(t); return who.trim(); } return a; });
   for (const m of titlePart.matchAll(/[([（]([^)\]）]+)[)\]）]/g)) {
     const inner = m[1].trim();
     if (/^(feat\.?|ft\.?|with)\b/i.test(inner)) continue;
@@ -65,7 +74,8 @@ export function parseCover(raw: string, singer: string): Cover | null {
     if (ta) { alts.push(ta[0].trim()); artists.push(ta[1].replace(feat, "").trim()); }
     else { alts.push(inner); artists.push(inner); } // the original title or the original singer: both are tried
   }
-  const title = titlePart.replace(/[([（][^)\]）]*[)\]）]/g, "").replace(feat, "").trim().replace(/^[-·\s]+|[-·\s]+$/g, "");
+  // emoji / marks around the title ("💦 공주열차") go
+  const title = titlePart.replace(/[([（][^)\]）]*[)\]）]/g, "").replace(feat, "").trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
   if (!title) return null;
   return { title, alts, artists: artists.filter((a) => a && !sameText(a, singer)) };
 }

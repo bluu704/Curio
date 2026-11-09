@@ -1,7 +1,7 @@
 import type { Candidate } from "@/api/types";
 
 /**
- * YouTube Music for the web version, through the site's own /api/ytm (functions/api/ytm.ts) — the same
+ * YouTube Music through /api/ytm where one answers (`npm run dev`, see vite.config.ts) — the same
  * calls the desktop app makes: song search, a track's album / year / length, and its lyrics
  * (the DeskPlayer extension's way). Every function resolves to null / [] when the relay is not there.
  */
@@ -14,8 +14,8 @@ async function ytm(path: "search" | "next" | "browse", body: object): Promise<J 
     const r = await fetch(`${import.meta.env.BASE_URL}api/ytm`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, body }), signal: AbortSignal.timeout(12000),
     });
-    if (r.status === 404 || r.status === 405) { down = true; return null; } // no relay (local preview build)
-    if (!r.ok) return null;
+    // no relay here (the web site: YouTube refuses requests from hosting servers) → stop asking
+    if (!r.ok || !(r.headers.get("content-type") ?? "").includes("json")) { down = true; return null; }
     return (await r.json()) as J;
   } catch { return null; }
 }

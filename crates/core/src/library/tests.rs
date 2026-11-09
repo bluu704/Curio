@@ -441,12 +441,15 @@ fn autofill_song_gets_youtube_music_link() {
 #[ignore = "network"]
 fn cover_lyrics() {
     let (l, _d) = lib();
-    let it = l.create_item(NewItem { title: "x".into(), kind: Some(Kind::Music), url: Some("https://www.youtube.com/watch?v=fTqvR0U0EC4".into()), ..Default::default() }).unwrap();
-    assert!(l.autofill(&it.id).unwrap());
-    let got = l.get_item(&it.id).unwrap();
-    println!("title {:?} people {:?} extra {:?}", got.title, got.tags.iter().map(|t| &t.name).collect::<Vec<_>>(), got.props.get("_extra"));
-    let ly = l.fetch_lyrics(&it.id).unwrap().expect("lyrics found");
-    let text = ly.props["_lyrics"]["plain"].as_str().unwrap().to_string();
-    println!("{}", text.chars().take(120).collect::<String>());
-    assert!(text.len() > 50);
+    // アスノヨゾラ哨戒班 by 아카네 리제, 空奏列車 by 아이리 칸나 (both Orangestar songs)
+    for id in ["fTqvR0U0EC4", "6A04OifrfR0"] {
+        let it = l.create_item(NewItem { title: "".into(), kind: Some(Kind::Music), url: Some(format!("https://www.youtube.com/watch?v={id}")), ..Default::default() }).unwrap();
+        assert!(l.autofill(&it.id).unwrap());
+        let got = l.get_item(&it.id).unwrap();
+        println!("title {:?} people {:?} extra {:?}", got.title, got.tags.iter().map(|t| &t.name).collect::<Vec<_>>(), got.props.get("_extra"));
+        let ly = l.fetch_lyrics(&it.id).unwrap().expect("lyrics found");
+        let text = ly.props["_lyrics"]["plain"].as_str().unwrap().to_string();
+        println!("{} | synced: {} | {}", ly.props["_lyrics"]["source"], !ly.props["_lyrics"]["synced"].as_str().unwrap_or("").is_empty(), text.chars().take(60).collect::<String>().replace('\n', " / "));
+        assert!(text.len() > 50);
+    }
 }

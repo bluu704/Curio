@@ -151,6 +151,7 @@ export function CloudTab() {
         </div>
         {!canLogin && <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">미리보기에서는 연결할 수 없어요</p>}
         {web && st && !st.available && <WebClientInput onSaved={() => void api.driveStatus().then(setSt)} />}
+        {web && <YouTubeKeyInput />}
         {desktop && st && !st.available && (
           <p className="mt-3 text-[length:calc(12px*var(--ts))] text-muted">구글 연결 정보가 없어요 (아래 고급에서 추가)</p>
         )}
@@ -270,6 +271,24 @@ function WebClientInput({ onSaved }: { onSaved: () => void }) {
       <div className="flex gap-2">
         <input className="input h-8 flex-1 font-mono" placeholder="….apps.googleusercontent.com" value={v} onChange={(e) => setV(e.target.value)} />
         <button className="btn btn-primary h-8" disabled={!v.trim().endsWith(".apps.googleusercontent.com")} onClick={() => void import("@/web/google").then((g) => { g.setClientId(v); onSaved(); })}>저장</button>
+      </div>
+    </div>
+  );
+}
+
+/** Web: YouTube Data API key for song search (browser key, restricted to this site). */
+function YouTubeKeyInput() {
+  const [v, setV] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [has, setHas] = useState(false);
+  useEffect(() => { void import("@/lib/ytApi").then((y) => setHas(!!y.ytKey())); }, [saved]);
+  return (
+    <div className="mt-4 space-y-1.5">
+      <div className="text-[length:calc(12px*var(--ts))] text-muted">노래 검색 · YouTube API 키{has && " (저장됨)"}</div>
+      <div className="flex gap-2">
+        <input className="input h-8 flex-1 font-mono" placeholder="AIza…" value={v} onChange={(e) => setV(e.target.value)} />
+        <button className="btn btn-primary h-8" disabled={!/^AIza[\w-]{30,}$/.test(v.trim())} onClick={() => void import("@/lib/ytApi").then((y) => { y.setYtKey(v); setV(""); setSaved((x) => !x); })}>저장</button>
+        {has && <button className="btn h-8 border border-line" onClick={() => void import("@/lib/ytApi").then((y) => { y.setYtKey(""); setSaved((x) => !x); })}>지우기</button>}
       </div>
     </div>
   );

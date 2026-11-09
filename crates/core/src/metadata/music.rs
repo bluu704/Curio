@@ -63,22 +63,34 @@ pub fn parse_cover(raw: &str, singer: &str) -> Option<Cover> {
     // 『…』「…」 hold the song when present
     let core = regex::Regex::new(r"[『「]([^』」]+)[』」]").unwrap().captures(raw).map(|c| c[1].to_string()).unwrap_or_else(|| {
         let singer_n = super::lyrics::norm_pub(singer);
+        // the first part that is not the singer (the song usually comes first: "空奏列車 (Orangestar) Coverㅣ 藍璃かんな")
         raw.split(['ㅣ', '|', '｜'])
-            .map(|p| tag.replace_all(p, "").trim().to_string())
+            .map(|p| re_cover.replace_all(&tag.replace_all(p, ""), "").trim().trim_matches(|c: char| c == '-' || c == '.' || c.is_whitespace()).to_string())
             .find(|p| {
                 let n = super::lyrics::norm_pub(p);
-                !n.is_empty() && !re_cover.is_match(p) && !(singer_n.len() >= 2 && (n.contains(&singer_n) || singer_n.contains(&n)))
+                !n.is_empty() && !(singer_n.len() >= 2 && (n.contains(&singer_n) || singer_n.contains(&n)))
             })
             .unwrap_or_default()
     });
     let core = tag.replace_all(&core, "");
     let core = re_cover.replace_all(&core, "");
-    // "Title / Artist" outside brackets
+    // "Title / Artist" outside brackets — or "Singer / Artist - Title" (the singer written first)
     let (title_part, mut artists): (String, Vec<String>) = match split_outside_brackets(&core, " / ") {
+        Some((t, a)) if title_matches(t.trim(), singer) => match a.split_once(" - ") {
+            Some((who, song)) => (song.to_string(), vec![feat.replace_all(who, "").trim().to_string()]),
+            None => (a.to_string(), vec![]),
+        },
         Some((t, a)) => (t.to_string(), vec![feat.replace_all(a, "").trim().to_string()]),
         None => (core.to_string(), vec![]),
     };
+    // "공주열차 / Orangestar - 空奏列車": the original title after the artist
     let mut alts = vec![];
+    if let Some(i) = artists.iter().position(|a| a.contains(" - ")) {
+        let (who, song) = artists[i].split_once(" - ").map(|(w, s)| (w.trim().to_string(), s.trim().to_string())).unwrap();
+        artists[i] = who;
+        let song = song.trim_matches(|c: char| !c.is_alphanumeric() && !")]）".contains(c)).to_string();
+        if !song.is_empty() { alts.push(song); }
+    }
     let feat_only = regex::Regex::new(r"(?i)^(feat\.?|ft\.?|with)\b").unwrap();
     for c in regex::Regex::new(r"[(\[（]([^)\]）]+)[)\]）]").unwrap().captures_iter(&title_part) {
         let inner = c[1].trim();
@@ -92,7 +104,8 @@ pub fn parse_cover(raw: &str, singer: &str) -> Option<Cover> {
         }
     }
     let title = regex::Regex::new(r"[(\[（][^)\]）]*[)\]）]").unwrap().replace_all(&title_part, "");
-    let title = feat.replace_all(&title, "").trim().trim_matches(|c: char| c == '-' || c == '·' || c.is_whitespace()).to_string();
+    // emoji / marks around the title ("💦 공주열차") go
+    let title = feat.replace_all(&title, "").trim().trim_matches(|c: char| !c.is_alphanumeric()).to_string();
     if title.is_empty() {
         return None;
     }
@@ -466,6 +479,14 @@ mod cover_titles {
         let c = parse_cover("내일의 밤하늘 초계반(アスノヨゾラ哨戒班)ㅣ아카네 리제(Akane Lize) 【COVER】", "아카네 리제 AKANE LIZE").unwrap();
         assert_eq!((c.title.as_str(), c.alts[0].as_str()), ("내일의 밤하늘 초계반", "アスノヨゾラ哨戒班"));
         assert!(parse_cover("YOASOBI「アイドル」 Official Music Video", "Ayase / YOASOBI").is_none(), "not a cover");
+        let c = parse_cover("空奏列車 (Orangestar) Coverㅣ 藍璃かんな x VESPERBELL ヨミ", "아이리 칸나 Music Official").unwrap();
+        assert_eq!((c.title.as_str(), c.artists.contains(&"Orangestar".to_string())), ("空奏列車", true), "song first, singers after the bar");
+        let c = parse_cover("💦 공주열차 / Orangestar - 空奏列車 /  cover", "에치").unwrap();
+        assert_eq!((c.title.as_str(), c.alts[0].as_str(), c.artists[0].as_str()), ("공주열차", "空奏列車", "Orangestar"));
+        let c = parse_cover("아이리 칸나 / Charlie Puth - Dangerously COVER", "아이리 칸나 Music Official").unwrap();
+        assert_eq!((c.title.as_str(), c.artists[0].as_str()), ("Dangerously", "Charlie Puth"), "singer written first");
+        let c = parse_cover("아카네 리제-晩餐歌(만찬가) Cover.", "아카네 리제 AKANE LIZE").unwrap();
+        assert!(c.title.contains("晩餐歌") || c.alts.iter().any(|a| a.contains("晩餐歌")), "{c:?}");
     }
 }
 

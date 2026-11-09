@@ -290,6 +290,33 @@ pub fn find_lyrics(title: &str, artist: &str, video_id: Option<&str>) -> Result<
 }
 
 pub fn find_lyrics_q(q: &SongQuery, video_id: Option<&str>) -> Result<Option<Lyrics>> {
+    let found = find_any(q, video_id)?;
+    // lyrics without timing: the same song's timed lyrics (LRCLIB) follow the music instead
+    if let Some(l) = &found {
+        if l.synced.is_empty() && l.source != "LRCLIB" {
+            for t in titles_of(q) {
+                if let Ok(Some(timed)) = lrclib_q(q, &t) {
+                    if !timed.synced.is_empty() {
+                        return Ok(Some(timed));
+                    }
+                }
+            }
+        }
+    }
+    Ok(found)
+}
+
+fn titles_of(q: &SongQuery) -> Vec<String> {
+    let mut titles = vec![q.title.clone()];
+    for a in &q.alts {
+        if !a.trim().is_empty() && !titles.iter().any(|t| norm(t) == norm(a)) {
+            titles.push(a.clone());
+        }
+    }
+    titles
+}
+
+fn find_any(q: &SongQuery, video_id: Option<&str>) -> Result<Option<Lyrics>> {
     if let Some(v) = video_id {
         if let Ok(Some(l)) = ytmusic_lyrics(v) {
             return Ok(Some(l));
@@ -299,12 +326,7 @@ pub fn find_lyrics_q(q: &SongQuery, video_id: Option<&str>) -> Result<Option<Lyr
     if q.artists.is_empty() && q.duration == 0 {
         return Ok(None);
     }
-    let mut titles = vec![q.title.clone()];
-    for a in &q.alts {
-        if !a.trim().is_empty() && !titles.iter().any(|t| norm(t) == norm(a)) {
-            titles.push(a.clone());
-        }
-    }
+    let titles = titles_of(q);
     for t in &titles {
         for v in ytmusic_search(q, t) {
             if Some(v.as_str()) == video_id {

@@ -11,6 +11,7 @@ import { kindFromLink } from "@/lib/links";
 import { ARCHIVE_KINDS } from "@/lib/kinds";
 import { itunesSearch, parseCover, sameText, youtubeId, youtubeSong, youtubeVideo } from "@/lib/webMusic";
 import { ytmFind, ytmLyrics, ytmSearch } from "@/lib/ytm";
+import { ytApiSearch } from "@/lib/ytApi";
 import { DEFAULT_STATUSES } from "@/lib/statuses";
 
 /** A library starts with one plain archive (fixed id, so every device makes the same one). */
@@ -633,7 +634,9 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       }
       if (kind === "doujin") return [];
       // songs: YouTube Music first (through the site's relay), Apple Music when it is not there
-      if (kind === "music") { const y = await ytmSearch(query); if (y.length) return y; const hits = await itunesSearch(query); if (hits.length) return hits; }
+      if (kind === "music") {
+        for (const find of [ytmSearch, ytApiSearch, itunesSearch]) { const hits = await find(query).catch(() => []); if (hits.length) return hits; }
+      }
       if (/youtu\.?be|music\.youtube|steampowered|play\.google/.test(query) || kind === "game" || kind === "music" || kind === "catalog" || kind === "movie" || kind === "illust" || kind === "other") {
         throw new Error("웹에서는 AniList만 검색돼요");
       }
@@ -702,26 +705,32 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       const save = (l: { plain: string; synced: string; source: string }) => { it.props = { ...it.props, _lyrics: l }; commit(); return delay(it); };
       // the video's own lyrics (YouTube Music's 가사 tab) — exact, no guessing
       const vid = youtubeId(it.url ?? "");
-      if (vid) { const own = await ytmLyrics(vid).catch(() => null); if (own) return save(own); }
+      let untimed: { plain: string; synced: string; source: string } | null = null; // found, but without timing
+      const take = (l: { plain: string; synced: string; source: string }) => { if (l.synced) return true; untimed ??= l; return false; };
+      if (vid) { const own = await ytmLyrics(vid).catch(() => null); if (own && take(own)) return save(own); }
       // neither a singer nor a length: a title alone ("Watch", "Home"…) finds someone else's song
-      if ((!artists.length && !secs) || !title.trim()) return null;
+      if ((!artists.length && !secs) || !title.trim()) return untimed ? save(untimed) : null;
       const norm = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
       const script = (x: string) => /[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(x);
       // YouTube Music first (through the site's relay): the video's own lyrics, then the song found by title
-      for (const t of [...new Set([title, ...alts])]) {
-        for (const v of await ytmFind({ title, alts, artists, duration: secs }, t).catch(() => [])) {
-          if (v === vid) continue;
-          const l = await ytmLyrics(v).catch(() => null);
-          if (l) return save(l);
+      if (!untimed) {
+        search: for (const t of [...new Set([title, ...alts])]) {
+          for (const v of await ytmFind({ title, alts, artists, duration: secs }, t).catch(() => [])) {
+            if (v === vid) continue;
+            const l = await ytmLyrics(v).catch(() => null);
+            if (l && take(l)) return save(l);
+            if (l) break search;
+          }
         }
       }
+      // lyrics without timing above: LRCLIB's timed lyrics of the same song follow the music instead
       type Hit = { trackName: string; artistName: string; duration?: number; plainLyrics?: string; syncedLyrics?: string; instrumental?: boolean };
       let h: Hit | undefined;
       for (const t of [...new Set([title, ...alts])]) {
         let hits: Hit[];
         try {
           hits = await (await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${t} ${artists[0] ?? ""}`.trim())}`, { signal: AbortSignal.timeout(10000) })).json();
-        } catch { throw new Error("가사 사이트에 접속할 수 없어요"); }
+        } catch { if (untimed) return save(untimed); throw new Error("가사 사이트에 접속할 수 없어요"); }
         const want = norm(t);
         const rank = (x: Hit) => {
           if (x.instrumental || !(norm(x.trackName) === want || (want.length >= 3 && norm(x.trackName).includes(want)))) return -1;
@@ -734,7 +743,7 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
         const ok = hits.map((x) => [rank(x), x] as const).filter(([r]) => r >= 0).sort((a, b) => a[0] - b[0] || Number(!a[1].syncedLyrics) - Number(!b[1].syncedLyrics));
         if (ok.length) { h = ok[0][1]; break; }
       }
-      if (!h) return null;
+      if (!h || (untimed && !h.syncedLyrics)) return untimed ? save(untimed) : null;
       const synced = h.syncedLyrics ?? "";
       it.props = { ...it.props, _lyrics: { plain: h.plainLyrics || synced.replace(/^\s*(\[[0-9:.]+\]\s*)+/gm, ""), synced, source: "LRCLIB" } };
       commit();
