@@ -960,7 +960,11 @@ impl Library {
             banner_uri: path(banner).map(Some),
             summary: cand.summary.clone().map(Some),
             year: cand.year.map(Some),
-            url: cand.url.clone().filter(|_| current.url.is_none()).map(Some),
+            // a song found from its YouTube link links to YouTube Music instead
+            url: cand.url.clone().filter(|u| {
+                current.url.is_none()
+                    || (u.contains("music.youtube.com") && current.url.as_deref().and_then(metadata::music_video_id) == metadata::music_video_id(u))
+            }).map(Some),
             code: cand.code.clone().map(Some),
             tag_ids: Some(tag_ids),
             // a song found for a plain item makes it a song (lyrics, player)

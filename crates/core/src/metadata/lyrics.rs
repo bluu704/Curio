@@ -212,6 +212,10 @@ pub fn find_lyrics(title: &str, artist: &str, video_id: Option<&str>) -> Result<
             return Ok(Some(l));
         }
     }
+    // without the singer a title alone ("Watch", "Home"…) finds someone else's song: don't guess
+    if artist.trim().is_empty() {
+        return Ok(None);
+    }
     for v in ytmusic_find(title, artist) {
         if Some(v.as_str()) == video_id {
             continue;

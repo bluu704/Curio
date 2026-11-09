@@ -164,7 +164,6 @@ pub fn fetch_deezer(id: &str) -> Result<Candidate> {
 /// YouTube / YouTube Music link → title + channel via oEmbed, then album art + year via Deezer.
 pub fn from_youtube(input: &str) -> Result<Candidate> {
     let vid = youtube_id(input).or_else(|| (input.len() == 11).then(|| input.to_string())).ok_or_else(|| Error::Invalid("not a YouTube link".into()))?;
-    let is_music = input.contains("music.youtube.com");
     let watch = format!("https://www.youtube.com/watch?v={vid}");
     let o: Value = agent().get("https://www.youtube.com/oembed").query("url", &watch).query("format", "json").call().map_err(net)?.into_json()?;
     let raw_title = o["title"].as_str().unwrap_or("").to_string();
@@ -190,7 +189,8 @@ pub fn from_youtube(input: &str) -> Result<Candidate> {
         kind: Some(Kind::Music),
         cover_url: Some(thumb.clone()),
         banner_url: Some(thumb),
-        url: Some(if is_music { format!("https://music.youtube.com/watch?v={vid}") } else { watch }),
+        // a song links to YouTube Music (a video stays a YouTube link, see `video`)
+        url: Some(format!("https://music.youtube.com/watch?v={vid}")),
         people: channel.split(", ").filter(|n| !n.trim().is_empty()).map(|n| Person { name: n.trim().to_string(), category: TagCategory::Author, role: Some("Artist".into()) }).collect(),
         ..Default::default()
     };

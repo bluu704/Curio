@@ -9,6 +9,7 @@ import { DEFAULT_VIEWS } from "@/lib/defaults";
 import { searchAniList } from "@/lib/anilist";
 import { kindFromLink } from "@/lib/links";
 import { ARCHIVE_KINDS } from "@/lib/kinds";
+import { itunesSearch, sameText, youtubeId, youtubeSong, youtubeVideo } from "@/lib/webMusic";
 import { DEFAULT_STATUSES } from "@/lib/statuses";
 
 /** A library starts with one plain archive (fixed id, so every device makes the same one). */
@@ -612,14 +613,25 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       if (/^https?:\/\//i.test(query)) {
         const hitomi = /hitomi\.la\/[a-z]+\/(?:[^/?#]*-)?(\d+)\.html/i.exec(query)?.[1];
         if (hitomi) return [await hitomiGallery(hitomi)];
+        // a song (song archive / YouTube Music link) links to YouTube Music; anything else stays a video
+        if (youtubeId(query)) {
+          const c = kind === "music" || /music\.youtube\.com/.test(query) ? await youtubeSong(query) : await youtubeVideo(query);
+          if (c) return [c];
+        }
         // other pages can't be read from a browser (cross-site): keep the link with a name from its address
         if (!kindFromLink(query)) return [];
         let name = query;
-        try { name = decodeURIComponent(new URL(query).pathname.split("/").filter(Boolean).pop() ?? query).replace(/[-_]/g, " "); } catch { /* keep */ }
+        try {
+          const u = new URL(query);
+          const last = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() ?? "").replace(/\.\w{2,5}$/, "");
+          // "watch", "index", "view", numbers… say nothing: use the site's name instead
+          name = last && !/^(watch|index|view|read|post|posts|p|item|items|detail|list|show|page|article|board|status|\d+)$/i.test(last) ? last.replace(/[-_]/g, " ") : u.hostname.replace(/^www\./, "");
+        } catch { /* keep */ }
         return [{ provider: "web", id: query, title: name, altTitles: [], kind, year: null, coverUrl: null, bannerUrl: null,
           summary: null, people: [], genres: [], series: null, url: query, code: null, detail: null }];
       }
       if (kind === "doujin") return [];
+      if (kind === "music") { const hits = await itunesSearch(query); if (hits.length) return hits; }
       if (/youtu\.?be|music\.youtube|steampowered|play\.google/.test(query) || kind === "game" || kind === "music" || kind === "catalog" || kind === "movie" || kind === "illust" || kind === "other") {
         throw new Error("웹에서는 AniList만 검색돼요");
       }
@@ -642,7 +654,8 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       it.bannerUri = c.bannerUrl ?? it.bannerUri;
       it.summary = c.summary ?? it.summary;
       it.year = c.year ?? it.year;
-      it.url = it.url ?? c.url;
+      // a song found from its YouTube link links to YouTube Music instead
+      if (!it.url || (c.url?.includes("music.youtube.com") && youtubeId(it.url) === youtubeId(c.url))) it.url = c.url ?? it.url;
       it.source = { provider: c.provider, id: c.id, url: c.url, altTitles: c.altTitles };
       const add = (n: string, cat: TagCategory) => { const t = upsertTag(n, cat); if (!it.tags.some((x) => x.id === t.id)) it.tags.push(t); };
       c.people.forEach((p) => add(p.name, p.category));
@@ -661,16 +674,24 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
     async driveImport() { throw new Error("미리보기에서는 드라이브를 열 수 없어요"); },
     async driveSync() { throw new Error("미리보기에서는 동기화할 수 없어요"); },
     async fetchLyrics(itemId) {
-      // preview: LRCLIB straight from the browser (the desktop app also tries YouTube Music first)
+      // web: LRCLIB straight from the browser (the desktop app reads YouTube Music's own lyrics first)
       const it = find(itemId);
       const artist = it.tags.find((t) => t.category === "author")?.name ?? "";
+      // without the singer a title alone ("Watch", "Home"…) finds someone else's song: don't guess
+      if (!artist || !it.title.trim()) return null;
       const norm = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
-      let hits: { trackName: string; artistName: string; plainLyrics?: string; syncedLyrics?: string; instrumental?: boolean }[];
+      let hits: { trackName: string; artistName: string; duration?: number; plainLyrics?: string; syncedLyrics?: string; instrumental?: boolean }[];
       try {
         hits = await (await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${it.title} ${artist}`.trim())}`, { signal: AbortSignal.timeout(10000) })).json();
-      } catch { throw new Error("미리보기에서는 가사 사이트에 접속할 수 없어요. 데스크톱 앱에서 불러와요."); }
+      } catch { throw new Error("가사 사이트에 접속할 수 없어요"); }
+      // length known (from the song's source) → it must agree within 3 s
+      const len = /^(\d+):(\d{2})$/.exec(String((it.props?._extra as Record<string, string> | undefined)?.duration ?? ""));
+      const secs = len ? Number(len[1]) * 60 + Number(len[2]) : 0;
       const t = norm(it.title);
-      const h = hits.find((x) => !x.instrumental && (norm(x.trackName).includes(t) || x.trackName.includes(it.title)) && (!artist || norm(x.artistName).includes(norm(artist)) || norm(artist).includes(norm(x.artistName))));
+      const h = hits.find((x) => !x.instrumental
+        && (norm(x.trackName) === t || (t.length >= 3 && norm(x.trackName).includes(t)))
+        && (sameText(x.artistName, artist) || artist.split(/[,/&]/).some((a) => a.trim() && sameText(x.artistName, a.trim())))
+        && (!secs || !x.duration || Math.abs(x.duration - secs) <= 3));
       if (!h) return null;
       const synced = h.syncedLyrics ?? "";
       it.props = { ...it.props, _lyrics: { plain: h.plainLyrics || synced.replace(/^\s*(\[[0-9:.]+\]\s*)+/gm, ""), synced, source: "LRCLIB" } };

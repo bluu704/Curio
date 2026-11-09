@@ -4,7 +4,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import type { Item } from "@/api/types";
-import { useApp } from "@/store/app";
+import { activeView, useApp } from "@/store/app";
 import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import { LyricsSection } from "./LyricsSection";
@@ -41,8 +41,9 @@ export function DetailPanel() {
     return () => window.removeEventListener("keydown", k);
   }, [select]);
 
+  // same shape as the cards being looked at (their 표시 설정 → 비율)
+  const aspect = useApp((st) => activeView(st).card.aspect) ?? "2/3";
   if (!item) return null;
-  const aspect = useApp.getState().views.find((v) => v.id === (item.archiveId ? `arc:${item.archiveId}` : "sys:all"))?.card.aspect ?? "2/3";
   // primary file action: read (pdf/zip/images) › play (video/audio) › view (text) › open with the OS
   const files = orderedFiles(item);
   const primary = files.find(isReadable) ?? files.find(isViewable) ?? files[0];
@@ -135,7 +136,7 @@ export function DetailPanel() {
         </div>
 
         <div className={cn("relative flex gap-4 px-7", banner && "-mt-16", full && "mx-auto w-full max-w-3xl")}>
-          {main?.kind !== "image" && <CoverPicker item={item} style={{ aspectRatio: aspect }} className={cn("shrink-0 rounded-lg shadow-pop ring-1 ring-line/60", aspect === "4/3" || aspect === "16/9" ? "w-40" : aspect === "9/16" ? "w-24" : "w-28")} />}
+          {main?.kind !== "image" && <CoverPicker item={item} style={{ aspectRatio: aspect }} className={cn("shrink-0 self-start rounded-lg shadow-pop ring-1 ring-line/60", aspect === "4/3" || aspect === "16/9" ? "w-40" : aspect === "9/16" ? "w-24" : "w-28")} />}
           <div className="flex min-w-0 flex-1 flex-col pt-1">
             <div className={cn(banner && "pt-10")}><TitleInput item={item} /></div>
             {/* rating right under the title, then the key facts as pills */}
