@@ -35,7 +35,10 @@ export function DetailPanel() {
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (e.key === "Escape" && !["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) && !useApp.getState().reader && !useApp.getState().dialog) void select(null);
+      const st = useApp.getState();
+      // Esc closes the top-most thing only: a viewer, dialog, menu or open popover goes first
+      const covered = st.reader || st.viewer || st.dialog || st.menu || st.settingsOpen || document.querySelector(".popover, [role=dialog]");
+      if (e.key === "Escape" && !["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) && !el.isContentEditable && !covered) void select(null);
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);

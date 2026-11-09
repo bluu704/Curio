@@ -16,6 +16,7 @@ const keyOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.
 /** 캘린더: items on the day they were added + a note per day (saved in the library). */
 export function CalendarPage() {
   const s = useApp();
+  const detailOpen = useApp((st) => !!st.detail && !st.detailFull);
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [items, setItems] = useState<Item[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -62,7 +63,8 @@ export function CalendarPage() {
   const hiddenN = items.filter((it) => isCalendarHidden(it) && keyOf(new Date(it.createdAt)) === sel).length;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    // an open item panel takes the right side: the month (and its arrows) stays fully visible
+    <div className={cn("relative flex min-h-0 flex-1 flex-col", detailOpen && "md:pr-[460px]")}>
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4 max-md:px-3">
         <button className="btn-icon -ml-2 md:hidden" onClick={() => s.setDrawer(true)} aria-label="메뉴"><Menu size={18} /></button>
         <CalendarDays size={17} className="text-muted max-md:hidden" />

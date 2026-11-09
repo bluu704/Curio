@@ -423,3 +423,15 @@ fn candidate_extras_are_kept() {
     assert_eq!(saved.props["_extra"]["album"], "Palette");
     assert_eq!(saved.props["_extra"]["duration"], "4:13");
 }
+
+/// Paste import → auto-fill: a song found by title gets a YouTube Music link.
+#[test]
+#[ignore = "network"]
+fn autofill_song_gets_youtube_music_link() {
+    let (l, _d) = lib();
+    let it = l.create_item(NewItem { title: "Supernova".into(), kind: Some(Kind::Music), tags: vec![NewTag { name: "aespa".into(), category: TagCategory::Author }], ..Default::default() }).unwrap();
+    assert!(l.autofill(&it.id).unwrap(), "found");
+    let got = l.get_item(&it.id).unwrap();
+    println!("{:?} {:?}", got.url, got.props.get("_extra"));
+    assert!(got.url.as_deref().is_some_and(|u| u.starts_with("https://music.youtube.com/watch?v=")), "{:?}", got.url);
+}

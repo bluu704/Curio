@@ -700,10 +700,22 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
     },
     async autofill(itemId) {
       const it = find(itemId);
+      // the people already written down (the singer in a pasted list) narrow the search
+      const authors = it.tags.filter((t) => t.category === "author").map((t) => t.name);
+      const query = it.url ?? (it.kind === "music" && authors[0] ? `${it.title} ${authors[0]}` : it.title);
       try {
-        const hits: Candidate[] = await api.searchMetadata(it.kind, it.title);
-        if (!hits[0]) return false;
-        await api.applyMetadata(itemId, hits[0], false);
+        const hits: Candidate[] = (await api.searchMetadata(it.kind, query)).filter((h) => it.url || sameText(h.title, it.title) || h.altTitles.some((a) => sameText(a, it.title)));
+        // same person first; a hit by someone else only is another work with the same title
+        const verdict = (h: Candidate) => {
+          const theirs = h.people.filter((p) => ["author", "circle", "studio"].includes(p.category)).map((p) => p.name);
+          if (!authors.length || !theirs.length) return null;
+          if (authors.some((a) => theirs.some((t) => sameText(a, t)))) return true;
+          const script = (x: string) => /[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(x);
+          return authors.some((a) => theirs.some((t) => script(a) !== script(t))) ? null : false; // 아이유 ↔ IU: can't tell
+        };
+        const best = it.url || !authors.length ? hits[0] : hits.find((h) => verdict(h) === true) ?? hits.find((h) => verdict(h) === null);
+        if (!best) return false;
+        await api.applyMetadata(itemId, best, false);
         return true;
       } catch { return false; }
     },

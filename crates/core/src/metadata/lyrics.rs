@@ -125,8 +125,23 @@ pub fn ytmusic_lyrics(video_id: &str) -> Result<Option<Lyrics>> {
 }
 
 /// Songs (video ids) on YouTube Music matching title + artist, most certain first.
-fn ytmusic_find(title: &str, artist: &str) -> Vec<String> {
-    let Ok(res) = ytm("search", json!({ "query": format!("{title} {artist}").trim() })) else { return vec![] };
+pub(crate) fn ytmusic_find(title: &str, artist: &str) -> Vec<String> {
+    // "songs" filter first (the songs tab), then the mixed results
+    for params in [Some("EgWKAQIIAWoKEAkQBRAKEAMQBA=="), None] {
+        let mut body = json!({ "query": format!("{title} {artist}").trim() });
+        if let Some(p) = params {
+            body["params"] = json!(p);
+        }
+        let Ok(res) = ytm("search", body) else { continue };
+        let found = ytmusic_hits(&res, title, artist);
+        if !found.is_empty() {
+            return found;
+        }
+    }
+    vec![]
+}
+
+fn ytmusic_hits(res: &Value, title: &str, artist: &str) -> Vec<String> {
     let mut out: Vec<(u8, String)> = vec![];
     fn walk(v: &Value, f: &mut dyn FnMut(&Value)) {
         match v {
@@ -141,12 +156,15 @@ fn ytmusic_find(title: &str, artist: &str) -> Vec<String> {
             _ => {}
         }
     }
-    walk(&res, &mut |r| {
+    walk(res, &mut |r| {
         let s = r.to_string();
-        if !s.contains("MUSIC_VIDEO_TYPE_ATV") && !s.contains("MUSIC_VIDEO_TYPE_OMV") {
+        // songs (ATV) and official videos (OMV / official source) only — never fan uploads
+        if !s.contains("MUSIC_VIDEO_TYPE_ATV") && !s.contains("MUSIC_VIDEO_TYPE_OMV") && !s.contains("MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC") {
             return;
         }
-        let Some(vid) = r["playlistItemData"]["videoId"].as_str() else { return };
+        let vid_re = Regex::new(r#""videoId":"([\w-]{11})""#).unwrap();
+        let Some(vid) = r["playlistItemData"]["videoId"].as_str().map(String::from).or_else(|| vid_re.captures(&s).map(|c| c[1].to_string())) else { return };
+        let vid = vid.as_str();
         let col = |i: usize| &r["flexColumns"][i]["musicResponsiveListItemFlexColumnRenderer"]["text"];
         if !title_ok(title, &runs(col(0))) {
             return;

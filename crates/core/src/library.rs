@@ -927,7 +927,14 @@ impl Library {
         self.apply_candidate(item_id, full, overwrite_title)
     }
 
-    pub fn apply_candidate(&self, item_id: &str, cand: Candidate, overwrite_title: bool) -> Result<Item> {
+    pub fn apply_candidate(&self, item_id: &str, mut cand: Candidate, overwrite_title: bool) -> Result<Item> {
+        // songs link to YouTube Music: find the song there when the source gave another link (Deezer…)
+        if cand.kind == Some(Kind::Music) && !cand.url.as_deref().is_some_and(|u| u.contains("youtube.com") || u.contains("youtu.be")) {
+            let artist = cand.people.iter().find(|p| p.category == TagCategory::Author).map(|p| p.name.as_str()).unwrap_or("");
+            if let Some(u) = metadata::youtube_music_link(&cand.title, artist) {
+                cand.url = Some(u);
+            }
+        }
         let cover = cand.cover_url.as_deref().and_then(|u| metadata::download_image(u, &self.cache_dir).ok());
         let banner = cand.banner_url.as_deref().and_then(|u| metadata::download_image(u, &self.cache_dir).ok());
         let current = self.get_item(item_id)?;
@@ -991,10 +998,32 @@ impl Library {
     /// Search by url / code / title and apply the first confident match. Returns false when unsure.
     pub fn autofill(&self, item_id: &str) -> Result<bool> {
         let it = self.get_item(item_id)?;
-        let query = it.url.clone().or(it.code.clone()).unwrap_or(it.title.clone());
-        let hits = metadata::search(it.kind, &query)?;
+        // the people already written down (e.g. the singer in a pasted list) narrow the search
+        let authors: Vec<&str> = it.tags.iter().filter(|t| t.category == TagCategory::Author).map(|t| t.name.as_str()).collect();
         let by_link = it.url.is_some() || it.code.is_some();
-        let best = hits.into_iter().find(|h| by_link || metadata::title_matches(&h.title, &it.title) || h.alt_titles.iter().any(|a| metadata::title_matches(a, &it.title)));
+        let query = it.url.clone().or(it.code.clone()).unwrap_or_else(|| match (it.kind, authors.first()) {
+            (Kind::Music, Some(a)) => format!("{} {a}", it.title),
+            _ => it.title.clone(),
+        });
+        let hits = metadata::search(it.kind, &query)?;
+        let titled = |h: &Candidate| by_link || metadata::title_matches(&h.title, &it.title) || h.alt_titles.iter().any(|a| metadata::title_matches(a, &it.title));
+        // same person → that one; a hit with other people only is someone else's work with the same title
+        let same_person = |h: &Candidate| {
+            let theirs: Vec<&str> = h.people.iter().filter(|p| matches!(p.category, TagCategory::Author | TagCategory::Circle | TagCategory::Studio)).map(|p| p.name.as_str()).collect();
+            if authors.is_empty() || theirs.is_empty() { return None; }
+            let verdicts: Vec<Option<bool>> = authors.iter().flat_map(|a| theirs.iter().map(move |t| {
+                if metadata::title_matches(a, t) { Some(true) } else { metadata::lyrics::artist_ok(a, t) }
+            })).collect();
+            // true = same person, false = someone else, None = can't tell (아이유 ↔ IU: different scripts)
+            if verdicts.contains(&Some(true)) { Some(true) } else if verdicts.iter().all(|v| *v == Some(false)) { Some(false) } else { None }
+        };
+        let titled_hits: Vec<Candidate> = hits.into_iter().filter(|h| titled(h)).collect();
+        let best = if by_link || authors.is_empty() {
+            titled_hits.into_iter().next()
+        } else {
+            let pos = titled_hits.iter().position(|h| same_person(h) == Some(true)).or_else(|| titled_hits.iter().position(|h| same_person(h).is_none()));
+            pos.map(|i| titled_hits[i].clone())
+        };
         match best {
             Some(h) => {
                 let full = metadata::fetch(&h.provider, &h.id).unwrap_or(h);

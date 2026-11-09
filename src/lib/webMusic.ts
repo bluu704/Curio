@@ -99,7 +99,8 @@ export async function itunesSearch(query: string): Promise<Candidate[]> {
         provider: "music", id: String(h.trackId), title: h.trackName, altTitles: [], kind: "music", year,
         coverUrl: h.artworkUrl100?.replace("100x100bb", "1000x1000bb") ?? null, bannerUrl: null, summary: null,
         people: h.artistName ? [{ name: h.artistName, category: "author", role: "Artist" }] : [], genres: h.primaryGenreName ? [h.primaryGenreName] : [],
-        series: album || null, url: null, code: null, detail: [h.artistName, album, year].filter(Boolean).join(" · "), extra,
+        // the browser cannot search YouTube Music: the song's Apple Music page is its link here
+        series: album || null, url: h.trackViewUrl?.replace(/[?&]uo=\d+/, "") ?? null, code: null, detail: [h.artistName, album, year].filter(Boolean).join(" · "), extra,
       });
     }
     if (out.length) break;

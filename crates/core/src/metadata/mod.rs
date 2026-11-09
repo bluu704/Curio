@@ -232,6 +232,14 @@ use std::io::Read as _;
 
 /// Loose title similarity used by auto-fill (only apply when we are fairly sure).
 /// YouTube video id of a song link (watch / youtu.be / music.youtube / shorts).
+/// YouTube Music link of a song found by title + singer (the most certain match), if any.
+pub fn youtube_music_link(title: &str, artist: &str) -> Option<String> {
+    if title.trim().is_empty() || artist.trim().is_empty() {
+        return None;
+    }
+    lyrics::ytmusic_find(title, artist).into_iter().next().map(|v| format!("https://music.youtube.com/watch?v={v}"))
+}
+
 pub fn music_video_id(url: &str) -> Option<String> {
     music::youtube_id(url)
 }
