@@ -9,7 +9,7 @@ export type ActionId =
   | "rename" | "newItem" | "search" | "prev" | "next" | "favorite" | "pin" | "wishlist" | "read" | "delete" | "sidebar" | "settings";
 
 export const ACTIONS: { id: ActionId; label: string; keys: string[] }[] = [
-  { id: "rename", label: "이름 바꾸기 (열린 항목 · 아카이브)", keys: ["F2"] },
+  { id: "rename", label: "이름 바꾸기 (선택한 폴더 · 열린 항목 · 아카이브)", keys: ["F2"] },
   { id: "newItem", label: "새 항목", keys: ["Ctrl+N"] },
   { id: "search", label: "검색", keys: ["Ctrl+F"] },
   { id: "prev", label: "이전 항목", keys: ["ArrowLeft", "ArrowUp"] },
@@ -110,6 +110,8 @@ export function useShortcuts() {
         case "prev": return go(-1);
         case "next": return go(1);
         case "rename": {
+          // the folder just clicked in the folder panel
+          if (s.lastPicked === "folder" && s.categoryId && s.showCategories) { useApp.setState({ renameFolderId: s.categoryId }); return; }
           const title = document.querySelector<HTMLTextAreaElement>("[data-title-input]");
           if (item && title) { title.focus(); title.select(); return; }
           const v = activeView(s);

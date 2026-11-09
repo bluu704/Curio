@@ -1,7 +1,7 @@
 import { ChevronRight, Folder, FolderOpen, FolderPlus, Layers, Pencil, Trash2 } from "lucide-react";
 import { CustomSwatches } from "@/components/ui/CustomSwatches";
 import { FOLDER_COLORS, FOLDER_NAMES, folderColor } from "@/lib/statuses";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useOnScreen } from "@/lib/onScreen";
 import type { Archive, Category, ID } from "@/api/types";
 import { iconOf } from "@/lib/icons";
@@ -27,9 +27,13 @@ export function CategoryTree() {
   const orphan = (c: Category) => !c.archiveId || !live.has(c.archiveId);
   const [open, setOpen] = useState<Set<string>>(loadOpen);
   const [editing, setEditing] = useState<ID | null>(null);
+  // F2 on a selected folder
+  const renameId = useApp((st) => st.renameFolderId);
+  useEffect(() => { if (renameId) { setEditing(renameId); useApp.setState({ renameFolderId: null }); } }, [renameId]);
   const [menu, setMenu] = useState<{ id: ID; x: number; y: number } | null>(null);
   const overId = useDrag((d) => d.overId);
   const dragging = useDrag((d) => d.ids.length > 0);
+  const zone = useDrag((d) => d.zone);
 
   const toggle = (id: string, v?: boolean) => {
     const n = new Set(open);
@@ -49,11 +53,13 @@ export function CategoryTree() {
   };
 
   /** Drop handler shared by cards and folders. Target "root" = top level, "arc:<id>" = an archive node. */
-  const onDrop = (ids: string[], target: string) => {
+  const onDrop = (ids: string[], target: string, zone?: "before" | "after" | "into" | null) => {
     const toArchive = target.startsWith("arc:") ? target.slice(4) : null;
     if (ids[0]?.startsWith("cat:")) {
       const c = s.categories.find((x) => `cat:${x.id}` === ids[0]);
       if (!c || c.id === target) return;
+      // a folder's top / bottom edge: reorder; its middle: put inside
+      if (zone === "before" || zone === "after") { void s.placeCategory(c.id, target, zone); return; }
       if (toArchive) void s.moveCategory(c.id, null, toArchive);
       else if (target === "root") void s.moveCategory(c.id, null, arcId ?? c.archiveId ?? null);
       else { const t = s.categories.find((x) => x.id === target); if (t) void s.moveCategory(c.id, t.id, t.archiveId ?? null); }
@@ -62,13 +68,15 @@ export function CategoryTree() {
     dropItems(ids, target);
   };
 
-  const ArchiveNode = ({ a }: { a: Archive }) => {
+  // plain render functions, not inner components: an inner component is a new type on every render, so
+  // React would remount it — and a folder's rename box would lose what was being typed
+  const archiveNode = (a: Archive) => {
     const key = `arc:${a.id}`;
     const kids = archiveRoots(a);
     const isOpen = !open.has(`${key}:closed`); // archives start unfolded
     const Icon = iconOf(a.icon);
     return (
-      <>
+      <Fragment key={key}>
         <div
           data-drop-category={key}
           onClick={() => s.setView(key)}
@@ -91,18 +99,18 @@ export function CategoryTree() {
             <button className="btn-icon h-6 w-6" data-tip="폴더 만들기" onClick={(e) => { e.stopPropagation(); void add(null, a.id); }}><FolderPlus size={13} /></button>
           </div>
         </div>
-        {isOpen && kids.map((k) => <Node key={k.id} c={k} depth={1} />)}
-      </>
+        {isOpen && kids.map((k) => node(k, 1))}
+      </Fragment>
     );
   };
 
-  const Node = ({ c, depth }: { c: Category; depth: number }) => {
+  const node = (c: Category, depth: number): React.ReactNode => {
     const kids = children(c.id);
     const isOpen = open.has(c.id);
     const active = s.categoryId === c.id;
     const Icon = active || isOpen ? FolderOpen : Folder;
     return (
-      <>
+      <Fragment key={c.id}>
         <div
           data-drop-category={c.id}
           onPointerDown={(e) => editing !== c.id && startItemDrag(e, [`cat:${c.id}`], c.name, onDrop)}
@@ -115,13 +123,17 @@ export function CategoryTree() {
             c.color
               ? active ? "bg-[var(--fc-on)] font-medium text-fg" : "text-fg/85 hover:bg-[var(--fc-hover)]"
               : active ? "bg-accent/10 text-accent" : "text-fg/85 hover:bg-subtle",
-            dragging && overId === c.id && "bg-accent/20 ring-1 ring-accent",
+            "relative",
+            dragging && overId === c.id && (zone === "into" || zone === null) && "bg-accent/20 ring-1 ring-accent",
           )}
           style={{
             paddingLeft: 6 + depth * 14,
             ...(c.color ? { "--fc-on": tint(folderColor(c.color), 0.2), "--fc-hover": tint(folderColor(c.color), 0.11) } as React.CSSProperties : {}),
           }}
         >
+          {dragging && overId === c.id && (zone === "before" || zone === "after") && (
+            <span className={cn("pointer-events-none absolute inset-x-1 h-0.5 rounded bg-accent", zone === "before" ? "-top-px" : "-bottom-px")} />
+          )}
           <button
             className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-line/60", !kids.length && "invisible")}
             onClick={(e) => { e.stopPropagation(); toggle(c.id); }}
@@ -147,8 +159,8 @@ export function CategoryTree() {
             {/* colour, rename and delete live in the right-click menu */}
           </div>
         </div>
-        {isOpen && kids.map((k) => <Node key={k.id} c={k} depth={depth + 1} />)}
-      </>
+        {isOpen && kids.map((k) => node(k, depth + 1))}
+      </Fragment>
     );
   };
 
@@ -170,8 +182,8 @@ export function CategoryTree() {
         >
           <Layers size={15} />전체
         </div>
-        {!arcId && s.archives.map((a) => <ArchiveNode key={a.id} a={a} />)}
-        {children(null).map((c) => <Node key={c.id} c={c} depth={0} />)}
+        {!arcId && s.archives.map((a) => archiveNode(a))}
+        {children(null).map((c) => node(c, 0))}
         {menu && (() => {
           const c = cats.find((x) => x.id === menu.id);
           return c ? <FolderMenu c={c} at={menu} onClose={() => setMenu(null)} onRename={() => setEditing(c.id)} onAdd={() => void add(c.id)} /> : null;
@@ -196,11 +208,9 @@ function FolderColorPanel({ c, onDone }: { c: Category; onDone: () => void }) {
   return (
     <div className="grid grid-cols-6 gap-1.5 p-2.5" onClick={(e) => e.stopPropagation()}>
       {[null, ...FOLDER_COLORS].map((t) => (
-        <button key={t ?? "default"} onClick={() => pick(t)} data-tip={t ? FOLDER_NAMES[t] : "기본"}
+        <button key={t ?? "default"} onClick={() => pick(t)} data-tip={t ? FOLDER_NAMES[t] : "기본"} aria-label={t ? FOLDER_NAMES[t] : "기본"}
           className={cn("flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-elevated transition-transform hover:scale-110", (c.color ?? null) === t && "ring-2 ring-fg/60")}
-          style={{ background: folderColor(t) }}>
-          <Folder size={13} className="text-white" />
-        </button>
+          style={{ background: folderColor(t) }} />
       ))}
       {/* own colours: picking one keeps this menu open so it can be adjusted */}
       <CustomSwatches value={c.color ?? null} onPick={(hex) => pick(hex, false)} />

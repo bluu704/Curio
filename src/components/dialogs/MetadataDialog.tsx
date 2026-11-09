@@ -24,7 +24,7 @@ export function MetadataDialog() {
   const [hits, setHits] = useState<Candidate[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [overwrite, setOverwrite] = useState(false);
+  const [overwrite, setOverwrite] = useState(true);
 
   const run = async (k = kind, query = q) => {
     if (!query.trim()) return;
@@ -38,7 +38,7 @@ export function MetadataDialog() {
     if (!open || !item) return;
     const query = item.url ?? (item.title === "제목 없음" ? "" : item.title);
     const k = isSong(item, useApp.getState().archives.find((a) => a.id === item.archiveId)?.name) ? "music" : "other";
-    setKind(k); setQ(query); setHits(null); setErr(null); setOverwrite(item.title === "제목 없음");
+    setKind(k); setQ(query); setHits(null); setErr(null); setOverwrite(true); // the found title replaces the typed one unless unticked
     if (query) void run(k, query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item?.id]);

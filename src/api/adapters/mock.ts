@@ -737,7 +737,9 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
         };
         const best = it.url || !authors.length ? hits[0] : hits.find((h) => verdict(h) === true) ?? hits.find((h) => verdict(h) === null);
         if (!best) return false;
-        await api.applyMetadata(itemId, best, false);
+        // typed "supernova", found "Supernova": keep the official spelling (only case / spaces / punctuation differ)
+        const key = (x: string) => x.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+        await api.applyMetadata(itemId, best, best.title !== it.title && key(best.title) === key(it.title));
         return true;
       } catch { return false; }
     },

@@ -51,6 +51,10 @@ interface AppState {
   activeViewId: ID;
   /** Selected folder in the category tree (UI state, not saved in the view). */
   categoryId: ID | null;
+  /** What was clicked last — F2 renames that (a folder in the panel, or the open item). */
+  lastPicked: "item" | "folder" | null;
+  /** A folder whose name box should open (F2); the folder panel takes it and clears it. */
+  renameFolderId: ID | null;
   showCategories: boolean;
   search: string;
   selectedId: ID | null;
@@ -118,6 +122,8 @@ interface AppState {
   addCategory(name: string, parentId: ID | null, archiveId: ID | null): Promise<Category>;
   /** Move a folder (with its sub-folders) under another folder and/or into another archive. */
   moveCategory(id: ID, parentId: ID | null, archiveId: ID | null): Promise<void>;
+  /** Put a folder right before / after another one (same parent, same archive), renumbering that level. */
+  placeCategory(id: ID, targetId: ID, where: "before" | "after"): Promise<void>;
   /** Move items into an archive (dropped on it in the folder panel). */
   moveToArchive(itemIds: ID[], archiveId: ID): Promise<void>;
   saveCategory(c: Category): Promise<void>;
@@ -223,6 +229,8 @@ export const useApp = create<AppState>((set, get) => {
     categories: [],
     activeViewId: lsGet(LS_VIEW) ?? "sys:all",
     categoryId: null,
+    lastPicked: null,
+    renameFolderId: null,
     showCategories: lsGet(LS_CATS) !== "0",
     search: "",
     selectedId: null,
@@ -346,7 +354,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async select(id) {
-      set({ selectedId: id, detail: id ? get().items.find((i) => i.id === id) ?? null : null, linkBack: [] });
+      set({ selectedId: id, detail: id ? get().items.find((i) => i.id === id) ?? null : null, linkBack: [], ...(id ? { lastPicked: "item" as const } : {}) });
       if (id) await reloadDetail();
       const d = get().detail;
       if (d && d.id === id) { await fillExtras([d]); if (get().selectedId === id) await reloadDetail(); }
@@ -558,7 +566,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     setCategory(categoryId) {
-      set({ categoryId, catDrawer: false });
+      set({ categoryId, catDrawer: false, lastPicked: categoryId ? "folder" : get().lastPicked });
       void get().refresh();
     },
     toggleCategories() {
@@ -600,6 +608,26 @@ export const useApp = create<AppState>((set, get) => {
       try {
         await Promise.all(next.filter((c) => sub.has(c.id)).map((c) => api.saveCategory(c)));
         set({ categories: next });
+      } catch (e) { fail(e); }
+    },
+    async placeCategory(id, targetId, where) {
+      if (id === targetId) return;
+      const t = get().categories.find((c) => c.id === targetId);
+      if (!t) return;
+      const me = get().categories.find((c) => c.id === id);
+      if (!me) return;
+      if (me.parentId !== t.parentId || (me.archiveId ?? null) !== (t.archiveId ?? null)) await get().moveCategory(id, t.parentId, t.archiveId ?? null);
+      const level = get().categories
+        .filter((c) => c.id !== id && c.parentId === t.parentId && (c.archiveId ?? null) === (t.archiveId ?? null))
+        .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, "ko", { numeric: true }));
+      const at = level.findIndex((c) => c.id === targetId) + (where === "after" ? 1 : 0);
+      const moved = get().categories.find((c) => c.id === id)!;
+      level.splice(at, 0, moved);
+      const changed = level.map((c, i) => ({ ...c, position: i })).filter((c, i) => level[i].position !== i || c.id === id);
+      try {
+        await Promise.all(changed.map((c) => api.saveCategory(c)));
+        const byId = new Map(changed.map((c) => [c.id, c]));
+        set((s) => ({ categories: s.categories.map((c) => byId.get(c.id) ?? c) }));
       } catch (e) { fail(e); }
     },
     async moveToArchive(itemIds, archiveId) {

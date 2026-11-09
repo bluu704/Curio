@@ -1027,7 +1027,11 @@ impl Library {
         match best {
             Some(h) => {
                 let full = metadata::fetch(&h.provider, &h.id).unwrap_or(h);
-                self.apply_candidate(item_id, full, false)?;
+                // typed "supernova", found "Supernova": keep the official spelling (only case / spaces /
+                // punctuation differ — a different title is never replaced)
+                let key = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+                let respell = !full.title.is_empty() && full.title != it.title && key(&full.title) == key(&it.title);
+                self.apply_candidate(item_id, full, respell)?;
                 Ok(true)
             }
             None => Ok(false),
