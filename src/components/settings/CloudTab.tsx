@@ -281,7 +281,9 @@ function YouTubeKeyInput() {
   const [v, setV] = useState("");
   const [saved, setSaved] = useState(false);
   const [has, setHas] = useState(false);
-  useEffect(() => { void import("@/lib/ytApi").then((y) => setHas(!!y.ytKey())); }, [saved]);
+  const [builtIn, setBuiltIn] = useState(false);
+  useEffect(() => { void import("@/lib/ytApi").then((y) => { setHas(!!y.ytKey()); setBuiltIn(y.builtInYtKey()); }); }, [saved]);
+  if (builtIn) return null; // the site has one for everybody
   return (
     <div className="mt-4 space-y-1.5">
       <div className="text-[length:calc(12px*var(--ts))] text-muted">노래 검색 · YouTube API 키{has && " (저장됨)"}</div>

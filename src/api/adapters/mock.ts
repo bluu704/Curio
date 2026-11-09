@@ -667,7 +667,8 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       let c = c0;
       if (c.provider === "youtube" && c.year == null && c.url) {
         const full = await youtubeSong(c.url).catch(() => null);
-        if (full) c = { ...full, title: c.title || full.title, coverUrl: c.coverUrl ?? full.coverUrl, people: c.people.length ? c.people : full.people, extra: { ...full.extra, ...c.extra } };
+        // the full details' square album art beats the search result's video still
+        if (full) c = { ...full, title: c.title || full.title, coverUrl: full.coverUrl ?? c.coverUrl, people: c.people.length ? c.people : full.people, extra: { ...full.extra, ...c.extra } };
       }
       if (overwriteTitle || it.title === "제목 없음") it.title = c.title;
       it.coverUri = c.coverUrl ?? it.coverUri;
