@@ -190,7 +190,8 @@ export function squareFromStill(vid: string): Promise<string | null> {
 }
 
 /** A YouTube / YouTube Music link as a song candidate (title, artist, album, year, cover). */
-export async function youtubeSong(url: string): Promise<Candidate | null> {
+/** `known`: the song's title / singer when already read (e.g. from a search result) — better than a channel name. */
+export async function youtubeSong(url: string, known?: { title?: string; artist?: string }): Promise<Candidate | null> {
   const vid = youtubeId(url);
   if (!vid) return null;
   const watch = `https://www.youtube.com/watch?v=${vid}`;
@@ -211,7 +212,8 @@ export async function youtubeSong(url: string): Promise<Candidate | null> {
   // Apple Music for what it lacks (music videos have no album there)
   const topic = / - Topic$/.test(o.author_name ?? ""); // YouTube Music's own upload of a song
   const ytArtist = (o.author_name || artist).replace(/\s-\sTopic$/, "").trim();
-  const apple = cover || (track?.album && track.year && track.art) ? null : await itunesSong(ytArtist, song, [raw]).catch(() => null);
+  const apple = cover || (track?.album && track.year && track.art) ? null
+    : await itunesSong(known?.artist || ytArtist, known?.title || song, [raw, song]).catch(() => null);
   const hit = cover ? null : {
     album: track?.album || apple?.album || "", year: track?.year ?? apple?.year ?? null,
     genre: apple?.genre ?? null, length: track?.length || apple?.length || null,

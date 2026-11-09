@@ -666,7 +666,7 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       // a YouTube Music search hit: fetch the song's full details (year, album, genre…), like the desktop
       let c = c0;
       if (c.provider === "youtube" && c.year == null && c.url) {
-        const full = await youtubeSong(c.url).catch(() => null);
+        const full = await youtubeSong(c.url, { title: c.title, artist: c.people[0]?.name }).catch(() => null);
         // the full details' square album art beats the search result's video still
         if (full) c = { ...full, title: c.title || full.title, coverUrl: full.coverUrl ?? c.coverUrl, people: c.people.length ? c.people : full.people, extra: { ...full.extra, ...c.extra } };
       }

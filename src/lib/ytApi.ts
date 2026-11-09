@@ -63,39 +63,38 @@ function pick(list: YtSong[], title: string, artist: string, taken = new Set<str
 const link = (vid: string) => `https://music.youtube.com/watch?v=${vid}`;
 
 /**
- * Songs by title: Apple Music's catalogue gives the clean facts (title, singer, album, year, art);
- * one YouTube search gives each its link — the most official upload of the same song by the same singer.
- * YouTube-only results (nothing in Apple Music) follow.
+ * Songs by title, in YouTube's order (what people mean by that title first). Uploads of the same song
+ * (same singer, same title) are one entry, linked to its most official upload. Apple Music adds the
+ * clean facts (album, year, square art) where it knows the song. One YouTube request.
  */
 export async function ytApiSearch(query: string): Promise<Candidate[]> {
   if (!ytKey()) return [];
-  const [apple, yt] = await Promise.all([itunesSearch(query).catch(() => []), search(query)]);
+  const [apple, yt] = await Promise.all([itunesSearch(query).catch(() => [] as Candidate[]), search(query)]);
+  const asked = FAN.test(query);
+  const firstName = (a: string) => a.split(/\s*(?:[,&、＆]|\bfeat\.?|\bft\.?|\bx\b|\bwith\b)\s*/i)[0];
+  const norm = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
+  const groups = new Map<string, YtSong[]>();
+  for (const s of yt) {
+    if (!s.title || /karaoke|カラオケ|노래방|minus one|instrumental|type beat/i.test(s.raw) && !asked) continue;
+    const k = `${norm(firstName(s.artist))}\u0001${norm(s.title.replace(/\s*feat\..*$/i, ""))}`;
+    groups.set(k, [...(groups.get(k) ?? []), s]);
+  }
   const out: Candidate[] = [];
-  const used = new Set<string>();
+  for (const ups of groups.values()) {
+    const v = [...ups].sort((a, b) => b.score - a.score)[0];
+    const a = apple.find((x) => sameText(x.title.replace(/\s*\(feat\..*?\)/i, ""), v.title) && x.people.some((p) => sameText(firstName(p.name), firstName(v.artist)) || ups.some((u) => u.raw.toLowerCase().includes(firstName(p.name).toLowerCase()))));
+    out.push(a
+      ? { ...a, provider: "youtube", id: v.vid, url: link(v.vid), detail: ["YouTube", a.detail].filter(Boolean).join(" · ") }
+      : {
+          provider: "youtube", id: v.vid, title: v.title, altTitles: v.raw !== v.title ? [v.raw] : [], kind: "music", year: null,
+          coverUrl: `https://i.ytimg.com/vi/${v.vid}/hqdefault.jpg`, bannerUrl: null, summary: null,
+          people: v.artist ? [{ name: v.artist, category: "author", role: "Artist" }] : [], genres: [], series: null,
+          url: link(v.vid), code: null, detail: ["YouTube", v.artist].filter(Boolean).join(" · "),
+        });
+  }
+  // the same song twice (an upload whose title reads the other way round) → once
   const seen = new Set<string>();
-  const key = (t: string, a: string) => `${t}\u0001${a}`.toLowerCase();
-  for (const a of apple) {
-    const artist = a.people[0]?.name ?? "";
-    // a remix / live / other version in Apple Music is not the upload of the original found on YouTube
-    if (/remix|re:works|live|ver\.|version|inst|acoustic|sped up|slowed/i.test(a.title) && !FAN.test(query)) continue;
-    if (seen.has(key(a.title, artist))) continue;
-    seen.add(key(a.title, artist));
-    const v = pick(yt, a.title, artist, used);
-    if (!v) continue; // only songs YouTube has too: their link is what the item needs
-    used.add(v.vid);
-    out.push({ ...a, provider: "youtube", id: v.vid, url: link(v.vid), detail: ["YouTube", a.detail].filter(Boolean).join(" · ") });
-  }
-  // YouTube-only songs (not the ones listed above under their Apple Music facts)
-  const dup = (v: YtSong) => out.some((c) => sameText(c.title, v.title) && c.people.some((p) => sameText(p.name, v.artist) || v.raw.toLowerCase().includes(p.name.toLowerCase())));
-  for (const v of yt.filter((s) => !used.has(s.vid) && s.score > 0 && !dup(s)).sort((a, b) => b.score - a.score)) {
-    out.push({
-      provider: "youtube", id: v.vid, title: v.title, altTitles: v.raw !== v.title ? [v.raw] : [], kind: "music", year: null,
-      coverUrl: `https://i.ytimg.com/vi/${v.vid}/hqdefault.jpg`, bannerUrl: null, summary: null,
-      people: v.artist ? [{ name: v.artist, category: "author", role: "Artist" }] : [], genres: [], series: null,
-      url: link(v.vid), code: null, detail: ["YouTube", v.channel].filter(Boolean).join(" · "),
-    });
-  }
-  return out.slice(0, 8);
+  return out.filter((c) => { const k = `${norm(c.title)}\u0001${norm(firstName(c.people[0]?.name ?? ""))}`; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8);
 }
 
 /**
