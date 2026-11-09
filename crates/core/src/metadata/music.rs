@@ -324,6 +324,72 @@ pub fn from_youtube(input: &str) -> Result<Candidate> {
 }
 
 
+/// Songs on YouTube Music (its "노래" tab): title, artists, album, length and the square album art.
+/// Picking one fetches the full details (`from_youtube`: year, album, genre…).
+pub fn ytm_search(q: &str) -> Result<Vec<Candidate>> {
+    // the songs tab; where it is empty (regions without the catalogue) the mixed results, official uploads only
+    let songs = super::lyrics::ytm("search", serde_json::json!({ "query": q, "params": "EgWKAQIIAWoKEAkQBRAKEAMQBA==" }))?;
+    let found = ytm_songs(&songs, false);
+    if !found.is_empty() {
+        return Ok(found);
+    }
+    let mixed = super::lyrics::ytm("search", serde_json::json!({ "query": q }))?;
+    Ok(ytm_songs(&mixed, true))
+}
+
+fn ytm_songs(res: &Value, official_only: bool) -> Vec<Candidate> {
+    let mut out: Vec<Candidate> = vec![];
+    fn walk(v: &Value, f: &mut dyn FnMut(&Value)) {
+        match v {
+            Value::Object(m) => match m.get("musicResponsiveListItemRenderer") {
+                Some(r) => f(r),
+                None => m.values().for_each(|x| walk(x, f)),
+            },
+            Value::Array(a) => a.iter().for_each(|x| walk(x, f)),
+            _ => {}
+        }
+    }
+    let len_re = regex::Regex::new(r"^\d{1,2}:\d{2}$").unwrap();
+    let vid_re = regex::Regex::new(r#""videoId":"([\w-]{11})""#).unwrap();
+    walk(res, &mut |r| {
+        let raw = r.to_string();
+        if official_only && !["MUSIC_VIDEO_TYPE_ATV", "MUSIC_VIDEO_TYPE_OMV", "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC"].iter().any(|t| raw.contains(t)) {
+            return;
+        }
+        let Some(vid) = r["playlistItemData"]["videoId"].as_str().map(String::from).or_else(|| vid_re.captures(&raw).map(|c| c[1].to_string())) else { return };
+        let vid = vid.as_str();
+        let col = |i: usize| r["flexColumns"][i]["musicResponsiveListItemFlexColumnRenderer"]["text"]["runs"].as_array().cloned().unwrap_or_default();
+        let title: String = col(0).iter().filter_map(|x| x["text"].as_str()).collect();
+        let page = |x: &Value| x["navigationEndpoint"]["browseEndpoint"]["browseEndpointContextSupportedConfigs"]["browseEndpointContextMusicConfig"]["pageType"].as_str().unwrap_or("").to_string();
+        let runs = col(1);
+        let artists: Vec<String> = runs.iter()
+            .filter(|x| page(x) == "MUSIC_PAGE_TYPE_ARTIST" || x["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str().is_some_and(|b| b.starts_with("UC")))
+            .filter_map(|x| x["text"].as_str().map(String::from)).collect();
+        let album = runs.iter().find(|x| page(x) == "MUSIC_PAGE_TYPE_ALBUM").and_then(|x| x["text"].as_str()).map(String::from);
+        let length = runs.iter().filter_map(|x| x["text"].as_str()).find(|t| len_re.is_match(t)).map(String::from);
+        // square art: the largest thumbnail, asked for at 544 px
+        let thumb = r["thumbnail"]["musicThumbnailRenderer"]["thumbnail"]["thumbnails"].as_array().and_then(|a| a.last()).and_then(|t| t["url"].as_str())
+            .map(|u| regex::Regex::new(r"=w\d+-h\d+.*$").unwrap().replace(u, "=w544-h544-l90-rj").to_string());
+        if title.is_empty() || out.iter().any(|c| c.id == vid) {
+            return;
+        }
+        out.push(Candidate {
+            provider: "youtube".into(),
+            id: vid.into(),
+            title,
+            kind: Some(Kind::Music),
+            cover_url: thumb,
+            people: artists.iter().map(|n| Person { name: n.clone(), category: TagCategory::Author, role: Some("Artist".into()) }).collect(),
+            series: album.clone(),
+            url: Some(format!("https://music.youtube.com/watch?v={vid}")),
+            detail: Some(["YouTube Music".to_string()].into_iter().chain(artists.first().cloned()).chain(album.clone()).chain(length.clone()).collect::<Vec<_>>().join(" · ")),
+            extra: super::more::extras([("album", album), ("duration", length)]),
+            ..Default::default()
+        });
+    });
+    out.into_iter().take(8).collect()
+}
+
 /// YouTube search without an API key: read video ids from the results page, then oEmbed each.
 pub fn search_youtube(q: &str, music: bool) -> Result<Vec<Candidate>> {
     let html = agent()
@@ -405,6 +471,13 @@ mod cover_titles {
 
 #[cfg(test)]
 mod live_music {
+    #[test]
+    #[ignore = "network"]
+    fn ytm_song_search() {
+        let hits = super::ytm_search("Supernova aespa").unwrap();
+        for h in &hits { println!("{} | {:?} | {:?} | {:?}", h.title, h.people.iter().map(|p| &p.name).collect::<Vec<_>>(), h.url, h.detail); }
+        assert!(hits.iter().any(|h| h.title.to_lowercase().contains("supernova") && h.people.iter().any(|p| p.name.to_lowercase().contains("aespa"))));
+    }
     #[test]
     #[ignore = "network"]
     fn itunes_lookup() {

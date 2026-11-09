@@ -113,7 +113,15 @@ pub fn search(kind: Kind, query: &str) -> Result<Vec<Candidate>> {
         Kind::Book => vec![Box::new(|| more::google_books(q)), Box::new(|| more::open_library(q)), wiki],
         Kind::Drama => vec![Box::new(|| more::tvmaze(q)), wiki],
         Kind::Game => vec![Box::new(|| steam::search(q)), Box::new(|| googleplay::search(q)), Box::new(|| more::vndb(q)), wiki],
-        Kind::Music => vec![Box::new(|| music::search(q)), Box::new(|| music::search_youtube(q, true)), wiki],
+        // songs: YouTube Music first and alone; the others only when it finds nothing
+        Kind::Music => {
+            if let Ok(hits) = music::ytm_search(q) {
+                if !hits.is_empty() {
+                    return Ok(hits);
+                }
+            }
+            vec![Box::new(|| music::search(q)), Box::new(|| music::search_youtube(q, true)), wiki]
+        }
         Kind::Movie => vec![wiki, Box::new(|| music::search_youtube(q, false))],
         // no specific kind (archives don't have one any more): ask every source and let the user pick
         Kind::Other => vec![

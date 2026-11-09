@@ -69,7 +69,7 @@ pub(crate) fn title_ok(want: &str, got: &str) -> bool {
 }
 
 // ---------------------------------------------------------------- YouTube Music
-fn ytm(path: &str, body: Value) -> Result<Value> {
+pub(crate) fn ytm(path: &str, body: Value) -> Result<Value> {
     let mut b = json!({ "context": { "client": { "clientName": "WEB_REMIX", "clientVersion": "1.20241106.01.00", "hl": "ko", "gl": "KR" } } });
     if let (Some(o), Some(extra)) = (b.as_object_mut(), body.as_object()) {
         o.extend(extra.clone());
