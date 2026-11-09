@@ -994,7 +994,7 @@ impl Library {
         let f = it.files.iter().find(|f| f.id == file_id).ok_or_else(|| Error::NotFound(format!("file {file_id}")))?;
         let out = self.cache_dir.join("thumbs").join(format!("{item_id}-{}.jpg", now()));
         let path = crate::media::video_frame_at(Path::new(&f.uri), &out, Some(seconds))
-            .ok_or_else(|| Error::Unsupported("영상에서 장면을 뽑으려면 ffmpeg가 필요해요".into()))?;
+            .ok_or_else(|| Error::Unsupported("이 영상에서는 장면을 뽑지 못했어요".into()))?;
         self.update_item(item_id, ItemPatch { cover_uri: Some(Some(path.to_string_lossy().into_owned())), ..Default::default() })
     }
 

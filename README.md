@@ -147,7 +147,7 @@ GitHub Pages로 올리기 (`.github/workflows/web.yml`, main에 올릴 때마다
       AniList · 네이버 웹툰/시리즈 · Steam · Google Play · 위키백과(ko/en/ja)+Wikidata · YouTube/YT Music(oEmbed)+Deezer 앨범아트
       고화질 표지·배너는 로컬 캐시에 저장, 인물·장르는 태그로 연결 (동인지는 검색 없음)
 - [x] 목록 붙여넣기: 고정 형식 `제목 | 상태 | 평점 | 작가 | 장르 | 태그 | 링크 | 메모` (Tab 구분도 가능), 줄별 오류 표시
-- [x] FTS5(trigram) 전문 검색, ffmpeg 영상 썸네일, 감시 폴더 자동 가져오기, 서버 토큰 인증(CURIO_TOKEN)
+- [x] FTS5(trigram) 전문 검색, 영상 썸네일(앱 내장 플레이어로, ffmpeg 불필요), 감시 폴더 자동 가져오기, 서버 토큰 인증(CURIO_TOKEN)
 - [x] 아카이브 편집(이름·아이콘·고정·순서·추가·삭제), 사용자 정의 상태, 항목 고정, 우클릭/길게 누르기 메뉴
 - [x] 메모: 마크다운 + LaTeX(KaTeX), 블록 드래그 정렬 · 상세 패널 전체 화면 · 속성 보이기/숨기기/추가
 - [x] 테이블 열 선택(모든 속성·사용자 속성), 사용자 정의 단축키, 글꼴·굵기·크기·강조색 설정

@@ -339,6 +339,8 @@ export const useApp = create<AppState>((set, get) => {
     async select(id) {
       set({ selectedId: id, detail: id ? get().items.find((i) => i.id === id) ?? null : null, linkBack: [] });
       if (id) await reloadDetail();
+      // items added in the background (watched folders) may still lack a cover: make one now
+      if (id) void autoCovers([id], (i, coverUri) => get().updateItem(i, { coverUri }));
     },
     linkBack: [],
     async openLinked(id) {

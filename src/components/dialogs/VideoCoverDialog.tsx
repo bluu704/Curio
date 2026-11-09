@@ -34,7 +34,7 @@ export function VideoCoverDialog() {
     <Modal open onClose={close} title="영상에서 표지 고르기" width={720}>
       {src ? (
         <div className="space-y-3">
-          <video ref={video} src={src} preload="auto" playsInline muted
+          <video ref={video} src={src} crossOrigin="anonymous" preload="auto" playsInline muted
             onLoadedMetadata={(e) => { setDur(e.currentTarget.duration || 0); e.currentTarget.currentTime = Math.min(5, (e.currentTarget.duration || 0) * 0.1); }}
             onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)}
             className="aspect-video w-full rounded-xl bg-black object-contain" />

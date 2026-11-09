@@ -2,8 +2,9 @@ import { api } from "@/api";
 import { useApp } from "@/store/app";
 
 /**
- * Make the frame currently shown in `video` the item's cover. The browser grabs it straight from the
- * player; where it may not (cross-origin file URL) the backend cuts the same moment with ffmpeg.
+ * Make the frame currently shown in `video` the item's cover, grabbed straight from the player
+ * (the <video> is crossOrigin="anonymous", so desktop files can be read). The backend's ffmpeg is
+ * only a fallback for setups where the browser may not read the frame.
  */
 export async function coverFromVideo(video: HTMLVideoElement, itemId: string, fileId: string) {
   const s = useApp.getState();
