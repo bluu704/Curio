@@ -1,4 +1,5 @@
 import type { Candidate } from "@/api/types";
+import { ytmTrack } from "./ytm";
 
 /**
  * Song facts the browser may read directly (both sites allow it): YouTube's oEmbed (title, channel)
@@ -152,17 +153,26 @@ export async function youtubeSong(url: string): Promise<Candidate | null> {
   const vid = youtubeId(url);
   if (!vid) return null;
   const watch = `https://www.youtube.com/watch?v=${vid}`;
-  let o: { title?: string; author_name?: string };
+  // YouTube Music's own facts (through the site's relay): clean title, artists, album, year, length
+  const track = await ytmTrack(vid).catch(() => null);
+  let o: { title?: string; author_name?: string } = {};
   try {
-    o = await (await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(watch)}&format=json`, { signal: AbortSignal.timeout(8000) })).json();
-  } catch { return null; }
-  const raw = o.title ?? "";
+    const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(watch)}&format=json`, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) o = await r.json();
+  } catch { /* embedding off: YouTube Music's title below */ }
+  const raw = o.title || track?.title || "";
   if (!raw) return null;
-  const artist = (o.author_name ?? "").replace(/\s-\sTopic$/, "").trim();
+  const artist = (track?.artist || o.author_name || "").replace(/\s-\sTopic$/, "").trim();
   const cover = parseCover(raw, artist);
-  const song = cover?.title || cleanTitle(raw, artist) || raw;
-  // a cover is the singer's own take: no album / release of the original
-  const hit = cover ? null : await itunesSong(artist, song, [raw]).catch(() => null);
+  let song = cover?.title || cleanTitle(raw, o.author_name ?? artist) || raw;
+  if (!cover && track?.album && track.title) song = track.title;
+  // a cover is the singer's own take: no album / release of the original. Songs: YouTube Music first,
+  // Apple Music for what it lacks (music videos have no album there)
+  const apple = cover || (track?.album && track.year) ? null : await itunesSong(o.author_name || artist, song, [raw]).catch(() => null);
+  const hit = cover ? null : {
+    album: track?.album || apple?.album || "", year: track?.year ?? apple?.year ?? null,
+    genre: apple?.genre ?? null, length: track?.length || apple?.length || null, artwork: apple?.artwork ?? null,
+  };
   const thumb = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
   const extra: Record<string, string> = {};
   if (hit?.album) extra.album = hit.album;

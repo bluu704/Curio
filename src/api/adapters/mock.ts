@@ -10,6 +10,7 @@ import { searchAniList } from "@/lib/anilist";
 import { kindFromLink } from "@/lib/links";
 import { ARCHIVE_KINDS } from "@/lib/kinds";
 import { itunesSearch, parseCover, sameText, youtubeId, youtubeSong, youtubeVideo } from "@/lib/webMusic";
+import { ytmFind, ytmLyrics, ytmSearch } from "@/lib/ytm";
 import { DEFAULT_STATUSES } from "@/lib/statuses";
 
 /** A library starts with one plain archive (fixed id, so every device makes the same one). */
@@ -631,7 +632,8 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
           summary: null, people: [], genres: [], series: null, url: query, code: null, detail: null }];
       }
       if (kind === "doujin") return [];
-      if (kind === "music") { const hits = await itunesSearch(query); if (hits.length) return hits; }
+      // songs: YouTube Music first (through the site's relay), Apple Music when it is not there
+      if (kind === "music") { const y = await ytmSearch(query); if (y.length) return y; const hits = await itunesSearch(query); if (hits.length) return hits; }
       if (/youtu\.?be|music\.youtube|steampowered|play\.google/.test(query) || kind === "game" || kind === "music" || kind === "catalog" || kind === "movie" || kind === "illust" || kind === "other") {
         throw new Error("웹에서는 AniList만 검색돼요");
       }
@@ -647,8 +649,14 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
         }));
       }
     },
-    async applyMetadata(itemId, c, overwriteTitle) {
+    async applyMetadata(itemId, c0, overwriteTitle) {
       const it = find(itemId);
+      // a YouTube Music search hit: fetch the song's full details (year, album, genre…), like the desktop
+      let c = c0;
+      if (c.provider === "youtube" && c.year == null && c.url) {
+        const full = await youtubeSong(c.url).catch(() => null);
+        if (full) c = { ...full, title: c.title || full.title, coverUrl: c.coverUrl ?? full.coverUrl, people: c.people.length ? c.people : full.people, extra: { ...full.extra, ...c.extra } };
+      }
       if (overwriteTitle || it.title === "제목 없음") it.title = c.title;
       it.coverUri = c.coverUrl ?? it.coverUri;
       it.bannerUri = c.bannerUrl ?? it.bannerUri;
@@ -691,10 +699,22 @@ export function createMockClient(opts?: { db?: DB; persist?: (db: DB) => void })
       }
       const len = /^(\d+):(\d{2})$/.exec(ex.duration ?? "");
       const secs = len ? Number(len[1]) * 60 + Number(len[2]) : 0;
+      const save = (l: { plain: string; synced: string; source: string }) => { it.props = { ...it.props, _lyrics: l }; commit(); return delay(it); };
+      // the video's own lyrics (YouTube Music's 가사 tab) — exact, no guessing
+      const vid = youtubeId(it.url ?? "");
+      if (vid) { const own = await ytmLyrics(vid).catch(() => null); if (own) return save(own); }
       // neither a singer nor a length: a title alone ("Watch", "Home"…) finds someone else's song
       if ((!artists.length && !secs) || !title.trim()) return null;
       const norm = (x: string) => x.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[\s\p{P}\p{S}]+/gu, "");
       const script = (x: string) => /[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(x);
+      // YouTube Music first (through the site's relay): the video's own lyrics, then the song found by title
+      for (const t of [...new Set([title, ...alts])]) {
+        for (const v of await ytmFind({ title, alts, artists, duration: secs }, t).catch(() => [])) {
+          if (v === vid) continue;
+          const l = await ytmLyrics(v).catch(() => null);
+          if (l) return save(l);
+        }
+      }
       type Hit = { trackName: string; artistName: string; duration?: number; plainLyrics?: string; syncedLyrics?: string; instrumental?: boolean };
       let h: Hit | undefined;
       for (const t of [...new Set([title, ...alts])]) {
