@@ -14,6 +14,18 @@ export function setYtKey(v: string) { try { if (v.trim()) localStorage.setItem(K
 
 const decode = (s: string) => { const t = document.createElement("textarea"); t.innerHTML = s; return t.value; };
 
+/**
+ * A song saved with a YouTube Music *search* link: its own address, when the official search finds the
+ * same title by the same singer. null when unsure (or no key).
+ */
+export async function resolveSongLink(title: string, artist: string): Promise<string | null> {
+  if (!ytKey() || !title.trim() || !artist.trim()) return null;
+  const norm = (s: string) => s.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+  const hits = await ytApiSearch(`${title} ${artist}`);
+  const h = hits.find((x) => norm(x.title) === norm(title) && x.people.some((p) => norm(p.name).includes(norm(artist)) || norm(artist).includes(norm(p.name))));
+  return h?.url ?? null;
+}
+
 /** Songs by title: YouTube Music's own uploads ("… - Topic" channels) first, then official videos. */
 export async function ytApiSearch(query: string): Promise<Candidate[]> {
   const key = ytKey();

@@ -1127,12 +1127,22 @@ impl Library {
             Some(f) => Some(sync::from_gz(&drive::appdata_get(&token, &f.id)?)?),
             None => None,
         };
-        let (merged, pulled) = self.sync_merge(remote.as_ref())?;
-        let pushed = remote.as_ref().map(|r| sync::changes(r, &merged)).unwrap_or(1);
+        let (mut merged, pulled) = self.sync_merge(remote.as_ref())?;
+        let mut pushed = remote.as_ref().map(|r| sync::changes(r, &merged)).unwrap_or(1);
         if pushed > 0 {
             drive::appdata_put(&token, LIB, &sync::to_gz(&merged)?, lib.map(|f| f.id.as_str()))?;
         }
         self.sync_commit(&merged)?;
+        // songs the web version could only link to a YouTube Music search: find their own address here
+        // (where YouTube Music answers) and send it back, so the web shows the player too
+        if self.resolve_song_links(12) > 0 {
+            let (again, _) = self.sync_merge(Some(&merged))?;
+            pushed += sync::changes(&merged, &again);
+            let lib_id = drive::appdata_list(&token)?.into_iter().find(|f| f.name == LIB).map(|f| f.id);
+            drive::appdata_put(&token, LIB, &sync::to_gz(&again)?, lib_id.as_deref())?;
+            self.sync_commit(&again)?;
+            merged = again;
+        }
 
         // covers / banners: upload ours that the cloud lacks, download the ones we lack
         let name_of = |p: &str| format!("cache~{}", p.trim_start_matches("@cache/").replace('/', "~"));
@@ -1162,6 +1172,27 @@ impl Library {
         let at = now();
         self.set_settings("sync", &serde_json::json!({ "lastSync": at }))?;
         Ok(SyncReport { pulled, pushed, images_up: up, images_down: down, files_up, files_down, at })
+    }
+
+    /// Songs linked to a YouTube Music *search* (the web's stand-in): the song's own YouTube Music address,
+    /// when it is found with certainty (same title and singer). At most `limit` per call. Returns how many.
+    pub fn resolve_song_links(&self, limit: usize) -> usize {
+        let ids: Vec<String> = {
+            let c = self.conn();
+            let Ok(mut st) = c.prepare("SELECT id FROM items WHERE deleted_at IS NULL AND url LIKE '%music.youtube.com/search?%' LIMIT ?") else { return 0 };
+            st.query_map([limit as i64], |r| r.get(0)).map(|rows| rows.flatten().collect()).unwrap_or_default()
+        };
+        let mut n = 0;
+        for id in ids {
+            let Ok(it) = self.get_item(&id) else { continue };
+            let artist = it.tags.iter().find(|t| t.category == TagCategory::Author).map(|t| t.name.clone()).unwrap_or_default();
+            if let Some(url) = metadata::youtube_music_link(&it.title, &artist) {
+                if self.update_item(&id, ItemPatch { url: Some(Some(url)), ..Default::default() }).is_ok() {
+                    n += 1;
+                }
+            }
+        }
+        n
     }
 
     /// Files uploaded in the web version ("@data/cloud/<id>/<name>") → this PC's data folder.

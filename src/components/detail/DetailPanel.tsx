@@ -193,7 +193,7 @@ export function DetailPanel() {
           </div>
           {item.source && (
             <div className="mt-6 text-[length:calc(11px*var(--ts))] text-muted">
-              정보 출처: {item.source.url ? <a className="underline" href={item.source.url} target="_blank" rel="noreferrer">{item.source.provider}</a> : item.source.provider}
+              정보 출처: {item.source.url ? <a className="underline" href={item.source.url} target="_blank" rel="noreferrer">{sourceName(item.source.provider)}</a> : sourceName(item.source.provider)}
               {item.source.altTitles?.length ? ` · ${item.source.altTitles.slice(0, 3).join(" · ")}` : ""}
             </div>
           )}
@@ -222,6 +222,14 @@ function Pill({ icon: Icon, children }: { icon: LucideIcon; children: React.Reac
 }
 
 /** Cover with a hover button to replace it: desktop picks a file, browser uploads an image. */
+const SOURCE_NAMES: Record<string, string> = {
+  anilist: "AniList", kitsu: "Kitsu", steam: "Steam", googleplay: "Google Play", naver: "네이버", wikipedia: "위키백과",
+  youtube: "YouTube Music", "youtube-video": "YouTube", "youtube-post": "YouTube", deezer: "Deezer", music: "Apple Music",
+  tvmaze: "TVmaze", vndb: "VNDB", pixiv: "pixiv", hitomi: "hitomi.la", web: "웹 페이지", openlibrary: "Open Library",
+  googlebooks: "Google Books", x: "X", spotify: "Spotify", soundcloud: "SoundCloud",
+};
+const sourceName = (p: string) => SOURCE_NAMES[p] ?? p;
+
 function CoverPicker({ item, className, style }: { item: Item; className: string; style?: React.CSSProperties }) {
   const update = useApp((s) => s.updateItem);
   const setDialog = useApp((s) => s.setDialog);

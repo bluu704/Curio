@@ -453,3 +453,17 @@ fn cover_lyrics() {
         assert!(text.len() > 50);
     }
 }
+
+/// The web's stand-in link (a YouTube Music search) becomes the song's own address on the desktop.
+#[test]
+#[ignore = "network"]
+fn song_search_links_resolve() {
+    let (l, _d) = lib();
+    let it = l.create_item(NewItem {
+        title: "Supernova".into(), kind: Some(Kind::Music), url: Some("https://music.youtube.com/search?q=Supernova%20aespa".into()),
+        tags: vec![NewTag { name: "aespa".into(), category: TagCategory::Author }], ..Default::default()
+    }).unwrap();
+    assert_eq!(l.resolve_song_links(5), 1);
+    let url = l.get_item(&it.id).unwrap().url.unwrap();
+    assert!(url.starts_with("https://music.youtube.com/watch?v="), "{url}");
+}

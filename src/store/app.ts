@@ -358,6 +358,11 @@ export const useApp = create<AppState>((set, get) => {
       if (id) await reloadDetail();
       const d = get().detail;
       if (d && d.id === id) { await fillExtras([d]); if (get().selectedId === id) await reloadDetail(); }
+      // web: a song linked to a YouTube Music *search* gets its own address (with a YouTube key)
+      if (d && api.caps.platform === "web" && /music\.youtube\.com\/search\?/.test(d.url ?? "")) {
+        const artist = d.tags.find((t) => t.category === "author")?.name ?? "";
+        void import("@/lib/ytApi").then((y) => y.resolveSongLink(d.title, artist)).then((url) => { if (url) void get().updateItem(d.id, { url }); });
+      }
       // items added in the background (watched folders) may still lack a cover: make one now
       if (id) void autoCovers([id], (i, coverUri) => get().updateItem(i, { coverUri }));
     },
