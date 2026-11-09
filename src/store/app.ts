@@ -109,6 +109,8 @@ interface AppState {
   bulkCreate(inputs: NewItem[]): Promise<ID[]>;
 
   applyMetadata(itemId: ID, c: Candidate, overwriteTitle: boolean): Promise<void>;
+  /** A link typed into an item: saved, then its page's facts (album, genre, year, cover, lyrics…) fill the item. */
+  setLink(itemId: ID, url: string | null): Promise<void>;
   /** Lyrics for a song item; `quiet` = no toast when nothing is found (automatic lookups). */
   fetchLyrics(itemId: ID, quiet?: boolean): Promise<boolean>;
   autofill(itemIds: ID[], onProgress?: (done: number, hit: number) => void): Promise<number>;
@@ -513,6 +515,22 @@ export const useApp = create<AppState>((set, get) => {
       return ids;
     },
 
+    async setLink(itemId, url) {
+      await get().updateItem(itemId, { url });
+      if (!url || !/^https?:\/\//i.test(url)) return;
+      const it = get().detail?.id === itemId ? get().detail! : get().items.find((i) => i.id === itemId);
+      if (!it) return;
+      const arc = get().archives.find((a) => a.id === it.archiveId)?.name;
+      const kind = isSong(it, arc) || /music\.youtube\.com|youtu\.?be/.test(url) && isSong({ ...it, url }, arc) ? "music" : it.kind;
+      const hits = await api.searchMetadata(kind, url).catch(() => [] as Candidate[]);
+      const c = hits[0];
+      if (!c) return;
+      // the page's own spelling replaces the typed title only when they differ just in case / spacing
+      const key = (x: string) => x.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+      const respell = it.title === "제목 없음" || (c.title !== it.title && key(c.title) === key(it.title));
+      await get().applyMetadata(itemId, c, respell);
+      get().notify("링크의 정보를 넣었어요");
+    },
     async applyMetadata(itemId, c, overwriteTitle) {
       const saved = await api.applyMetadata(itemId, c, overwriteTitle);
       mapItem(itemId, () => saved);

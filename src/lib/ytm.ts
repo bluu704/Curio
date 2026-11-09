@@ -82,7 +82,7 @@ export async function ytmSearch(query: string): Promise<Candidate[]> {
 }
 
 /** What YouTube Music says about a track (album / year only for songs, not music videos). */
-export async function ytmTrack(vid: string): Promise<{ title: string | null; artist: string | null; album: string | null; year: number | null; length: string | null } | null> {
+export async function ytmTrack(vid: string): Promise<{ title: string | null; artist: string | null; album: string | null; year: number | null; length: string | null; art: string | null } | null> {
   const nx = await ytm("next", { videoId: vid, isAudioOnly: true });
   const r = nx ? walk(nx, "playlistPanelVideoRenderer").find((x) => x.videoId === vid) : undefined;
   if (!r) return null;
@@ -91,8 +91,9 @@ export async function ytmTrack(vid: string): Promise<{ title: string | null; art
   return {
     title: runs(r.title) || null, artist: artists.join(", ") || null,
     album: by.find((x) => pageType(x) === "MUSIC_PAGE_TYPE_ALBUM")?.text ?? null,
-    year: Number(by.map((x) => String(x.text ?? "").trim()).find((t) => /^\d{4}$/.test(t))) || null,
+    year: Number(by.map((x) => /^(\d{4})\s*년?$/.exec(String(x.text ?? "").trim())?.[1]).find(Boolean)) || null, // "2024" / "2024년"
     length: runs(r.lengthText) || null,
+    art: (() => { const t = (r.thumbnail?.thumbnails as J[] | undefined)?.slice(-1)[0]; return t && t.width && t.width === t.height ? String(t.url).replace(/=w\d+-h\d+.*$/, "=w1080-h1080-l90-rj") : null; })(),
   };
 }
 

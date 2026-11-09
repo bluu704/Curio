@@ -141,7 +141,7 @@ fn mmss(secs: i64) -> String {
 /// What YouTube Music itself says about a track: its queue entry has the artist, album, year and length
 /// (album / year only for songs, not for music videos).
 #[derive(Default, Debug)]
-pub struct YtmTrack { pub title: Option<String>, pub artist: Option<String>, pub album: Option<String>, pub year: Option<i64>, pub length: Option<String> }
+pub struct YtmTrack { pub title: Option<String>, pub artist: Option<String>, pub album: Option<String>, pub year: Option<i64>, pub length: Option<String>, pub art: Option<String> }
 
 pub fn ytm_track(vid: &str) -> Option<YtmTrack> {
     let body = serde_json::json!({
@@ -173,8 +173,14 @@ pub fn ytm_track(vid: &str) -> Option<YtmTrack> {
         title: r["title"]["runs"][0]["text"].as_str().map(String::from),
         artist: (!artists.is_empty()).then(|| artists.join(", ")),
         album: runs.iter().find(|x| page(x) == "MUSIC_PAGE_TYPE_ALBUM").map(text),
-        year: runs.iter().map(text).find(|t| t.len() == 4 && t.chars().all(|c| c.is_ascii_digit())).and_then(|t| t.parse().ok()),
+        // "2024" / "2024년" (Korean pages add 년)
+        year: runs.iter().map(text).find_map(|t| regex::Regex::new(r"^(\d{4})\s*년?$").unwrap().captures(&t).and_then(|c| c[1].parse().ok())),
         length: r["lengthText"]["runs"][0]["text"].as_str().map(String::from),
+        // a song's own square album art (music videos have a 16:9 still instead)
+        art: r["thumbnail"]["thumbnails"].as_array().and_then(|a| a.last())
+            .filter(|t| t["width"].as_i64().is_some() && t["width"] == t["height"])
+            .and_then(|t| t["url"].as_str())
+            .map(|u| regex::Regex::new(r"=w\d+-h\d+.*$").unwrap().replace(u, "=w1080-h1080-l90-rj").to_string()),
     })
 }
 
@@ -315,6 +321,10 @@ pub fn from_youtube(input: &str) -> Result<Candidate> {
                 c.genres = full.genres;
             }
         }
+    }
+    // YouTube Music's own square album art beats any other picture
+    if let Some(a) = &ytm.art {
+        c.cover_url = Some(a.clone());
     }
     c.extra = super::more::extras([
         ("album", c.series.clone()), ("duration", length), ("release", c.year.map(|y| y.to_string())),
@@ -514,5 +524,8 @@ mod live_music {
         assert_eq!(mv.year, Some(2023));
         assert_eq!(super::ytm_track("DFzPmaNb7fk").and_then(|t| t.length).as_deref(), Some("4:27"));
         assert!(mv.series.is_some(), "album from Apple Music");
+        let song = super::from_youtube("https://music.youtube.com/watch?v=mUSVav9pKO4&list=PLGEJG1GcIxrCImlrnORHMvkTDl1JVddO0").unwrap();
+        println!("song: {} / {:?} / {:?} / {:?}", song.title, song.series, song.year, song.cover_url);
+        assert!(song.cover_url.as_deref().is_some_and(|u| u.contains("googleusercontent")), "YouTube Music's square art");
     }
 }

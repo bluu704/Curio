@@ -55,7 +55,7 @@ export function PropertyList({ item, editing, onDone }: { item: Item; editing: b
       const c = p.key.slice(4) as TagCategory;
       return { ...base, node: <TagInput item={item} category={c} label={base.label} />, wide: item.tags.filter((t) => t.category === c).length > 2 };
     }
-    if (p.key === "url") return { ...base, node: <UrlProp value={item.url} onSave={(url) => void updateItem(item.id, { url })} /> };
+    if (p.key === "url") return { ...base, node: <UrlProp value={item.url} onSave={(url) => void s.setLink(item.id, url)} /> };
     if (p.key === "code") return { ...base, node: <TextProp value={item.code} mono placeholder="ABC-123" onSave={(code) => void updateItem(item.id, { code })} /> };
     if (p.key === "year") return { ...base, node: <TextProp value={item.year?.toString() ?? null} placeholder="2024" onSave={(v) => void updateItem(item.id, { year: v && /^\d{4}$/.test(v) ? Number(v) : null })} /> };
     if (p.key === "added") return { ...base, node: <span className="flex h-8 items-center px-1.5 text-muted">{date(item.createdAt)}</span> };

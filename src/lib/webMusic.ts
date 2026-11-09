@@ -162,6 +162,33 @@ export async function itunesSearch(query: string): Promise<Candidate[]> {
   return out.slice(0, 8);
 }
 
+/**
+ * A song upload's video still is its album art in the middle of a 16:9 frame: cut that square out
+ * (i.ytimg.com lets pages read its images). Falls back to the smaller still when there is no HD one.
+ */
+export function squareFromStill(vid: string): Promise<string | null> {
+  const load = (u: string) => new Promise<HTMLImageElement | null>((res) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => res(img.naturalWidth > 200 ? img : null); // missing HD stills are a 120×90 placeholder
+    img.onerror = () => res(null);
+    img.src = u;
+  });
+  return (async () => {
+    const img = (await load(`https://i.ytimg.com/vi/${vid}/maxresdefault.jpg`)) ?? (await load(`https://i.ytimg.com/vi/${vid}/hqdefault.jpg`));
+    if (!img) return null;
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const frameH = Math.min(h, Math.round((w * 9) / 16)); // hqdefault is 4:3 with the 16:9 frame inside
+    const side = frameH, sx = Math.round((w - side) / 2), sy = Math.round((h - frameH) / 2);
+    const out = Math.min(side, 720);
+    const c = Object.assign(document.createElement("canvas"), { width: out, height: out });
+    try {
+      c.getContext("2d")!.drawImage(img, sx, sy, side, side, 0, 0, out, out);
+      return c.toDataURL("image/jpeg", 0.9);
+    } catch { return null; }
+  })();
+}
+
 /** A YouTube / YouTube Music link as a song candidate (title, artist, album, year, cover). */
 export async function youtubeSong(url: string): Promise<Candidate | null> {
   const vid = youtubeId(url);
@@ -182,10 +209,14 @@ export async function youtubeSong(url: string): Promise<Candidate | null> {
   if (!cover && track?.album && track.title) song = track.title;
   // a cover is the singer's own take: no album / release of the original. Songs: YouTube Music first,
   // Apple Music for what it lacks (music videos have no album there)
-  const apple = cover || (track?.album && track.year) ? null : await itunesSong(o.author_name || artist, song, [raw]).catch(() => null);
+  const topic = / - Topic$/.test(o.author_name ?? ""); // YouTube Music's own upload of a song
+  const ytArtist = (o.author_name || artist).replace(/\s-\sTopic$/, "").trim();
+  const apple = cover || (track?.album && track.year && track.art) ? null : await itunesSong(ytArtist, song, [raw]).catch(() => null);
   const hit = cover ? null : {
     album: track?.album || apple?.album || "", year: track?.year ?? apple?.year ?? null,
-    genre: apple?.genre ?? null, length: track?.length || apple?.length || null, artwork: apple?.artwork ?? null,
+    genre: apple?.genre ?? null, length: track?.length || apple?.length || null,
+    // the song's square album art: YouTube Music's own, else Apple Music's, else the middle of the video still
+    artwork: track?.art ?? apple?.artwork ?? (topic ? await squareFromStill(vid) : null),
   };
   const thumb = `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
   const extra: Record<string, string> = {};
