@@ -139,6 +139,18 @@ export async function putAppFile(name: string, file: Blob, existing?: string): P
     const r = await check(await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existing}?uploadType=media`, { method: "PATCH", headers: { ...(await auth()), "Content-Type": "application/octet-stream" }, body: data }));
     return ((await r.json()) as { id: string }).id;
   }
+  if (data.size > 5 * 1024 * 1024) {
+    // big file: a resumable session, then the bytes in one go
+    const start = await check(await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+      method: "POST",
+      headers: { ...(await auth()), "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": data.type, "X-Upload-Content-Length": String(data.size) },
+      body: JSON.stringify({ name, parents: ["appDataFolder"] }),
+    }));
+    const session = start.headers.get("Location");
+    if (!session) throw new Error("드라이브 업로드를 시작하지 못했어요");
+    const r = await check(await fetch(session, { method: "PUT", body: data }));
+    return ((await r.json()) as { id: string }).id;
+  }
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify({ name, parents: ["appDataFolder"] })], { type: "application/json" }));
   form.append("file", data);

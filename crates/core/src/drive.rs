@@ -323,6 +323,32 @@ pub fn appdata_put(access: &str, name: &str, bytes: &[u8], existing: Option<&str
     Ok(v["id"].as_str().unwrap_or_default().to_string())
 }
 
+/// Upload a file from disk to the app folder. Small files go in one request; bigger ones use a
+/// resumable session and are streamed from disk (no size cap, no whole-file copy in memory).
+pub fn appdata_put_path(access: &str, name: &str, path: &Path) -> Result<String> {
+    let len = std::fs::metadata(path)?.len();
+    if len <= 5 * 1024 * 1024 {
+        return appdata_put(access, name, &std::fs::read(path)?, None);
+    }
+    let auth = format!("Bearer {access}");
+    let meta = json!({ "name": name, "parents": ["appDataFolder"] }).to_string();
+    let start = agent().post("https://www.googleapis.com/upload/drive/v3/files")
+        .query("uploadType", "resumable").set("Authorization", &auth)
+        .set("Content-Type", "application/json; charset=UTF-8")
+        .set("X-Upload-Content-Type", "application/octet-stream")
+        .set("X-Upload-Content-Length", &len.to_string())
+        .send_string(&meta).map_err(scope_err)?;
+    let Some(session) = start.header("Location").map(String::from) else {
+        return Err(Error::Network("Drive did not start the upload".into()));
+    };
+    // no overall timeout: a large file takes as long as the connection needs
+    let slow = ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(15)).timeout_read(Duration::from_secs(120))
+        .timeout_write(Duration::from_secs(120)).try_proxy_from_env(true).build();
+    let v: Value = slow.put(&session).set("Content-Length", &len.to_string()).set("Content-Type", "application/octet-stream")
+        .send(std::fs::File::open(path)?).map_err(scope_err)?.into_json()?;
+    Ok(v["id"].as_str().unwrap_or_default().to_string())
+}
+
 pub fn appdata_delete(access: &str, id: &str) -> Result<()> {
     match agent().delete(&format!("{API}/{id}")).set("Authorization", &format!("Bearer {access}")).call() {
         Ok(_) | Err(ureq::Error::Status(404, _)) => Ok(()),

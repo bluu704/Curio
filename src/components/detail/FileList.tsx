@@ -1,12 +1,14 @@
-import { BookOpen, Download, ExternalLink, Eye, FilePlus, FolderOpen, FolderPlus, GripVertical, ImageUp, Link2Off, Play } from "lucide-react";
-import { useRef, useState } from "react";
+import { BookOpen, Cloud, CloudOff, Download, ExternalLink, Eye, FilePlus, FolderOpen, FolderPlus, GripVertical, ImageUp, Link2Off, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { isReadable } from "@/components/reader/source";
 import { isAudio, isText, isVideo } from "@/components/viewer/files";
 import { api } from "@/api";
 import type { FileRef, Item } from "@/api/types";
 import { useApp } from "@/store/app";
 import { FILE_META } from "@/lib/meta";
-import { FLAG, mainFile, orderedFiles } from "@/lib/itemFlags";
+import { FLAG, isCloudSynced, mainFile, orderedFiles, sentFileProps, sentFiles } from "@/lib/itemFlags";
+import { isCloudUri } from "@/web/snapshot";
+import { syncLibrary } from "@/components/settings/CloudTab";
 import { cn } from "@/lib/cn";
 import { bytes } from "@/lib/format";
 
@@ -51,6 +53,27 @@ export function FileList({ item }: { item: Item }) {
     };
     addEventListener("pointermove", move);
     addEventListener("pointerup", up);
+  };
+  // files over the "파일 함께 올리기" limit stay on their device unless sent to Drive one by one
+  const [limit, setLimit] = useState<number | null>(null); // bytes; null = Drive not connected
+  useEffect(() => {
+    let live = true;
+    void Promise.all([api.driveStatus().catch(() => null), api.getSettings<{ fileSyncMb?: number }>("cloud").catch(() => null)]).then(([st, cfg]) => {
+      if (live) setLimit(st?.connected ? Math.max(0, Number(cfg?.fileSyncMb ?? 50)) * 1024 * 1024 : null);
+    });
+    return () => { live = false; };
+  }, [item.id]);
+  const cloudOff = useApp((s) => s.cloudOff);
+  const cloudOn = isCloudSynced(item) && !(item.archiveId && cloudOff.includes(item.archiveId));
+  const sent = sentFiles(item);
+  const tooBig = (f: FileRef) => limit !== null && cloudOn && f.provider === "local" && !isCloudUri(f.uri) && (limit === 0 || (f.size ?? 0) > limit);
+  const toggleSend = async (f: FileRef) => {
+    const on = !sent.has(f.id);
+    await updateItem(item.id, { props: sentFileProps(item, f.id, on) });
+    const here = desktop || f.uri.startsWith("(업로드)"); // the bytes are on this device
+    useApp.getState().notify(!on ? "이 기기에만 둬요" : here ? "드라이브에 올려요" : "PC에서 동기화할 때 올라가요");
+    if (on && here) { const r = await syncLibrary(true); if (r?.filesUp) useApp.getState().notify("드라이브에 올렸어요"); }
+    else void syncLibrary(true);
   };
   const fail = (e: unknown) => useApp.setState({ error: e instanceof Error ? e.message : String(e) });
 
@@ -107,6 +130,12 @@ export function FileList({ item }: { item: Item }) {
                 </span>
               ) : <Icon size={16} className="shrink-0 text-muted" />}
               <button className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openReader(item, f)}>{f.name}</button>
+              {tooBig(f) && (
+                <button className={cn("btn-icon h-7 w-7 shrink-0", sent.has(f.id) ? "text-sky-500 hover:text-sky-500" : "text-muted")} onClick={() => void toggleSend(f).catch(fail)}
+                  data-tip={sent.has(f.id) ? "드라이브에 올림 · 누르면 이 기기에만" : "용량이 커서 이 기기에만 · 눌러서 드라이브에 올리기"}>
+                  {sent.has(f.id) ? <Cloud size={14} /> : <CloudOff size={14} />}
+                </button>
+              )}
               <span className="touch-hide text-[length:calc(11px*var(--ts))] tabular-nums text-muted group-hover:hidden">{bytes(f.size)}</span>
               <div className="touch-flex hidden items-center group-hover:flex">
                 {act && <button className="btn-icon h-7 w-7" onClick={() => openReader(item, f)} data-tip={act.label}><act.icon size={14} /></button>}

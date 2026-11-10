@@ -1243,13 +1243,12 @@ impl Library {
         (mb.max(0.0) * 1024.0 * 1024.0) as u64
     }
 
-    /// Upload this PC's attachments up to the size limit (named "file~<id>~<mtime>", so an edited file
-    /// replaces its old copy), so the web version can open and download them too.
+    /// Upload this PC's attachments up to the size limit, plus bigger ones sent by hand (named
+    /// "file~<id>~<mtime>", so an edited file replaces its old copy), so the web version can open and
+    /// download them too. A big file taken back (or over a lowered limit) leaves Drive again.
     fn sync_small_files(&self, token: &str, merged: &sync::Snapshot, files: &[drive::AppFile]) -> Result<usize> {
         let limit = self.file_sync_limit();
-        if limit == 0 {
-            return Ok(0);
-        }
+        let forced = sync::forced_file_ids(merged);
         let mut up = 0;
         for row in merged.tables.get("files").map(|t| t.values().collect::<Vec<_>>()).unwrap_or_default() {
             let (Some(id), Some(uri)) = (row.get("id").and_then(serde_json::Value::as_str), row.get("uri").and_then(serde_json::Value::as_str)) else { continue };
@@ -1261,7 +1260,16 @@ impl Library {
                 continue; // came from the web version and is already in Drive
             }
             let Ok(meta) = std::fs::metadata(&path) else { continue }; // not on this PC
-            if !meta.is_file() || meta.len() > limit {
+            if !meta.is_file() {
+                continue;
+            }
+            if meta.len() > limit && !forced.contains(id) {
+                // over the limit and not sent by hand (or taken back): this PC holds the only copy
+                if !uri.starts_with("@data/cloud/") {
+                    for old in files.iter().filter(|f| f.name.starts_with(&format!("file~{id}~"))) {
+                        let _ = drive::appdata_delete(token, &old.id);
+                    }
+                }
                 continue;
             }
             let mtime = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
@@ -1269,8 +1277,7 @@ impl Library {
             if files.iter().any(|f| f.name == name) {
                 continue;
             }
-            let bytes = std::fs::read(&path)?;
-            drive::appdata_put(token, &name, &bytes, None)?;
+            drive::appdata_put_path(token, &name, &path)?;
             up += 1;
             // older copies of the same attachment
             for old in files.iter().filter(|f| f.name.starts_with(&format!("file~{id}~")) && f.name != name) {

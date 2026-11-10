@@ -1,6 +1,7 @@
 import type { ApiClient } from "../client";
 import type { DriveStatus, FileRef, SyncReport } from "../types";
 import { createMockClient, emptyDb, getMockBlob, hasMockBlob, mockBlobsReady, mockDb, putMockBlob, type DB } from "./mock";
+import { sentFiles } from "@/lib/itemFlags";
 import { cacheRefs, changes, cloudUri, fromSnapshot, isBrowserFile, isCloudUri, isLocalOnly, merge, offArchives, toSnapshot, type Snapshot } from "@/web/snapshot";
 import * as g from "@/web/google";
 
@@ -140,8 +141,10 @@ export function createWebClient(): ApiClient {
     const off = offArchives(db.settings);
     for (const it of db.items) {
       if (isLocalOnly(it, off)) continue;
+      const forced = sentFiles(it); // bigger files sent to Drive by hand
       for (const f of it.files) {
-        if (isBrowserFile(f) && limitMb > 0 && (f.size ?? 0) <= limitMb * 1024 * 1024 && hasMockBlob(f.id)) { f.uri = cloudUri(f); converted = true; }
+        const fits = limitMb > 0 && (f.size ?? 0) <= limitMb * 1024 * 1024;
+        if (isBrowserFile(f) && (fits || forced.has(f.id)) && hasMockBlob(f.id)) { f.uri = cloudUri(f); converted = true; }
       }
     }
     if (converted) mockDb.set(db);

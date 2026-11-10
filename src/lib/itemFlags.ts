@@ -5,7 +5,7 @@ export const archiveKind = (a: Pick<Archive, "kind" | "name"> | undefined | null
   !a ? "other" : a.kind === "other" && isMusicName(a.name) ? "music" : a.kind;
 
 /** Per-item switches kept in `item.props` under reserved keys (never shown as properties). */
-export const FLAG = { calendarHidden: "_calendarHidden", cloud: "_cloud", main: "_main", fileOrder: "_fileOrder" } as const;
+export const FLAG = { calendarHidden: "_calendarHidden", cloud: "_cloud", main: "_main", fileOrder: "_fileOrder", cloudFiles: "_cloudFiles" } as const;
 
 /** The item's files in the order the user arranged them (new files go last). */
 export function orderedFiles(it: Item): FileRef[] {
@@ -51,5 +51,16 @@ export function cloudProps(it: Item, on: boolean): Record<string, unknown> {
 export function withFlag(it: Item, key: string, on: boolean): Record<string, unknown> {
   const p = { ...(it.props ?? {}) };
   if (on) p[key] = true; else delete p[key];
+  return p;
+}
+
+/** Attachments over the size limit that the user sent to Drive by hand. */
+export const sentFiles = (it: Item) => new Set((Array.isArray(it.props?.[FLAG.cloudFiles]) ? it.props[FLAG.cloudFiles] as unknown[] : []).map(String));
+/** props patch that sends one file to Drive (or takes it back). */
+export function sentFileProps(it: Item, fileId: string, on: boolean): Record<string, unknown> {
+  const ids = sentFiles(it);
+  if (on) ids.add(fileId); else ids.delete(fileId);
+  const p = { ...(it.props ?? {}) };
+  if (ids.size) p[FLAG.cloudFiles] = [...ids]; else delete p[FLAG.cloudFiles];
   return p;
 }

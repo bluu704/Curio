@@ -124,6 +124,13 @@ pub fn local_only_ids(s: &Snapshot) -> BTreeSet<String> {
         (props.get("_cloud") == Some(&Value::Bool(false)) || archive_off).then(|| r.get("id").and_then(Value::as_str).unwrap_or("").to_string())
     }).collect()
 }
+/// Attachments the user sent to Drive by hand (`props._cloudFiles`), whatever the size limit says.
+pub fn forced_file_ids(s: &Snapshot) -> BTreeSet<String> {
+    s.tables.get("items").into_iter().flat_map(|t| t.values()).flat_map(|r| {
+        let props: Value = r.get("props").and_then(Value::as_str).and_then(|p| serde_json::from_str(p).ok()).unwrap_or(Value::Null);
+        props.get("_cloudFiles").and_then(Value::as_array).cloned().unwrap_or_default()
+    }).filter_map(|v| v.as_str().map(String::from)).collect()
+}
 fn drop_local_only(s: &mut Snapshot) {
     let ids = local_only_ids(s);
     if ids.is_empty() {
@@ -369,6 +376,16 @@ mod tests {
         let fresh = snap(&[("x", json!({"id":"x","name":"일러스트"}))]);
         let cloud = snap(&[("x", json!({"id":"x","name":"그림"}))]);
         assert_eq!(merge(&fresh, &cloud, None).tables["items"]["x"]["name"], "그림");
+    }
+
+    #[test]
+    fn files_sent_by_hand() {
+        let s = snap(&[
+            ("a", json!({"id":"a","props":"{\"_cloudFiles\":[\"f1\",\"f2\"]}"})),
+            ("b", json!({"id":"b","props":"{}"})),
+            ("c", json!({"id":"c"})),
+        ]);
+        assert_eq!(forced_file_ids(&s).into_iter().collect::<Vec<_>>(), ["f1", "f2"]);
     }
 
     #[test]
