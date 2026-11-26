@@ -4,7 +4,7 @@ import {
 import type { ColumnKey, FieldDef, Item, TagCategory } from "@/api/types";
 import { TAG_CATEGORIES } from "@/api/types";
 import { TAG_META } from "@/lib/meta";
-import { date, relative } from "@/lib/format";
+import { date, relative, safeHref } from "@/lib/format";
 import { useApp } from "@/store/app";
 import { folderColor } from "@/lib/statuses";
 import { Stars } from "@/components/ui/Stars";
@@ -39,7 +39,7 @@ export function allColumns(fields: FieldDef[], archiveId?: string | null): Colum
     } },
     { key: "year", label: nameOf("year"), icon: CalendarDays, width: "70px", render: (it) => <span className="tabular-nums text-muted">{it.year ?? ""}</span> },
     { key: "code", label: nameOf("code"), icon: Hash, width: "110px", render: (it) => <span className="font-mono text-[length:calc(12px*var(--ts))] text-muted">{it.code ?? ""}</span> },
-    { key: "url", label: nameOf("url"), icon: Link2, width: "minmax(120px, 1fr)", render: (it) => it.url ? <a href={it.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="truncate text-accent underline-offset-2 hover:underline">{it.url.replace(/^https?:\/\/(www\.)?/, "")}</a> : null },
+    { key: "url", label: nameOf("url"), icon: Link2, width: "minmax(120px, 1fr)", render: (it) => it.url ? <a href={safeHref(it.url)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="truncate text-accent underline-offset-2 hover:underline">{it.url.replace(/^https?:\/\/(www\.)?/, "")}</a> : null },
     { key: "list", label: "목록", icon: Gift, width: "90px", render: (it) => <span className="whitespace-nowrap text-muted">{it.list === "wishlist" ? "위시리스트" : "아카이브"}</span> },
     { key: "files", label: "파일", icon: Files, width: "70px", render: (it) => it.files.length ? <span className="inline-flex items-center gap-1 text-muted"><Files size={13} />{it.files.length}</span> : null },
     ...fields.map((f): ColumnDef => ({ key: `field:${f.id}`, label: f.name, icon: FIELD_ICONS[f.type], width: "minmax(100px, 1fr)", render: (it) => {

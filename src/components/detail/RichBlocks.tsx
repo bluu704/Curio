@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { renderInline } from "@/lib/markdown";
 import { useApp } from "@/store/app";
 import { FILE_META } from "@/lib/meta";
-import { bytes } from "@/lib/format";
+import { bytes, safeHref } from "@/lib/format";
 import { Download, FilePlus } from "lucide-react";
 import { fileAction } from "./FileList";
 
@@ -116,7 +116,7 @@ function VideoBlock({ block, onPatch }: { block: Block; onPatch: Patch }) {
       {yt && api.caps.platform !== "mock" ? (
         <iframe className="aspect-video w-full" src={`https://www.youtube-nocookie.com/embed/${yt}`} allow="encrypted-media; picture-in-picture" allowFullScreen title="video" />
       ) : yt ? (
-        <a href={url} target="_blank" rel="noreferrer" className="relative block">
+        <a href={safeHref(url)} target="_blank" rel="noreferrer" className="relative block">
           <img src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`} alt="" className="aspect-video w-full object-cover opacity-80" />
           <span className="absolute inset-0 m-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white"><Play size={20} fill="currentColor" /></span>
         </a>
@@ -144,7 +144,7 @@ function BookmarkBlock({ block, onPatch }: { block: Block; onPatch: Patch }) {
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-subtle text-muted"><LinkIcon size={16} /></span>
       <div className="min-w-0 flex-1">
         <input className="w-full bg-transparent font-medium outline-none placeholder:text-muted/50" placeholder={host} value={block.text} onChange={(e) => onPatch({ text: e.target.value })} />
-        <a href={url} target="_blank" rel="noreferrer" className="block truncate text-[length:calc(12px*var(--ts))] text-accent hover:underline">{url}</a>
+        <a href={safeHref(url)} target="_blank" rel="noreferrer" className="block truncate text-[length:calc(12px*var(--ts))] text-accent hover:underline">{url}</a>
       </div>
       <button className="btn-icon touch-show h-7 w-7 opacity-0 group-hover/bm:opacity-100" onClick={() => setData(block, onPatch, { url: "" })} data-tip="주소 바꾸기"><Trash2 size={13} /></button>
     </div>

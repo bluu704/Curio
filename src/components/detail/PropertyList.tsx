@@ -5,7 +5,7 @@ import type { FieldType, Item, TagCategory } from "@/api/types";
 import { useApp } from "@/store/app";
 import { useNarrow } from "@/hooks/useNarrow";
 import { STATUS_META } from "@/lib/meta";
-import { date } from "@/lib/format";
+import { date, safeHref } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { iconOf, suggestIcons } from "@/lib/icons";
 import { bindingFor, iconForBinding, isTagKey, propName, useProps, type PropDef, type PropKey } from "@/lib/properties";
@@ -147,7 +147,7 @@ function UrlProp({ value, onSave }: { value: string | null; onSave: (v: string |
   try { host = new URL(value).hostname.replace(/^www\./, ""); } catch { /* keep the text */ }
   return (
     <div className="group/url flex h-8 min-w-0 items-center">
-      <a href={value} target="_blank" rel="noreferrer" className="min-w-0 truncate rounded-md px-1.5 text-accent hover:underline" data-tip={value}>{host}</a>
+      <a href={safeHref(value)} target="_blank" rel="noreferrer" className="min-w-0 truncate rounded-md px-1.5 text-accent hover:underline" data-tip={value}>{host}</a>
       <button className="btn-icon h-7 w-7 shrink-0 opacity-0 group-hover/url:opacity-100" onClick={() => setEdit(true)} data-tip="주소 바꾸기"><Pencil size={12} /></button>
     </div>
   );

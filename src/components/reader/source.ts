@@ -57,7 +57,7 @@ async function openPdf(file: FileRef): Promise<PageSource> {
   }
   // Hand pdf.js the bytes (not the URL): works the same for asset://, blob: and sandboxed/opaque origins.
   const data = new Uint8Array(await (await fetch(url)).arrayBuffer());
-  const doc = await pdfjs.getDocument({ data }).promise;
+  const doc = await pdfjs.getDocument({ data, isEvalSupported: false }).promise;
   const cache = new Map<number, Promise<string>>();
   const render = async (i: number) => {
     const page = await doc.getPage(i + 1);

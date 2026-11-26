@@ -7,6 +7,7 @@ import type { Item } from "@/api/types";
 import { activeView, useApp } from "@/store/app";
 import { TAG_META } from "@/lib/meta";
 import { cn } from "@/lib/cn";
+import { safeHref } from "@/lib/format";
 import { LyricsSection } from "./LyricsSection";
 import { cloudProps, FLAG, isCalendarHidden, isCloudSynced, isSong, mainFile, orderedFiles, withFlag } from "@/lib/itemFlags";
 import { MainContent } from "./MainContent";
@@ -153,7 +154,7 @@ export function DetailPanel() {
 
         <div className={cn("px-7", full && "mx-auto w-full max-w-3xl")}>
           {yt && api.caps.platform === "mock" && (
-            <a href={item.url!} target="_blank" rel="noreferrer" className="group relative mt-5 block overflow-hidden rounded-xl bg-black shadow-card">
+            <a href={safeHref(item.url)} target="_blank" rel="noreferrer" className="group relative mt-5 block overflow-hidden rounded-xl bg-black shadow-card">
               <img src={`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`} alt="" className="aspect-video w-full object-cover opacity-80" onError={(e) => (e.currentTarget.style.display = "none")} />
               <div className="absolute inset-0 flex aspect-video items-center justify-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white shadow-pop transition-transform group-hover:scale-110"><Play size={20} fill="currentColor" /></span>
@@ -193,7 +194,7 @@ export function DetailPanel() {
           </div>
           {item.source && (
             <div className="mt-6 text-[length:calc(11px*var(--ts))] text-muted">
-              정보 출처: {item.source.url ? <a className="underline" href={item.source.url} target="_blank" rel="noreferrer">{sourceName(item.source.provider)}</a> : sourceName(item.source.provider)}
+              정보 출처: {item.source.url ? <a className="underline" href={safeHref(item.source.url)} target="_blank" rel="noreferrer">{sourceName(item.source.provider)}</a> : sourceName(item.source.provider)}
               {item.source.altTitles?.length ? ` · ${item.source.altTitles.slice(0, 3).join(" · ")}` : ""}
             </div>
           )}

@@ -23,3 +23,9 @@ export function relative(ms: number): string {
 export const uid = () =>
   (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.() ??
   Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+/** A link address safe to put in href: web and mail links only (a stored "javascript:…" would run code on click). */
+export function safeHref(url: string | null | undefined): string | undefined {
+  const u = (url ?? "").trim();
+  return /^(https?:\/\/|mailto:)/i.test(u) ? u : undefined;
+}
