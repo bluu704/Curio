@@ -1,6 +1,6 @@
 import type { ApiClient } from "../client";
 import type { DriveStatus, FileRef, SyncReport } from "../types";
-import { createMockClient, emptyDb, getMockBlob, hasMockBlob, mockBlobsReady, mockDb, putMockBlob, type DB } from "./mock";
+import { createMockClient, deleteMockBlob, emptyDb, getMockBlob, hasMockBlob, mockBlobsReady, mockDb, putMockBlob, type DB } from "./mock";
 import { sentFiles } from "@/lib/itemFlags";
 import { cacheRefs, changes, cloudUri, fromSnapshot, isBrowserFile, isCloudUri, isLocalOnly, merge, offArchives, toSnapshot, type Snapshot } from "@/web/snapshot";
 import * as g from "@/web/google";
@@ -122,6 +122,24 @@ export function createWebClient(): ApiClient {
     const blob = await g.getAppFile(appFiles.get(name)!);
     putMockBlob(f.id, new File([blob], f.name, { type: blob.type || "application/octet-stream" }));
   }
+  /** Items (or their files) that are only in this browser: cloud off, or a file too big to travel. */
+  function browserOnly(db: DB) {
+    const off = offArchives(db.settings);
+    const limit = Number((db.settings.cloud as { fileSyncMb?: number } | undefined)?.fileSyncMb ?? 50) * 1024 * 1024;
+    const stays = (it: DB["items"][number], f: FileRef) =>
+      isBrowserFile(f) && hasMockBlob(f.id) && !((limit > 0 && (f.size ?? 0) <= limit) || sentFiles(it).has(f.id));
+    return db.items.filter((it) => isLocalOnly(it, off) || it.files.some((f) => stays(it, f))).length;
+  }
+
+  /** Shared / public computer: remove an account's library, covers and files from this browser. */
+  async function forget(p: string, db: DB) {
+    for (const k of ["db", "base", "appfiles"]) await idb.del("kv", key(k, p)).catch(() => undefined);
+    for (const k of await idb.keys("images").catch(() => [] as IDBValidKey[])) {
+      if (String(k).startsWith(`${p}|`)) await idb.del("images", String(k)).catch(() => undefined);
+    }
+    for (const it of [...db.items, ...db.trash]) for (const f of it.files) deleteMockBlob(f.id);
+    try { localStorage.removeItem("curio.youtubeKey"); } catch { /* ignore */ }
+  }
   const fetched = (f: FileRef) => isBrowserFile(f) || hasMockBlob(f.id);
 
   const status = (): DriveStatus => ({ available: !!g.clientId(), builtin: g.builtinClient(), connected: !!g.account(), email: g.account() });
@@ -206,7 +224,16 @@ export function createWebClient(): ApiClient {
     },
     driveStatus: async () => status(),
     driveLogin: async () => { await g.signIn(); await switchProfile(); return status(); },
-    driveLogout: async () => { await g.signOut(); await switchProfile(); return status(); },
+    driveLogout: async (clearLocal?: boolean) => {
+      // clearing: Drive gets this browser's changes first (a failed sync stops here, nothing is lost)
+      if (clearLocal && g.account()) await sync();
+      const p = profile, db = mockDb.get();
+      await g.signOut();
+      await switchProfile();
+      if (clearLocal && p !== "guest") await forget(p, db);
+      return status();
+    },
+    browserOnly: async () => browserOnly(mockDb.get()),
     onLibraryChanged: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
     driveSync: () => sync(),
     driveFolder: async () => { throw new Error("데스크톱 앱에서만 돼요"); },

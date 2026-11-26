@@ -79,7 +79,10 @@ export interface ApiClient {
   driveStatus(): Promise<DriveStatus>;
   /** Opens Google sign-in in the browser; resolves when the user has finished. */
   driveLogin(): Promise<DriveStatus>;
-  driveLogout(): Promise<DriveStatus>;
+  /** `clearLocal` (web): sync first, then remove this account's library from the browser. */
+  driveLogout(clearLocal?: boolean): Promise<DriveStatus>;
+  /** Web version: items / files that exist only in this browser (lost if its data is cleared). */
+  browserOnly?(): Promise<number>;
   driveFolder(link: string): Promise<{ id: string; name: string }>;
   /** Download a Drive folder to this PC and add its files as items (new files only on repeat). */
   driveImport(link: string, target?: ImportTarget): Promise<DriveImport>;

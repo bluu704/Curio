@@ -326,6 +326,7 @@ export const putMockBlob = (id: ID, f: File) => { blobs.set(id, f); pageCache.de
 export const hasMockBlob = (id: ID) => !!blobs.get(id);
 export const getMockBlob = (id: ID): File | undefined => blobs.get(id);
 export const mockBlobsReady = () => blobs.ready;
+export const deleteMockBlob = (id: ID) => { blobs.delete(id); pageCache.delete(id); };
 
 /** hitomi.la gallery info (the site allows reading it from any page; its images need hitomi.la itself). */
 async function hitomiGallery(id: string): Promise<Candidate> {

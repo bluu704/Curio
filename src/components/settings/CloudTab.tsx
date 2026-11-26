@@ -1,5 +1,6 @@
 import { ChevronDown, Cloud, Download, FileKey2, FolderPlus, Loader2, LogOut, RefreshCw, Trash2, Upload } from "lucide-react";
 import { Select } from "@/components/ui/Select";
+import { Popover } from "@/components/ui/Popover";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import type { DriveStatus, SyncReport } from "@/api/types";
@@ -103,7 +104,15 @@ export function CloudTab() {
   };
 
   const login = () => run("login", async () => setSt(await api.driveLogin()));
-  const logout = () => run("logout", async () => setSt(await api.driveLogout()));
+  const logout = (clearLocal = false) => run("logout", async () => {
+    // close the open item first: its pending edits save to this account's library, not the next one
+    await useApp.getState().select(null);
+    await new Promise((r) => setTimeout(r, 50));
+    setSt(await api.driveLogout(clearLocal));
+    if (clearLocal) useApp.getState().notify("이 브라우저에서 지웠어요");
+  });
+  /** web: items that exist only in this browser (shown before clearing) */
+  const [onlyHere, setOnlyHere] = useState(0);
   const addFolder = () => run("add", async () => {
     const f = await api.driveFolder(link.trim());
     save({ ...cfg, folders: [...cfg.folders.filter((x) => x.id !== f.id), { id: f.id, label: f.name, archiveId: target || null }] });
@@ -142,7 +151,31 @@ export function CloudTab() {
             </div>
           </div>
           {connected ? (
-            <button className="btn h-9 border border-line" disabled={!!busy} onClick={() => void logout()}><LogOut size={14} />연결 해제</button>
+            web ? (
+              <Popover width={250} align="end" trigger={({ toggle }) => (
+                <button className="btn h-9 border border-line" disabled={!!busy}
+                  onClick={() => { toggle(); void api.browserOnly?.().then(setOnlyHere); }}>
+                  {busy === "logout" ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}연결 해제
+                </button>
+              )}>
+                {(close) => (
+                  <div className="p-1">
+                    <button className="w-full rounded-md px-2.5 py-2 text-left hover:bg-subtle" onClick={() => { close(); void logout(); }}>
+                      <div>연결 해제</div>
+                      <div className="text-[length:calc(11px*var(--ts))] text-muted">이 브라우저에 그대로 둬요</div>
+                    </button>
+                    <button className="w-full rounded-md px-2.5 py-2 text-left hover:bg-danger/10" onClick={() => { close(); void logout(true); }}>
+                      <div className="text-danger">연결 해제하고 지우기</div>
+                      <div className="text-[length:calc(11px*var(--ts))] text-muted">
+                        {onlyHere ? <span className="text-danger">드라이브에 없는 항목 {onlyHere}개도 지워져요</span> : "동기화 후 이 브라우저에서 지워요"}
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </Popover>
+            ) : (
+              <button className="btn h-9 border border-line" disabled={!!busy} onClick={() => void logout()}><LogOut size={14} />연결 해제</button>
+            )
           ) : (
             <button className="btn btn-primary h-9" disabled={!!busy || !canLogin || (st !== null && !st.available)} onClick={() => void login()}>
               {busy === "login" ? <Loader2 size={15} className="animate-spin" /> : <GoogleMark />}구글 계정으로 연결
